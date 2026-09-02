@@ -1,4 +1,5 @@
 import { decodeTransactionError } from "./errors";
+import { fetchIdlErrors } from "./idl";
 import { programName } from "./programs";
 import type { Trace, TraceNode } from "./types";
 
@@ -32,17 +33,32 @@ export function extractSignature(input: string): string | null {
   return matches.sort((a, b) => b.length - a.length)[0] ?? null;
 }
 
+/**
+ * Programs that logged a "failed" line. The FIRST such line is the innermost
+ * failure — CPI failures propagate outward, so the deepest program logs first.
+ */
+function failureInfoFromLogs(logs: string[]): {
+  failedPrograms: Set<string>;
+  innermostFailedProgram: string | null;
+} {
+  const failedPrograms = new Set<string>();
+  let innermostFailedProgram: string | null = null;
+  for (const line of logs) {
+    const m = line.match(/^Program ([1-9A-HJ-NP-Za-km-z]{32,44}) failed/);
+    if (m) {
+      if (!innermostFailedProgram) innermostFailedProgram = m[1];
+      failedPrograms.add(m[1]);
+    }
+  }
+  return { failedPrograms, innermostFailedProgram };
+}
+
 function instructionName(ix: ParsedInstruction): string | undefined {
   if (typeof ix.parsed === "object" && ix.parsed?.type) return ix.parsed.type;
   return undefined;
 }
 
-function toNode(
-  ix: ParsedInstruction,
-  index: string,
-  depth: number,
-  failed: boolean,
-): TraceNode {
+function toNode(ix: ParsedInstruction, index: string, depth: number, failed: boolean): TraceNode {
   return {
     index,
     programId: ix.programId,
@@ -57,41 +73,36 @@ function toNode(
 /**
  * Build the instruction tree: outer instructions from the message,
  * CPIs nested underneath via meta.innerInstructions stackHeight.
+ * Failure marking follows the log-derived failure path, so a CPI that
+ * completed before its sibling failed is not falsely implicated.
  */
-function buildTree(tx: RpcTransaction, failedOuterIndex: number | null): TraceNode[] {
+function buildTree(
+  tx: RpcTransaction,
+  failedOuterIndex: number | null,
+  failedPrograms: Set<string>,
+): TraceNode[] {
   const inner = new Map<number, ParsedInstruction[]>();
   for (const group of tx.meta.innerInstructions ?? []) {
     inner.set(group.index, group.instructions);
   }
 
   return tx.transaction.message.instructions.map((ix, i) => {
-    const failed = failedOuterIndex === i;
-    const root = toNode(ix, String(i + 1), 0, failed);
+    const outerFailed = failedOuterIndex === i;
+    const root = toNode(ix, String(i + 1), 0, outerFailed);
 
-    // Nest CPIs by stackHeight (2 = direct child of the outer instruction).
     const stack: TraceNode[] = [root];
-    const counters: number[] = [0];
     for (const cpi of inner.get(i) ?? []) {
       const height = cpi.stackHeight ?? 2; // depth 1 == stackHeight 2
       const depth = Math.max(1, height - 1);
-      while (stack.length > depth) {
-        stack.pop();
-        counters.pop();
-      }
+      while (stack.length > depth) stack.pop();
       while (stack.length < depth) {
         const last = stack[stack.length - 1].children.at(-1);
         if (!last) break;
         stack.push(last);
-        counters.push(last.children.length);
       }
       const parent = stack[stack.length - 1];
-      counters[counters.length - 1] = parent.children.length + 1;
-      const node = toNode(
-        cpi,
-        `${parent.index}.${parent.children.length + 1}`,
-        stack.length,
-        failed, // when the outer ix failed, the whole branch is implicated; refined in week 2 via logs
-      );
+      const failed = outerFailed && failedPrograms.has(cpi.programId);
+      const node = toNode(cpi, `${parent.index}.${parent.children.length + 1}`, stack.length, failed);
       parent.children.push(node);
     }
     return root;
@@ -124,10 +135,19 @@ export async function getTrace(signature: string): Promise<Trace | null> {
   }
 
   const logs = result.meta.logMessages ?? [];
+  const { failedPrograms, innermostFailedProgram } = failureInfoFromLogs(logs);
+
+  // The program to decode against: the innermost failure when CPIs are involved,
+  // falling back to the outer instruction's program.
   const failedProgramId =
-    failedOuterIndex != null
+    innermostFailedProgram ??
+    (failedOuterIndex != null
       ? (result.transaction.message.instructions[failedOuterIndex]?.programId ?? null)
-      : null;
+      : null);
+
+  // Layer 2: the failing program's on-chain Anchor IDL, when published.
+  const idlErrors =
+    err != null && failedProgramId ? await fetchIdlErrors(failedProgramId) : null;
 
   return {
     signature,
@@ -136,8 +156,8 @@ export async function getTrace(signature: string): Promise<Trace | null> {
     success: err == null,
     feeLamports: result.meta.fee,
     failedOuterIndex,
-    error: decodeTransactionError(err, failedProgramId, logs),
+    error: decodeTransactionError(err, failedProgramId, logs, idlErrors),
     logs,
-    tree: buildTree(result, failedOuterIndex),
+    tree: buildTree(result, failedOuterIndex, failedPrograms),
   };
 }
