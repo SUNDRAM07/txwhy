@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RepairPanel } from "@/components/RepairPanel";
 import { getTrace } from "@/lib/trace";
 import type { TraceNode } from "@/lib/types";
 
@@ -119,6 +120,8 @@ export default async function TxPage({
               </p>
             </div>
           )}
+
+          {!trace.success && <RepairPanel signature={signature} />}
 
           <h2 className="mt-8 mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
             Instruction tree

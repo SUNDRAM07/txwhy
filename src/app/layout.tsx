@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TxWhy - why did my Solana transaction fail?",
-  description: "Paste a failed Solana transaction signature - decoded instruction tree, plain-English cause, suggested fix, shareable link.",
+  title: "TxWhy - fix failed Solana transactions",
+  description: "Paste a failed Solana transaction. Get the exact cause and a rebuilt transaction, simulated to prove it passes. API for agents and bots.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

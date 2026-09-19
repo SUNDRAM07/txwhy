@@ -29,7 +29,7 @@ export default function Home() {
           Tx<span className="text-emerald-500">Why</span>
         </h1>
         <p className="mt-3 text-lg text-neutral-500 dark:text-neutral-400">
-          Paste a failed Solana transaction. See why it failed — and how to fix it.
+          Paste a failed Solana transaction. See why it failed, and get back one that works.
         </p>
       </div>
 
@@ -47,16 +47,19 @@ export default function Home() {
             disabled={loading}
             className="rounded-lg bg-emerald-600 px-5 py-3 font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
           >
-            {loading ? "Tracing…" : "Explain"}
+            {loading ? "Tracing…" : "Diagnose"}
           </button>
         </div>
         {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
       </form>
 
       <p className="text-center text-sm text-neutral-400 dark:text-neutral-500">
-        Decoded instruction tree · failing step highlighted · plain-English cause + fix ·
-        shareable link
+        Exact failing step · plain-English cause · a rebuilt transaction, simulated to prove it
+        passes · shareable link
       </p>
+      <a href="/repair" className="text-sm font-medium text-emerald-600 hover:underline dark:text-emerald-400">
+        Have an unsent transaction? Repair it before you send →
+      </a>
     </main>
   );
 }
