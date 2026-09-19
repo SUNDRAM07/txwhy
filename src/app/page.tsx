@@ -1,8 +1,69 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { extractSignature } from "@/lib/trace";
+
+const EXAMPLES = [
+  {
+    label: "Jupiter swap that failed on slippage",
+    signature:
+      "4UBhmyAASkEzCNFxHB34zDUyi8AoGy289egTkitEx9P48zGNqkwjr8scNpHUvFYwaQ83dkiD5wTMGUqF5BUMGRp8",
+  },
+  {
+    label: "Raydium swap that hit an overflow",
+    signature:
+      "3pJdqu5pahcNn9zyqk888f9khh12TgfPW8jzfe9p2ARfVFHbXSrH3Jjw1ihnUvs79gkzmoaV981Wb2fHip3PEGJn",
+  },
+];
+
+const FIXES: { failure: string; action: string; fixed: boolean }[] = [
+  {
+    failure: "Blockhash expired",
+    action: "Replaced with a current one. We check whether the original had really expired.",
+    fixed: true,
+  },
+  {
+    failure: "Compute budget exceeded",
+    action: "We run the transaction with the maximum budget, read what it truly used, and set the limit to that plus headroom.",
+    fixed: true,
+  },
+  {
+    failure: "Dropped under load",
+    action: "Priority fee set from what the network recently charged for the exact accounts you write to.",
+    fixed: true,
+  },
+  {
+    failure: "Slippage on a Jupiter swap",
+    action: "Rebuilt from a fresh quote with your tokens, amount and tolerance. We show how the minimum you receive changed.",
+    fixed: true,
+  },
+  {
+    failure: "Not enough SOL",
+    action: "Not something a rebuild can fix. We give you the exact shortfall instead.",
+    fixed: false,
+  },
+  {
+    failure: "A program rejected it",
+    action: "Named cause and fix from the program's own published errors, where they exist.",
+    fixed: false,
+  },
+];
+
+const CURL = `curl -X POST https://txwhy.vercel.app/api/v1/repair \\
+  -H "content-type: application/json" \\
+  -d '{"transaction": "<base64, signed or unsigned>"}'`;
+
+const RESPONSE = `{
+  "status": "repaired",
+  "cause": { "title": "Compute budget exceeded", ... },
+  "changes": [
+    { "type": "compute_unit_limit", "before": "100", "after": "518" }
+  ],
+  "repairedTransaction": "<base64, unsigned>",
+  "simulation": { "passed": true, "unitsConsumed": 450 }
+}`;
 
 export default function Home() {
   const router = useRouter();
@@ -23,43 +84,161 @@ export default function Home() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center gap-8 px-4">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold tracking-tight">
+    <main className="mx-auto max-w-3xl px-4 pb-24">
+      <header className="flex items-center justify-between py-6">
+        <span className="font-bold tracking-tight">
           Tx<span className="text-emerald-500">Why</span>
+        </span>
+        <nav className="flex gap-5 text-sm text-neutral-500">
+          <Link href="/repair" className="hover:text-emerald-500">
+            Repair
+          </Link>
+          <a href="#api" className="hover:text-emerald-500">
+            API
+          </a>
+        </nav>
+      </header>
+
+      <section className="pt-16 pb-12 text-center">
+        <h1 className="text-4xl font-bold tracking-tight sm:text-5xl">
+          Failed transaction in.
+          <br />
+          <span className="text-emerald-500">Working transaction out.</span>
         </h1>
-        <p className="mt-3 text-lg text-neutral-500 dark:text-neutral-400">
-          Paste a failed Solana transaction. See why it failed, and get back one that works.
+        <p className="mx-auto mt-5 max-w-xl text-lg leading-relaxed text-neutral-500 dark:text-neutral-400">
+          TxWhy finds the exact reason a Solana transaction failed, rebuilds it, and proves the
+          rebuilt one works by simulating it against live chain state. For people, bots and AI
+          agents.
         </p>
-      </div>
 
-      <form onSubmit={submit} className="w-full">
-        <div className="flex w-full gap-2">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Transaction signature or explorer URL"
-            spellCheck={false}
-            className="min-w-0 flex-1 rounded-lg border border-neutral-300 bg-white px-4 py-3 font-mono text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-900"
-          />
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-lg bg-emerald-600 px-5 py-3 font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
-          >
-            {loading ? "Tracing…" : "Diagnose"}
-          </button>
+        <form onSubmit={submit} className="mx-auto mt-8 max-w-2xl">
+          <div className="flex w-full gap-2">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Transaction signature or explorer URL"
+              spellCheck={false}
+              className="min-w-0 flex-1 rounded-lg border border-neutral-300 bg-white px-4 py-3 font-mono text-sm outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-900"
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="rounded-lg bg-emerald-600 px-5 py-3 font-medium text-white transition hover:bg-emerald-500 disabled:opacity-50"
+            >
+              {loading ? "Tracing…" : "Diagnose"}
+            </button>
+          </div>
+          {error && <p className="mt-2 text-left text-sm text-red-500">{error}</p>}
+        </form>
+
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-sm">
+          <span className="text-neutral-500">Try one:</span>
+          {EXAMPLES.map((ex) => (
+            <Link
+              key={ex.signature}
+              href={`/tx/${ex.signature}`}
+              className="text-emerald-600 hover:underline dark:text-emerald-400"
+            >
+              {ex.label}
+            </Link>
+          ))}
         </div>
-        {error && <p className="mt-2 text-sm text-red-500">{error}</p>}
-      </form>
+        <p className="mt-3 text-sm">
+          <Link href="/repair" className="text-emerald-600 hover:underline dark:text-emerald-400">
+            Not sent yet? Repair it before you send, or watch a live demo →
+          </Link>
+        </p>
+      </section>
 
-      <p className="text-center text-sm text-neutral-400 dark:text-neutral-500">
-        Exact failing step · plain-English cause · a rebuilt transaction, simulated to prove it
-        passes · shareable link
-      </p>
-      <a href="/repair" className="text-sm font-medium text-emerald-600 hover:underline dark:text-emerald-400">
-        Have an unsent transaction? Repair it before you send →
-      </a>
+      <section className="border-t border-neutral-200 py-12 dark:border-neutral-800">
+        <h2 className="text-xl font-bold tracking-tight">Why this exists</h2>
+        <p className="mt-3 leading-relaxed text-neutral-600 dark:text-neutral-400">
+          On a busy day somewhere between one in eight and one in two Solana transactions fail. Bots
+          and agents fail more than half of what they send, and the priority fee is burned every
+          time. What they get back is a code like{" "}
+          <code className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono text-sm dark:bg-neutral-900">
+            Custom(6001)
+          </code>
+          . Explorers and AI explainers tell you what happened. TxWhy hands you the transaction that
+          works.
+        </p>
+      </section>
+
+      <section className="border-t border-neutral-200 py-12 dark:border-neutral-800">
+        <h2 className="text-xl font-bold tracking-tight">How it works</h2>
+        <ol className="mt-5 grid gap-4 sm:grid-cols-3">
+          {[
+            ["Diagnose", "Replays the transaction, walks every inner call, and pins the exact step that broke and why."],
+            ["Rebuild", "Applies the fix that matches the cause and leaves everything else exactly as you wrote it."],
+            ["Prove", "Simulates the rebuilt transaction on live state. You only get it back if it passes."],
+          ].map(([title, body], i) => (
+            <li key={title} className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
+              <p className="font-mono text-xs text-emerald-500">0{i + 1}</p>
+              <p className="mt-1 font-semibold">{title}</p>
+              <p className="mt-1 text-sm leading-relaxed text-neutral-500">{body}</p>
+            </li>
+          ))}
+        </ol>
+        <p className="mt-4 text-sm text-neutral-500">
+          The rebuilt transaction comes back unsigned. You sign it with your own wallet. TxWhy never
+          sees a key.
+        </p>
+      </section>
+
+      <section className="border-t border-neutral-200 py-12 dark:border-neutral-800">
+        <h2 className="text-xl font-bold tracking-tight">What it handles today</h2>
+        <ul className="mt-5 divide-y divide-neutral-200 dark:divide-neutral-800">
+          {FIXES.map((f) => (
+            <li key={f.failure} className="flex gap-4 py-3">
+              <span
+                className={`mt-0.5 h-fit shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                  f.fixed
+                    ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                    : "bg-neutral-500/15 text-neutral-600 dark:text-neutral-400"
+                }`}
+              >
+                {f.fixed ? "Fixes" : "Explains"}
+              </span>
+              <div>
+                <p className="font-medium">{f.failure}</p>
+                <p className="text-sm leading-relaxed text-neutral-500">{f.action}</p>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-4 text-sm text-neutral-500">
+          When something cannot be fixed by rebuilding, TxWhy says so. It will never hand back a
+          transaction that would fail again.
+        </p>
+      </section>
+
+      <section id="api" className="border-t border-neutral-200 py-12 dark:border-neutral-800">
+        <h2 className="text-xl font-bold tracking-tight">For agents and bots</h2>
+        <p className="mt-3 leading-relaxed text-neutral-600 dark:text-neutral-400">
+          One call inside your send loop. Pass the transaction that failed, or the one you are about
+          to send, and get back a version that passes.
+        </p>
+        <pre className="mt-4 overflow-x-auto rounded-xl border border-neutral-200 p-4 font-mono text-xs leading-relaxed dark:border-neutral-800">
+          {CURL}
+        </pre>
+        <pre className="mt-3 overflow-x-auto rounded-xl border border-neutral-200 p-4 font-mono text-xs leading-relaxed text-neutral-500 dark:border-neutral-800">
+          {RESPONSE}
+        </pre>
+        <p className="mt-3 text-sm text-neutral-500">
+          You can also pass{" "}
+          <code className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono dark:bg-neutral-900">
+            {`{"signature": "..."}`}
+          </code>{" "}
+          for a transaction that already landed and failed. Status is one of{" "}
+          <code className="font-mono">repaired</code>, <code className="font-mono">valid</code>,{" "}
+          <code className="font-mono">needs_requote</code> or{" "}
+          <code className="font-mono">not_repairable</code>.
+        </p>
+      </section>
+
+      <footer className="border-t border-neutral-200 pt-8 text-sm text-neutral-500 dark:border-neutral-800">
+        Built for Solana. Entered in Colosseum&apos;s Crypto World&apos;s Fair.
+      </footer>
     </main>
   );
 }
