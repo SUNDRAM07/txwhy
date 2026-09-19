@@ -119,7 +119,7 @@ export async function getTrace(signature: string): Promise<Trace | null> {
       method: "getTransaction",
       params: [
         signature,
-        { encoding: "jsonParsed", maxSupportedTransactionVersion: 0, commitment: "confirmed" },
+        { encoding: "jsonParsed", maxSupportedTransactionVersion: 1, commitment: "confirmed" },
       ],
     }),
     next: { revalidate: 86400 }, // confirmed transactions are immutable

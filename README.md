@@ -38,4 +38,4 @@ AI explainers regenerate an answer per query. TxWhy's knowledge base is curated,
 
 ---
 
-Built for the Solana ecosystem. Entering the Colosseum hackathon (Sep 28 – Nov 2, 2026).
+Built for the Solana ecosystem. Entered in Colosseum's Crypto World's Fair hackathon (Sep 14 – Oct 12, 2026), Solana track.
