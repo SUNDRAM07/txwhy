@@ -20,5 +20,14 @@ await t("compute-unit limit far too low", { transaction: b64(RICH, blockhash, [C
 await t("expired blockhash", { transaction: b64(RICH, "EkSnNWid2cvwEVnVx9aBqawnmiCNiDgp3gUdkDPTKN1N", [transfer]) }, "repaired");
 await t("healthy transaction, no budget set", { transaction: b64(RICH, blockhash, [transfer]) }, "valid");
 await t("insufficient funds", { transaction: b64(RICH, blockhash, [SystemProgram.transfer({ fromPubkey: RICH, toPubkey: DEST, lamports: BigInt(bal) * 1000n })]) }, "not_repairable");
+// A plain Jupiter swap built from a quote we inflate by 5%, so it fails on slippage exactly like a stale quote does.
+{
+  const J = "https://lite-api.jup.ag/swap/v1";
+  const quote = await (await fetch(`${J}/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&amount=50000000&slippageBps=50`)).json();
+  const stale = { ...quote, outAmount: String(Math.floor(Number(quote.outAmount) * 1.05)), otherAmountThreshold: String(Math.floor(Number(quote.otherAmountThreshold) * 1.05)) };
+  const built = await (await fetch(`${J}/swap`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quoteResponse: stale, userPublicKey: RICH.toBase58(), wrapAndUnwrapSol: true, dynamicComputeUnitLimit: false }) })).json();
+  if (built.swapTransaction) await t("stale Jupiter quote (slippage)", { transaction: built.swapTransaction }, "repaired");
+  else { total++; console.log("FAIL  could not build the stale swap:", JSON.stringify(built).slice(0, 200)); }
+}
 await t("garbage input", { transaction: "not-a-transaction" }, undefined);
 console.log(`\n${pass}/${total} passed`);

@@ -14,10 +14,11 @@ const CHANGE_LABEL: Record<string, string> = {
   blockhash: "Blockhash",
   compute_unit_limit: "Compute unit limit",
   priority_fee: "Priority fee",
+  swap_quote: "Swap quote",
 };
 
 function short(v: string) {
-  return v.length > 28 ? `${v.slice(0, 10)}…${v.slice(-8)}` : v;
+  return v.length > 28 && !v.includes(" ") ? `${v.slice(0, 10)}…${v.slice(-8)}` : v;
 }
 
 export interface RepairInput {

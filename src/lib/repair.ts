@@ -8,6 +8,7 @@ import {
 } from "@solana/web3.js";
 import { decodeTransactionError } from "./errors";
 import { fetchIdlErrors } from "./idl";
+import { requoteJupiter } from "./requote";
 import { rpc } from "./rpc";
 import { getTrace } from "./trace";
 import type { DecodedError } from "./types";
@@ -20,8 +21,9 @@ import type { DecodedError } from "./types";
  * UNSIGNED transaction that has been re-simulated against live state to prove
  * it passes. The caller signs and sends. Keys never touch this service.
  *
- * Repairs applied in v1: fresh blockhash, compute-unit limit sized from a real
- * simulation, priority fee from recent on-chain fees. Failures that need funds,
+ * Repairs: fresh blockhash, compute-unit limit sized from a real simulation,
+ * priority fee from recent on-chain fees, and a fresh route for plain Jupiter
+ * swaps that failed on slippage. Failures that need funds,
  * a new quote, or a human decision are reported honestly, not papered over.
  */
 
@@ -34,7 +36,7 @@ const FEE_CEILING = 2_000_000;
 export type RepairStatus = "repaired" | "valid" | "needs_requote" | "not_repairable";
 
 export interface RepairChange {
-  type: "blockhash" | "compute_unit_limit" | "priority_fee";
+  type: "blockhash" | "compute_unit_limit" | "priority_fee" | "swap_quote";
   before: string;
   after: string;
   reason: string;
@@ -352,6 +354,48 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
         `On chain it failed with "${onchain.error.title}". Against current state it now fails with "${probeCause.title}".`,
       );
     }
+    // Slippage: the amounts are inside the instruction, so rebuild the swap from a fresh quote.
+    if (verdict.status === "needs_requote") {
+      const requote = await requoteJupiter(decompiled.instructions, decompiled.payerKey);
+      if (requote.ok) {
+        const requoteSim = await simulate(requote.transaction);
+        const requoteError = await decodeSimError(requoteSim.err, requoteSim.logs ?? []);
+        if (requoteSim.err == null) {
+          return {
+            status: "repaired",
+            summary:
+              "Repaired with a fresh quote. The rebuilt swap keeps your tokens, amount and slippage tolerance, and passes simulation.",
+            cause: verdict.cause ?? probeCause,
+            changes: [
+              {
+                type: "swap_quote",
+                before: requote.before,
+                after: requote.after,
+                reason: "The price moved past the tolerance in the original transaction, so the route and amounts were rebuilt from a current quote.",
+              },
+            ],
+            repairedTransaction: Buffer.from(requote.transaction.serialize()).toString("base64"),
+            simulation: {
+              passed: true,
+              unitsConsumed: requoteSim.unitsConsumed ?? null,
+              error: null,
+              logsTail: (requoteSim.logs ?? []).slice(-8),
+            },
+            notes: [
+              ...requote.notes,
+              "Quotes go stale within seconds. Sign and send immediately.",
+              ...notes,
+            ],
+          };
+        }
+        notes.push(
+          `A fresh quote was built but it also fails simulation (${requoteError?.title ?? "unknown error"}), so it is not returned.`,
+        );
+      } else {
+        notes.push(requote.reason);
+      }
+    }
+
     return {
       status: verdict.status,
       summary:
