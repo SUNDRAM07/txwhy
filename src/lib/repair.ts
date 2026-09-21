@@ -369,6 +369,8 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
   );
   let probeSim = await simulate(probe);
   let requoted = false;
+  /** Set when the swap can never be repaired, so we say that instead of "get a fresh quote". */
+  let finalVerdict: string | null = null;
 
   const liftLoadedDataLimit = (reason: string) => {
     const declared = budget.kept.find(isLoadedDataLimit);
@@ -463,11 +465,30 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
         } catch (e) {
           notes.push(e instanceof Error ? e.message : "The re-quoted transaction could not be assembled.");
         }
+      } else if (requote.final) {
+        finalVerdict = requote.reason;
       } else {
         notes.push(requote.reason);
       }
     }
 
+    if (!requoted && finalVerdict) {
+      const base = landed ? (onchain?.error ?? verdict.cause ?? probeCause) : (verdict.cause ?? probeCause);
+      return {
+        status: "not_repairable",
+        summary: finalVerdict,
+        cause: base ? { ...base, fix: "Nothing to fix. This transaction did what it was designed to do when the opportunity was gone." } : null,
+        changes: [],
+        repairedTransaction: null,
+        simulation: {
+          passed: false,
+          unitsConsumed: probeSim.unitsConsumed ?? null,
+          error: probeCause,
+          logsTail: (probeSim.logs ?? []).slice(-12),
+        },
+        notes: [],
+      };
+    }
     if (!requoted) return {
       status: wantsRequote ? "needs_requote" : verdict.status,
       summary:

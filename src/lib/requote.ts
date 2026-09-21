@@ -66,7 +66,13 @@ export type RequoteOutcome =
       after: string;
       notes: string[];
     }
-  | { ok: false; reason: string; intent?: SwapIntent };
+  | {
+      ok: false;
+      reason: string;
+      intent?: SwapIntent;
+      /** True when no rebuild could ever help (for example circular arbitrage), as opposed to "try a fresh quote yourself". */
+      final?: boolean;
+    };
 
 function readAmounts(data: Buffer, at: number | "tail") {
   const start = at === "tail" ? data.length - 19 : at;
@@ -201,9 +207,10 @@ export async function requoteJupiter(instructions: TransactionInstruction[]): Pr
   if (intent.inputMint === intent.outputMint) {
     return {
       ok: false,
+      final: true,
       intent,
       reason:
-        "This is a circular arbitrage: the same token goes in and comes out. It only succeeds while a price gap exists, and the gap closed. There is nothing to repair.",
+        "This is a circular arbitrage: the same token goes in and comes out. It only succeeds while a price gap exists, and the gap had closed by the time it executed. Arbitrage transactions are built to fail this way, so there is nothing to repair.",
     };
   }
 

@@ -42,6 +42,7 @@ const HELP = [
   "",
   "I reply with the exact step that failed, why, how to fix it, and when it can be fixed by rebuilding, a repaired unsigned transaction that already passed simulation.",
   "",
+  "No failed transaction handy? Send /demo and watch me break a real swap and repair it.",
   "In groups use <code>/why &lt;signature or link&gt;</code>.",
   "I never see or ask for keys. You sign the result yourself.",
   "",
@@ -60,7 +61,9 @@ function renderRepair(result: RepairResult): string[] {
   for (const c of result.changes) {
     lines.push(`• <b>${esc(c.type.replace(/_/g, " "))}</b>: ${esc(c.before.length > 60 ? c.before.slice(0, 57) + "…" : c.before)} → ${esc(c.after.length > 60 ? c.after.slice(0, 57) + "…" : c.after)}`);
   }
-  for (const n of result.notes.slice(0, 2)) lines.push(`<i>${esc(n)}</i>`);
+  // One note is enough in a chat. For a refusal the last note is the specific reason; for a repair the first is the headline.
+  const note = result.repairedTransaction ? result.notes[0] : result.notes[result.notes.length - 1];
+  if (note && note !== result.summary) lines.push(`<i>${esc(note)}</i>`);
   return lines;
 }
 
@@ -82,11 +85,18 @@ async function answerSignature(signature: string): Promise<string> {
 
   const out = [`❌ <b>${esc(trace.error?.title ?? "Transaction failed")}</b>`];
   if (path.length) out.push(`Failed at: <code>${esc(path.join(" → "))}</code>`);
-  if (trace.error?.cause) out.push("", `<b>Why:</b> ${esc(trace.error.cause)}`);
-  if (trace.error?.fix) out.push(`<b>Fix:</b> ${esc(trace.error.fix)}`);
+  let result: RepairResult | null = null;
+  try {
+    result = await repair({ signature });
+  } catch {
+    result = null;
+  }
+  const cause = result?.cause ?? trace.error;
+  if (cause?.cause) out.push("", `<b>Why:</b> ${esc(cause.cause)}`);
+  if (cause?.fix && result?.status !== "not_repairable") out.push(`<b>Fix:</b> ${esc(cause.fix)}`);
 
   try {
-    const result = await repair({ signature });
+    if (!result) throw new Error("no repair");
     out.push("", ...renderRepair(result));
     if (result.repairedTransaction) out.push(`Get the rebuilt transaction here: ${SITE}/tx/${signature}`);
     else out.push(`Full trace: ${SITE}/tx/${signature}`);
@@ -114,6 +124,28 @@ async function answerTransaction(transaction: string): Promise<string> {
   } catch (e) {
     if (e instanceof RepairInputError) return esc(e.message);
     return "Something went wrong talking to the network. Try again in a moment.";
+  }
+}
+
+/** Build a deliberately broken swap on live mainnet state, then repair it, so anyone can watch it work. */
+async function answerDemo(): Promise<string> {
+  try {
+    const example = await (await fetch(`${SITE}/api/v1/example?kind=slippage`, { cache: "no-store" })).json();
+    if (!example.transaction) throw new Error("no example");
+    const result = await repair({ transaction: example.transaction });
+    return [
+      "<b>Live demo.</b> I just built a real 0.05 SOL → USDC swap on a quote that is 5% too optimistic, so it fails the way a stale quote does. Then I repaired it:",
+      "",
+      result.cause ? `❌ <b>${esc(result.cause.title)}</b>` : "",
+      ...renderRepair(result),
+      "",
+      `Simulation of the rebuilt swap: <b>${result.simulation.passed ? "passed" : "failed"}</b>${result.simulation.unitsConsumed ? ` (${result.simulation.unitsConsumed.toLocaleString("en-US")} compute units)` : ""}.`,
+      `Try the other demos: ${SITE}/repair`,
+    ]
+      .filter((l, i, a) => !(l === "" && a[i - 1] === ""))
+      .join("\n");
+  } catch {
+    return `The demo could not reach the quote service just now. Try again, or run it at ${SITE}/repair`;
   }
 }
 
@@ -164,6 +196,11 @@ export async function POST(request: Request) {
 
   if (name === "start" || name === "help") {
     await send(chatId, HELP);
+    return new Response("ok");
+  }
+  if (name === "demo") {
+    if (flooded(chatId)) return new Response("ok");
+    await send(chatId, await answerDemo(), message.message_id);
     return new Response("ok");
   }
   // In groups, only act on /why (or /repair). "/why" as a reply to a message uses that message's text.

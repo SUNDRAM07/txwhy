@@ -7,7 +7,7 @@ import { extractSignature } from "@/lib/trace";
 
 const EXAMPLES = [
   {
-    label: "Jupiter swap that failed on slippage",
+    label: "Arbitrage bot that missed its price gap",
     signature:
       "4UBhmyAASkEzCNFxHB34zDUyi8AoGy289egTkitEx9P48zGNqkwjr8scNpHUvFYwaQ83dkiD5wTMGUqF5BUMGRp8",
   },
