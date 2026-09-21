@@ -62,6 +62,9 @@ function renderRepair(result: RepairResult): string[] {
   for (const c of result.changes) {
     lines.push(`• <b>${esc(c.type.replace(/_/g, " "))}</b>: ${esc(c.before.length > 60 ? c.before.slice(0, 57) + "…" : c.before)} → ${esc(c.after.length > 60 ? c.after.slice(0, 57) + "…" : c.after)}`);
   }
+  if (result.verification?.ok) {
+    lines.push(`🔒 <i>Verified: same fee payer and signers, ${result.verification.kept} other instruction${result.verification.kept === 1 ? "" : "s"} untouched.</i>`);
+  }
   // One note is enough in a chat. For a refusal the last note is the specific reason; for a repair the first is the headline.
   const note = result.repairedTransaction ? result.notes[0] : result.notes[result.notes.length - 1];
   if (note && note !== result.summary) lines.push(`<i>${esc(note)}</i>`);

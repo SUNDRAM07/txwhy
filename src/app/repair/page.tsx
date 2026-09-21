@@ -39,7 +39,7 @@ export default function RepairPage() {
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-10">
+    <main className="mx-auto w-full min-w-0 max-w-3xl px-4 py-10">
       <Link href="/" className="font-bold tracking-tight">
         Tx<span className="text-emerald-500">Why</span>
       </Link>

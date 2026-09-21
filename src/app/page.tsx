@@ -66,6 +66,14 @@ const MCP_CONFIG = `{
   }
 }`;
 
+const VERIFY = `import { verifyInstructions } from "txwhy/verify";
+
+const check = verifyInstructions(
+  { payer, instructions: originalInstructions },
+  { payer: repairedPayer, instructions: repairedInstructions },
+);
+if (!check.ok) throw new Error(check.violations.join(" "));  // never sign it`;
+
 const RESPONSE = `{
   "status": "repaired",
   "cause": { "title": "Compute budget exceeded", ... },
@@ -95,7 +103,7 @@ export default function Home() {
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-4 pb-24">
+    <main className="mx-auto w-full min-w-0 max-w-3xl px-4 pb-24">
       <header className="flex items-center justify-between py-6">
         <span className="font-bold tracking-tight">
           Tx<span className="text-emerald-500">Why</span>
@@ -227,6 +235,32 @@ export default function Home() {
           When something cannot be fixed by rebuilding, TxWhy says so. It will never hand back a
           transaction that would fail again.
         </p>
+      </section>
+
+      <section id="verify" className="border-t border-neutral-200 py-12 dark:border-neutral-800">
+        <h2 className="text-xl font-bold tracking-tight">You never have to trust us</h2>
+        <p className="mt-3 leading-relaxed text-neutral-600 dark:text-neutral-400">
+          Signing a transaction that a server rebuilt should make you nervous. So every repair comes with a proof, and
+          the check behind it is open source, has no network access, and runs on your machine. A repaired transaction
+          may differ from yours in exactly three ways:
+        </p>
+        <ul className="mt-3 list-disc space-y-1 pl-5 text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
+          <li>compute budget settings (limit, priority fee, loaded data size)</li>
+          <li>
+            one Jupiter swap instruction replaced by another for the same wallet, the same source and destination token
+            accounts, the same output token, the same amount and the same slippage tolerance
+          </li>
+          <li>the recent blockhash</li>
+        </ul>
+        <p className="mt-3 leading-relaxed text-neutral-600 dark:text-neutral-400">
+          Same fee payer, same signers, every other instruction byte for byte and in the same order. Anything else is
+          refused. The test suite attacks it fifteen ways: an extra transfer, a redirected fee, a new signer, a widened
+          slippage, swap proceeds sent to a stranger. All fifteen are caught. TxWhy runs the same check on its own
+          output and will not return a transaction that fails it.
+        </p>
+        <pre className="mt-4 overflow-x-auto rounded-xl border border-neutral-200 p-4 font-mono text-xs leading-relaxed dark:border-neutral-800">
+          {VERIFY}
+        </pre>
       </section>
 
       <section id="api" className="border-t border-neutral-200 py-12 dark:border-neutral-800">

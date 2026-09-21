@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { RepairResult } from "@/lib/repair";
 
@@ -189,6 +190,33 @@ export function RepairView({
             {result.simulation.unitsConsumed != null &&
               ` · ${result.simulation.unitsConsumed.toLocaleString()} compute units`}
           </p>
+
+          {result.verification?.ok && (
+            <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
+                Verified: nothing else was touched
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">
+                Same fee payer and same signers. {result.verification.kept} original instruction
+                {result.verification.kept === 1 ? "" : "s"} kept byte for byte, in the same order. The only differences:
+              </p>
+              <ul className="mt-1 list-disc pl-5 text-xs leading-relaxed text-neutral-600 dark:text-neutral-400">
+                {result.verification.changes.map((ch, i) => (
+                  <li key={i}>
+                    <span className="font-medium">{ch.program}:</span> {ch.detail}
+                  </li>
+                ))}
+                <li>a fresh blockhash</li>
+              </ul>
+              <p className="mt-2 text-xs text-neutral-500">
+                You do not have to take our word for it. The check is open source and runs offline:{" "}
+                <Link href="/#verify" className="underline">
+                  verify a repair yourself
+                </Link>
+                .
+              </p>
+            </div>
+          )}
 
           {result.repairedTransaction && (
             <div>

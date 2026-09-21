@@ -11,6 +11,7 @@ import { fetchIdlErrors } from "./idl";
 import { requoteJupiter } from "./requote";
 import { rpc } from "./rpc";
 import { getTrace } from "./trace";
+import { type Verification, verifyInstructions } from "./verify";
 import type { DecodedError } from "./types";
 
 /**
@@ -61,6 +62,11 @@ export interface RepairResult {
   repairedTransaction: string | null;
   /** Simulation of the transaction exactly as returned. */
   simulation: SimulationProof;
+  /**
+   * Instruction-level proof of what changed. Present whenever a transaction is returned.
+   * The same check is published as verifyInstructions() so callers can run it themselves.
+   */
+  verification?: Verification;
   notes: string[];
 }
 
@@ -531,45 +537,44 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
   }
 
   // 6. Build the final transaction and prove it.
-  const finalTx = build(
-    decompiled.payerKey,
-    latest.blockhash,
-    [
-      ComputeBudgetProgram.setComputeUnitLimit({ units: limit }),
-      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: fee }),
-      ...budget.kept,
-      ...budget.rest,
-    ],
-    tables,
-    legacy,
-  );
+  let finalInstructions = [
+    ComputeBudgetProgram.setComputeUnitLimit({ units: limit }),
+    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: fee }),
+    ...budget.kept,
+    ...budget.rest,
+  ];
+  const finalTx = build(decompiled.payerKey, latest.blockhash, finalInstructions, tables, legacy);
   let finalSim = await simulate(finalTx);
   let returned = finalTx;
   if (finalSim.err != null && fee !== currentFee) {
     // The raised fee may be more than the wallet can spare. Fall back to the fee it came with.
-    const fallback = build(
-      decompiled.payerKey,
-      latest.blockhash,
-      [
-        ComputeBudgetProgram.setComputeUnitLimit({ units: limit }),
-        ...(currentFee > 0 ? [ComputeBudgetProgram.setComputeUnitPrice({ microLamports: currentFee })] : []),
-        ...budget.kept,
-        ...budget.rest,
-      ],
-      tables,
-      legacy,
-    );
+    const fallbackInstructions = [
+      ComputeBudgetProgram.setComputeUnitLimit({ units: limit }),
+      ...(currentFee > 0 ? [ComputeBudgetProgram.setComputeUnitPrice({ microLamports: currentFee })] : []),
+      ...budget.kept,
+      ...budget.rest,
+    ];
+    const fallback = build(decompiled.payerKey, latest.blockhash, fallbackInstructions, tables, legacy);
     const fallbackSim = await simulate(fallback);
     if (fallbackSim.err == null) {
       finalSim = fallbackSim;
       returned = fallback;
+      finalInstructions = fallbackInstructions;
       const i = changes.findIndex((c) => c.type === "priority_fee");
       if (i >= 0) changes.splice(i, 1);
       notes.push("The priority fee was left as it was: raising it to the market rate would cost more than this wallet can cover.");
     }
   }
   const finalError = await decodeSimError(finalSim.err, finalSim.logs ?? []);
-  const passed = finalSim.err == null;
+
+  // Defence in depth: run the public verifier on our own output. If the rebuilt transaction
+  // differs from the original in any way a caller would not accept, it is never returned.
+  const verification = verifyInstructions(
+    { payer: decompiled.payerKey, instructions: decompiled.instructions },
+    { payer: decompiled.payerKey, instructions: finalInstructions },
+  );
+  if (!verification.ok) notes.unshift(`Internal verification refused this rebuild: ${verification.violations.join(" ")}`);
+  const passed = finalSim.err == null && verification.ok;
 
   if (!changes.some((c) => c.type === "blockhash")) {
     notes.push("A fresh blockhash is always applied, so sign and send within about 60 seconds.");
@@ -601,6 +606,7 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
     cause,
     changes,
     repairedTransaction: passed ? Buffer.from(returned.serialize()).toString("base64") : null,
+    verification: passed ? verification : undefined,
     simulation: {
       passed,
       unitsConsumed: finalSim.unitsConsumed ?? null,

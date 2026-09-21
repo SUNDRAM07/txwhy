@@ -27,18 +27,22 @@ interface Layout {
   destinationMint: number;
   /** Where the amounts sit: a byte offset from the start of data, or "tail" (the last 19 bytes). */
   amounts: number | "tail";
+  /** Account index of the token account the input is taken from. */
+  source: number;
+  /** Account indexes of every token account that can receive the output. */
+  destinations: number[];
 }
 
 /** Verified against Jupiter v6's on-chain IDL (Sep 2026). Token-ledger variants carry no input amount and are not supported. */
 const LAYOUTS: Record<string, Layout> = {
-  e517cb977ae3ad2a: { name: "route", mode: "ExactIn", user: 1, sourceMint: { tokenAccount: 2 }, destinationMint: 5, amounts: "tail" },
-  c1209b3341d69c81: { name: "shared_accounts_route", mode: "ExactIn", user: 2, sourceMint: 7, destinationMint: 8, amounts: "tail" },
-  bb64facc31c4af14: { name: "route_v2", mode: "ExactIn", user: 0, sourceMint: 3, destinationMint: 4, amounts: 8 },
-  d19853937cfed8e9: { name: "shared_accounts_route_v2", mode: "ExactIn", user: 1, sourceMint: 6, destinationMint: 7, amounts: 9 },
-  d033ef977b2bed5c: { name: "exact_out_route", mode: "ExactOut", user: 1, sourceMint: 5, destinationMint: 6, amounts: "tail" },
-  b0d169a89a7d453e: { name: "shared_accounts_exact_out_route", mode: "ExactOut", user: 2, sourceMint: 7, destinationMint: 8, amounts: "tail" },
-  "9d8ab85215f4f324": { name: "exact_out_route_v2", mode: "ExactOut", user: 0, sourceMint: 3, destinationMint: 4, amounts: 8 },
-  "3560e5cad8bbfa18": { name: "shared_accounts_exact_out_route_v2", mode: "ExactOut", user: 1, sourceMint: 6, destinationMint: 7, amounts: 9 },
+  e517cb977ae3ad2a: { name: "route", mode: "ExactIn", user: 1, sourceMint: { tokenAccount: 2 }, destinationMint: 5, amounts: "tail", source: 2, destinations: [3, 4] },
+  c1209b3341d69c81: { name: "shared_accounts_route", mode: "ExactIn", user: 2, sourceMint: 7, destinationMint: 8, amounts: "tail", source: 3, destinations: [6] },
+  bb64facc31c4af14: { name: "route_v2", mode: "ExactIn", user: 0, sourceMint: 3, destinationMint: 4, amounts: 8, source: 1, destinations: [2, 7] },
+  d19853937cfed8e9: { name: "shared_accounts_route_v2", mode: "ExactIn", user: 1, sourceMint: 6, destinationMint: 7, amounts: 9, source: 2, destinations: [5] },
+  d033ef977b2bed5c: { name: "exact_out_route", mode: "ExactOut", user: 1, sourceMint: 5, destinationMint: 6, amounts: "tail", source: 2, destinations: [3, 4] },
+  b0d169a89a7d453e: { name: "shared_accounts_exact_out_route", mode: "ExactOut", user: 2, sourceMint: 7, destinationMint: 8, amounts: "tail", source: 3, destinations: [6] },
+  "9d8ab85215f4f324": { name: "exact_out_route_v2", mode: "ExactOut", user: 0, sourceMint: 3, destinationMint: 4, amounts: 8, source: 1, destinations: [2, 7] },
+  "3560e5cad8bbfa18": { name: "shared_accounts_exact_out_route_v2", mode: "ExactOut", user: 1, sourceMint: 6, destinationMint: 7, amounts: 9, source: 2, destinations: [5] },
 };
 
 export interface SwapIntent {
@@ -127,6 +131,33 @@ function human(raw: bigint, decimals: number | undefined, mint: string): string 
   const whole = s.slice(0, s.length - decimals);
   const frac = decimals > 0 ? s.slice(-decimals).replace(/0+$/, "") : "";
   return `${whole}${frac ? "." + frac : ""} ${label}`;
+}
+
+/**
+ * The parts of a Jupiter swap that define what the user asked for, read synchronously from the
+ * instruction alone. Used by the verifier to prove a replacement swap is the same trade.
+ */
+export function readSwapShape(ix: TransactionInstruction) {
+  if (ix.programId.toBase58() !== JUPITER_V6) return null;
+  const layout = LAYOUTS[Buffer.from(ix.data.subarray(0, 8)).toString("hex")];
+  if (!layout) return null;
+  const amounts = readAmounts(Buffer.from(ix.data), layout.amounts);
+  const user = ix.keys[layout.user]?.pubkey.toBase58();
+  const outputMint = ix.keys[layout.destinationMint]?.pubkey.toBase58();
+  if (!amounts || !user || !outputMint) return null;
+  const at = (i: number) => ix.keys[i]?.pubkey.toBase58() ?? "";
+  return {
+    // The instruction family must match too: a v2 swap may not be swapped for a different layout.
+    instruction: layout.name,
+    mode: layout.mode,
+    user,
+    outputMint,
+    amount: amounts.first,
+    slippageBps: amounts.slippageBps,
+    /** Where the input comes from and where the output lands. These must never change. */
+    source: at(layout.source),
+    destinations: layout.destinations.map(at).join(","),
+  };
 }
 
 /** Read the swap the user was trying to make out of a failed transaction's instructions. */

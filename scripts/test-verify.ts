@@ -1,0 +1,69 @@
+// Adversarial tests for the repair verifier. No network. Run: npx tsx scripts/test-verify.ts
+import { ComputeBudgetProgram, Keypair, PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
+import { verifyInstructions } from "../src/lib/verify";
+
+const payer = Keypair.generate().publicKey;
+const other = Keypair.generate().publicKey;
+const dest = Keypair.generate().publicKey;
+const thief = Keypair.generate().publicKey;
+const JUP = new PublicKey("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4");
+const ATA = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+const MEMO = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
+const USDC = new PublicKey("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v");
+const SOL = new PublicKey("So11111111111111111111111111111111111111112");
+
+/** A route_v2 instruction: discriminator, in_amount, quoted_out, slippage_bps, fee_bps, positive_slippage_bps, route bytes. */
+function swap(opts: { user?: PublicKey; out?: PublicKey; amount?: bigint; quoted?: bigint; slippage?: number; route?: number; source?: PublicKey; receiver?: PublicKey; altReceiver?: PublicKey }) {
+  const data = Buffer.alloc(8 + 8 + 8 + 2 + 2 + 2 + 4);
+  Buffer.from("bb64facc31c4af14", "hex").copy(data, 0);
+  data.writeBigUInt64LE(opts.amount ?? BigInt(1_000_000), 8);
+  data.writeBigUInt64LE(opts.quoted ?? BigInt(5_000_000), 16);
+  data.writeUInt16LE(opts.slippage ?? 50, 24);
+  data.writeUInt32LE(opts.route ?? 1, 30);
+  const k = (pubkey: PublicKey, isSigner = false) => ({ pubkey, isSigner, isWritable: true });
+  return new TransactionInstruction({
+    programId: JUP,
+    // route_v2 accounts: user, user source, user destination, source mint, destination mint, token programs x2, optional destination
+    keys: [k(opts.user ?? payer, true), k(opts.source ?? other), k(opts.receiver ?? dest), k(SOL), k(opts.out ?? USDC), k(SOL), k(SOL), k(opts.altReceiver ?? JUP)],
+    data,
+  });
+}
+const memo = new TransactionInstruction({ programId: MEMO, keys: [], data: Buffer.from("order-42") });
+const feeTransfer = SystemProgram.transfer({ fromPubkey: payer, toPubkey: other, lamports: 5000 });
+const ataCreate = new TransactionInstruction({ programId: ATA, keys: [{ pubkey: payer, isSigner: true, isWritable: true }], data: Buffer.from([1]) });
+const limit = (units: number) => ComputeBudgetProgram.setComputeUnitLimit({ units });
+const price = (microLamports: number) => ComputeBudgetProgram.setComputeUnitPrice({ microLamports });
+
+const original = [limit(100), swap({}), feeTransfer, memo];
+
+const cases: [string, TransactionInstruction[], PublicKey, boolean][] = [
+  ["compute budget resized, fee added", [limit(180_000), price(20_000), swap({}), feeTransfer, memo], payer, true],
+  ["compute budget removed entirely", [swap({}), feeTransfer, memo], payer, true],
+  ["swap re-quoted: same trade, new route and quote", [limit(180_000), swap({ quoted: BigInt(4_700_000), route: 9 }), feeTransfer, memo], payer, true],
+  ["swap re-quoted with token-account setup in front", [limit(180_000), ataCreate, swap({ quoted: BigInt(4_700_000), route: 9 }), feeTransfer, memo], payer, true],
+  ["ATTACK: extra transfer to a stranger appended", [limit(180_000), swap({}), feeTransfer, memo, SystemProgram.transfer({ fromPubkey: payer, toPubkey: thief, lamports: 9_000_000 })], payer, false],
+  ["ATTACK: fee transfer redirected to a stranger", [limit(180_000), swap({}), SystemProgram.transfer({ fromPubkey: payer, toPubkey: thief, lamports: 5000 }), memo], payer, false],
+  ["ATTACK: fee transfer amount raised", [limit(180_000), swap({}), SystemProgram.transfer({ fromPubkey: payer, toPubkey: other, lamports: 5_000_000 }), memo], payer, false],
+  ["ATTACK: memo dropped", [limit(180_000), swap({}), feeTransfer], payer, false],
+  ["ATTACK: instructions reordered", [limit(180_000), swap({}), memo, feeTransfer], payer, false],
+  ["ATTACK: fee payer swapped", [limit(180_000), swap({}), feeTransfer, memo], thief, false],
+  ["ATTACK: new required signer slipped in", [limit(180_000), swap({}), feeTransfer, memo, new TransactionInstruction({ programId: ATA, keys: [{ pubkey: thief, isSigner: true, isWritable: true }], data: Buffer.from([1]) })], payer, false],
+  ["ATTACK: swap amount raised", [limit(180_000), swap({ amount: BigInt(900_000_000) }), feeTransfer, memo], payer, false],
+  ["ATTACK: slippage tolerance widened", [limit(180_000), swap({ slippage: 5000 }), feeTransfer, memo], payer, false],
+  ["ATTACK: output token changed", [limit(180_000), swap({ out: thief }), feeTransfer, memo], payer, false],
+  ["ATTACK: swap executed for a different wallet", [limit(180_000), swap({ user: thief }), feeTransfer, memo], payer, false],
+  ["ATTACK: swap proceeds redirected to a stranger's token account", [limit(180_000), swap({ receiver: thief }), feeTransfer, memo], payer, false],
+  ["ATTACK: proceeds redirected through the optional destination slot", [limit(180_000), swap({ altReceiver: thief }), feeTransfer, memo], payer, false],
+  ["ATTACK: input pulled from a different token account", [limit(180_000), swap({ source: thief }), feeTransfer, memo], payer, false],
+  ["ATTACK: swap replaced by an arbitrary program call", [limit(180_000), new TransactionInstruction({ programId: thief, keys: [], data: Buffer.from([1, 2, 3]) }), feeTransfer, memo], payer, false],
+];
+
+let pass = 0;
+for (const [name, repaired, repairedPayer, expectOk] of cases) {
+  const v = verifyInstructions({ payer, instructions: original }, { payer: repairedPayer, instructions: repaired });
+  const ok = v.ok === expectOk;
+  if (ok) pass++;
+  console.log(`${ok ? "PASS" : "FAIL"}  ${name}\n      -> ${v.ok ? `accepted (${v.kept} kept, ${v.changes.length} declared changes)` : `refused: ${v.violations[0]}`}`);
+}
+console.log(`\n${pass}/${cases.length} passed`);
+process.exit(pass === cases.length ? 0 : 1);
