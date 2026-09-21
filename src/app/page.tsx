@@ -66,12 +66,21 @@ const MCP_CONFIG = `{
   }
 }`;
 
-const VERIFY = `import { verifyInstructions } from "txwhy/verify";
+/** Flip once the "txwhy" package is live on npm. Until then the name is never shown, so nobody can squat it. */
+const SDK_PUBLISHED = false;
 
-const check = verifyInstructions(
-  { payer, instructions: originalInstructions },
-  { payer: repairedPayer, instructions: repairedInstructions },
-);
+const SDK = `import { sendWithRepair } from "txwhy";
+
+// simulate -> repair if it would fail -> verify locally -> sign -> send
+const { signature, repairs } = await sendWithRepair(
+  connection,
+  transaction,
+  (tx) => wallet.signTransaction(tx),   // your keys never leave your process
+);`;
+
+const VERIFY = `import { verifyRepair } from "txwhy";
+
+const check = await verifyRepair(connection, original, repaired);
 if (!check.ok) throw new Error(check.violations.join(" "));  // never sign it`;
 
 const RESPONSE = `{
@@ -240,6 +249,26 @@ export default function Home() {
         </p>
       </section>
 
+      {SDK_PUBLISHED && (
+        <section id="sdk" className="border-t border-neutral-200 py-12 dark:border-neutral-800">
+          <h2 className="text-xl font-bold tracking-tight">One line in your send loop</h2>
+          <p className="mt-3 leading-relaxed text-neutral-600 dark:text-neutral-400">
+            Most failures happen at simulation, before anything is sent. So that is where the repair belongs. If your
+            transaction passes, it is signed and sent and TxWhy is never contacted. If it would fail, it comes back
+            rebuilt, is checked on your machine, and only then reaches your signer.
+          </p>
+          <pre className="mt-4 overflow-x-auto rounded-xl border border-neutral-200 p-4 font-mono text-xs leading-relaxed dark:border-neutral-800">
+            npm i txwhy
+          </pre>
+          <pre className="mt-3 overflow-x-auto rounded-xl border border-neutral-200 p-4 font-mono text-xs leading-relaxed dark:border-neutral-800">
+            {SDK}
+          </pre>
+          <p className="mt-3 text-sm text-neutral-500">
+            From a terminal: <code className="rounded bg-neutral-100 px-1.5 py-0.5 dark:bg-neutral-900">npx txwhy &lt;signature&gt;</code>
+          </p>
+        </section>
+      )}
+
       <section id="verify" className="border-t border-neutral-200 py-12 dark:border-neutral-800">
         <h2 className="text-xl font-bold tracking-tight">You never have to trust us</h2>
         <p className="mt-3 leading-relaxed text-neutral-600 dark:text-neutral-400">
@@ -261,9 +290,11 @@ export default function Home() {
           slippage, swap proceeds sent to a stranger. All fifteen are caught. TxWhy runs the same check on its own
           output and will not return a transaction that fails it.
         </p>
-        <pre className="mt-4 overflow-x-auto rounded-xl border border-neutral-200 p-4 font-mono text-xs leading-relaxed dark:border-neutral-800">
-          {VERIFY}
-        </pre>
+        {SDK_PUBLISHED && (
+          <pre className="mt-4 overflow-x-auto rounded-xl border border-neutral-200 p-4 font-mono text-xs leading-relaxed dark:border-neutral-800">
+            {VERIFY}
+          </pre>
+        )}
       </section>
 
       <section id="api" className="border-t border-neutral-200 py-12 dark:border-neutral-800">

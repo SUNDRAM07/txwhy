@@ -1,0 +1,59 @@
+{
+  "name": "txwhy",
+  "version": "0.1.0",
+  "description": "Failed Solana transaction in, working transaction out. Repair inside your send loop, and verify every repair offline.",
+  "license": "MIT",
+  "author": "Sundram Mahajan",
+  "homepage": "https://txwhy.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SUNDRAM07/txwhy.git",
+    "directory": "sdk"
+  },
+  "keywords": [
+    "solana",
+    "transaction",
+    "repair",
+    "simulate",
+    "slippage",
+    "blockhash",
+    "compute-units",
+    "agents",
+    "jupiter"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/types/sdk/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/types/sdk/src/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./verify": {
+      "types": "./dist/types/sdk/src/verify.d.ts",
+      "import": "./dist/verify.js",
+      "require": "./dist/verify.cjs"
+    }
+  },
+  "bin": {
+    "txwhy": "./bin/txwhy.mjs"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "peerDependencies": {
+    "@solana/web3.js": "^1.95.0"
+  },
+  "scripts": {
+    "build": "node build.mjs"
+  }
+}

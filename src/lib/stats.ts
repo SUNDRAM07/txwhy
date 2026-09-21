@@ -20,7 +20,7 @@ const useWorker = Boolean(WORKER_URL && WORKER_SECRET);
 
 export const statsEnabled = useWorker || Boolean(URL_ && TOKEN);
 
-export type Channel = "web" | "api" | "mcp" | "telegram";
+export type Channel = "web" | "api" | "mcp" | "telegram" | "sdk" | "cli";
 
 type Command = (string | number)[];
 

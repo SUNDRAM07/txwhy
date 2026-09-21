@@ -47,3 +47,7 @@ conversation-*.txt
 
 .vercel
 .gstack/
+
+# SDK build output
+sdk/dist/
+sdk/LICENSE

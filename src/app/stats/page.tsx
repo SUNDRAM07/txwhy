@@ -21,6 +21,8 @@ const CHANNEL_LABEL: Record<string, string> = {
   api: "API",
   mcp: "Agents (MCP)",
   telegram: "Telegram bot",
+  sdk: "npm package",
+  cli: "Command line",
 };
 
 function Tile({ label, value, hint }: { label: string; value: string; hint?: string }) {

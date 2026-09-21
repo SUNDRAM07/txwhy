@@ -1,5 +1,5 @@
 import type { PublicKey, TransactionInstruction } from "@solana/web3.js";
-import { readSwapShape } from "./requote";
+import { readSwapShape } from "./swap-shape";
 
 /**
  * Verify a repair without trusting the service that made it.
