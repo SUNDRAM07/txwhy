@@ -1,4 +1,6 @@
+import PROGRAM_ERRORS from "./data/program-errors.json";
 import type { IdlErrorEntry } from "./idl";
+import { KNOWN_PROGRAMS } from "./programs";
 import type { DecodedError } from "./types";
 
 /**
@@ -405,6 +407,38 @@ const TOKEN_PROGRAMS = new Set([
   "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
 ]);
 
+/**
+ * Layer 2c: bundled error tables for major programs that do not publish an IDL on chain
+ * (Orca, Raydium, Meteora, Pump.fun, Drift, Metaplex and others). Extracted from the
+ * MIT-licensed solana-idls dataset by tenequm. See src/lib/data/ATTRIBUTION.md.
+ */
+const BUNDLED = PROGRAM_ERRORS as unknown as Record<
+  string,
+  { name: string; errors: Record<string, string[]> }
+>;
+
+function bundledError(programId: string | null, code: number) {
+  if (!programId) return null;
+  const program = BUNDLED[programId];
+  const hit = program?.errors[String(code)];
+  if (!program || !hit) return null;
+  return { program: program.name, name: hit[0], msg: hit[1] as string | undefined };
+}
+
+/** The System Program's own error enum. Its custom codes are small integers that look meaningless on their own. */
+const SYSTEM_PROGRAM = "11111111111111111111111111111111";
+const SYSTEM_ERRORS: Record<number, DecodedError> = {
+  0: { title: "Account already in use", cause: "The System Program was asked to create an account at an address that already exists.", fix: "Use a fresh address, or skip creation when the account is already there. For token accounts prefer the idempotent create instruction." },
+  1: { title: "Insufficient SOL", cause: "A transfer or account creation needs more lamports than the source account holds.", fix: "Fund the source account or lower the amount. Remember rent for any account being created." },
+  2: { title: "Invalid program id", cause: "The account was assigned to, or expected to be owned by, a different program.", fix: "Check the owner program passed when creating or assigning the account." },
+  3: { title: "Invalid account data length", cause: "The requested account size is not allowed (too large, or not what the program expects).", fix: "Allocate exactly the size the owning program requires, within the 10 MB limit." },
+  4: { title: "Seed too long", cause: "A seed used to derive the address exceeds 32 bytes.", fix: "Shorten the seed, or hash it to 32 bytes before deriving the address." },
+  5: { title: "Address does not match seeds", cause: "The provided address is not the one derived from the base, seed and program.", fix: "Derive the address with the same base, seed and owner that the instruction uses." },
+  6: { title: "Nonce account has no recent blockhashes", cause: "Advancing the nonce failed because the recent blockhashes sysvar was empty.", fix: "Retry. This is a transient cluster condition." },
+  7: { title: "Nonce blockhash not expired", cause: "The durable nonce was advanced twice in the same slot, so its stored blockhash has not changed yet.", fix: "Wait one slot before advancing the nonce again, and never reuse a nonce across two in-flight transactions." },
+  8: { title: "Unexpected nonce value", cause: "The transaction's blockhash does not match the value stored in the nonce account. Another transaction used the nonce first.", fix: "Re-read the nonce account and rebuild the transaction with its current value." },
+};
+
 function decodeCustom(
   code: number,
   failedProgramId: string | null,
@@ -423,9 +457,11 @@ function decodeCustom(
     }
   }
 
-  if (idlHit || logMsg) {
-    const name = idlHit?.name ?? logMsg!.name;
-    const msg = idlHit?.msg ?? logMsg?.msg;
+  const bundled = bundledError(failedProgramId, code);
+
+  if (idlHit || logMsg || bundled) {
+    const name = idlHit?.name ?? logMsg?.name ?? bundled!.name;
+    const msg = idlHit?.msg ?? logMsg?.msg ?? bundled?.msg;
     const kb = ANCHOR_ERRORS[code];
     return {
       title: name,
@@ -438,25 +474,31 @@ function decodeCustom(
     };
   }
 
+  if (failedProgramId === SYSTEM_PROGRAM && SYSTEM_ERRORS[code]) {
+    return { ...SYSTEM_ERRORS[code], code: `Custom(${code}) — 0x${code.toString(16)}` };
+  }
   if (failedProgramId && TOKEN_PROGRAMS.has(failedProgramId) && TOKEN_ERRORS[code]) {
     return { ...TOKEN_ERRORS[code], code: `Custom(${code}) — 0x${code.toString(16)}` };
   }
   if (ANCHOR_ERRORS[code]) {
     return { ...ANCHOR_ERRORS[code], code: `Custom(${code}) — 0x${code.toString(16)}` };
   }
-  if (code >= 6000) {
+  const hex = `0x${code.toString(16)}`;
+  const knownName = failedProgramId ? (KNOWN_PROGRAMS[failedProgramId] ?? BUNDLED[failedProgramId]?.name) : undefined;
+  if (failedProgramId && !knownName) {
+    const short = `${failedProgramId.slice(0, 4)}…${failedProgramId.slice(-4)}`;
     return {
-      title: `Program-defined error ${code} (0x${code.toString(16)})`,
-      code: `Custom(${code})`,
-      cause: "An Anchor program raised its own error code (6000+), and it has not published an IDL on chain.",
-      fix: `Look up code ${code} in the program's published IDL or docs. Common culprits at 6000/6001 in AMMs: slippage tolerance exceeded — retry with a higher slippage or smaller size.`,
+      title: `Error ${code} from a private program (${short})`,
+      code: `Custom(${code}) — ${hex}`,
+      cause: `Program ${failedProgramId} raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors know what ${code} means.`,
+      fix: "If this is your program, publish its IDL on chain (anchor idl init) so every tool can decode it. If it is someone else's, the failure is inside their logic and cannot be fixed from outside.",
     };
   }
   return {
-    title: `Custom error ${code} (0x${code.toString(16)})`,
+    title: `${knownName ?? "Program"} error ${code} (${hex})`,
     code: `Custom(${code})`,
-    cause: "The program returned a custom error code that is not yet in the TxWhy knowledge base.",
-    fix: "Check the program's documentation or source for this code — and open an issue on TxWhy so we add it.",
+    cause: `${knownName ?? "The program"} returned a code that is not in its published error list.`,
+    fix: "Check the program's current source or docs for this code. It may have been added in a recent upgrade.",
   };
 }
 
