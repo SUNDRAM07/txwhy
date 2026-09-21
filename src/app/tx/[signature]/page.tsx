@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { after } from "next/server";
 import { SiteHeader } from "@/components/SiteHeader";
 import { RepairPanel } from "@/components/RepairPanel";
 import { track } from "@/lib/stats";
@@ -76,7 +77,11 @@ export default async function TxPage({
   let fetchError: string | null = null;
   try {
     trace = await getTrace(signature);
-    if (trace) await track({ kind: "diagnosis", channel: "web", errorTitle: trace.error?.title });
+    if (trace) {
+      const errorTitle = trace.error?.title;
+      // After the response, so counting never slows the page down.
+      after(() => track({ kind: "diagnosis", channel: "web", errorTitle }));
+    }
   } catch (e) {
     fetchError = e instanceof Error ? e.message : "Unknown RPC error";
   }

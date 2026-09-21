@@ -1,4 +1,5 @@
-import { clientKey, rateLimit, tooManyRequests } from "@/lib/ratelimit";
+import { after } from "next/server";
+import { clientKey, globalLimit, rateLimit, tooManyRequests } from "@/lib/ratelimit";
 import { RepairInputError, repair } from "@/lib/repair";
 import { RpcError } from "@/lib/rpc";
 import { track } from "@/lib/stats";
@@ -41,17 +42,26 @@ export async function POST(request: Request) {
   }
 
   try {
+    // Runs alongside the repair, so the global limit costs no time.
+    const allowed = globalLimit(request, "repair", 60);
     const result = await repair({ signature: signature ?? undefined, transaction: body.transaction });
-    // Our own test suite marks itself so public usage numbers only ever count real callers.
+    const verdict = await allowed;
+    if (!verdict.ok) return tooManyRequests(verdict.retryAfterSeconds, CORS);
     const client = request.headers.get("x-txwhy-client");
-    if (client !== "test")
-      await track({
-        kind: "repair",
-        channel: client === "web" || client === "sdk" || client === "cli" ? client : "api",
-        status: result.status,
-        errorTitle: result.cause?.title,
-        caller: clientKey(request),
-      });
+    // Our own test suite marks itself so public usage numbers only ever count real callers.
+    if (client !== "test") {
+      const caller = clientKey(request);
+      // Counted after the response has gone out, so usage tracking never adds latency to a repair.
+      after(() =>
+        track({
+          kind: "repair",
+          channel: client === "web" || client === "sdk" || client === "cli" ? client : "api",
+          status: result.status,
+          errorTitle: result.cause?.title,
+          caller,
+        }),
+      );
+    }
     return Response.json(result, { headers: CORS });
   } catch (e) {
     if (e instanceof RepairInputError) {

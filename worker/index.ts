@@ -1,7 +1,7 @@
 /**
  * TxWhy worker. A small always-on service for the two things a serverless site cannot do:
  *
- *   1. Hold the usage counters (POST /track, GET /stats).
+ *   1. Hold the usage counters (POST /track, GET /stats) and the global rate limits (POST /limit).
  *   2. Watch mainnet: sample failed transactions from the busiest programs around the clock,
  *      classify each with the same decoder the site uses, and publish a live failure index
  *      (GET /index).
@@ -45,6 +45,8 @@ interface Store {
   pfcount(key: string): Promise<number>;
   getStr(key: string): Promise<string | null>;
   setStr(key: string, value: string): Promise<void>;
+  /** Fixed-window counter: increments and returns the count, expiring the key when the window ends. */
+  hit(key: string, windowSeconds: number): Promise<number>;
   /** Delete every key with this prefix. Used once, to clear pre-launch test traffic. */
   clear(prefix: string): Promise<number>;
 }
@@ -54,6 +56,7 @@ function memoryStore(): Store {
   const hashes = new Map<string, Map<string, number>>();
   const sets = new Map<string, Set<string>>();
   const strs = new Map<string, string>();
+  const windows = new Map<string, { n: number; until: number }>();
   const h = (k: string) => hashes.get(k) ?? hashes.set(k, new Map()).get(k)!;
   return {
     async incr(k, by = 1) { nums.set(k, (nums.get(k) ?? 0) + by); },
@@ -66,6 +69,16 @@ function memoryStore(): Store {
     async pfcount(k) { return sets.get(k)?.size ?? 0; },
     async getStr(k) { return strs.get(k) ?? null; },
     async setStr(k, v) { strs.set(k, v); },
+    async hit(k, windowSeconds) {
+      const now = Date.now();
+      const w = windows.get(k);
+      if (!w || w.until < now) {
+        if (windows.size > 50_000) windows.clear();
+        windows.set(k, { n: 1, until: now + windowSeconds * 1000 });
+        return 1;
+      }
+      return ++w.n;
+    },
     async clear(prefix) {
       let n = 0;
       for (const m of [nums, hashes, sets, strs] as Map<string, unknown>[]) {
@@ -91,6 +104,11 @@ async function redisStore(url: string): Promise<Store> {
     async pfcount(k) { return client.pfCount(k); },
     async getStr(k) { return client.get(k); },
     async setStr(k, v) { await client.set(k, v); },
+    async hit(k, windowSeconds) {
+      const n = await client.incr(k);
+      if (n === 1) await client.expire(k, windowSeconds);
+      return n;
+    },
     async clear(prefix) {
       const keys: string[] = [];
       for await (const batch of client.scanIterator({ MATCH: `${prefix}*`, COUNT: 200 })) keys.push(...(Array.isArray(batch) ? batch : [batch]));
@@ -257,6 +275,16 @@ async function main() {
       if (req.method === "POST" && path === "/admin/reset-usage") {
         if (!SECRET || req.headers.authorization !== `Bearer ${SECRET}`) return json(res, 401, { error: "unauthorized" });
         return json(res, 200, { cleared: await store.clear("s:") });
+      }
+      if (req.method === "POST" && path === "/limit") {
+        // Global rate limit shared by every serverless instance. Callers are hashed, never stored raw.
+        if (!SECRET || req.headers.authorization !== `Bearer ${SECRET}`) return json(res, 401, { error: "unauthorized" });
+        const { caller, bucket, limit } = (await readBody(req)) as { caller?: string; bucket?: string; limit?: number };
+        if (!caller || !bucket || !limit) return json(res, 400, { error: "caller, bucket and limit are required" });
+        const minute = Math.floor(Date.now() / 60_000);
+        const who = createHash("sha256").update(`${SALT}:${caller}`).digest("hex").slice(0, 24);
+        const count = await store.hit(`rl:${String(bucket).slice(0, 20)}:${who}:${minute}`, 90);
+        return json(res, 200, { ok: count <= limit, count, retryAfterSeconds: 60 - (Math.floor(Date.now() / 1000) % 60) });
       }
       if (req.method === "POST" && path === "/track") {
         if (!SECRET || req.headers.authorization !== `Bearer ${SECRET}`) return json(res, 401, { error: "unauthorized" });
