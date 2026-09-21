@@ -104,13 +104,16 @@ export default function Home() {
 
   return (
     <main className="mx-auto w-full min-w-0 max-w-3xl px-4 pb-24">
-      <header className="flex items-center justify-between py-6">
+      <header className="flex items-center justify-between gap-4 py-6">
         <span className="font-bold tracking-tight">
           Tx<span className="text-emerald-500">Why</span>
         </span>
-        <nav className="flex gap-5 text-sm text-neutral-500">
+        <nav className="flex min-w-0 gap-4 overflow-x-auto text-sm whitespace-nowrap text-neutral-500 sm:gap-5">
           <Link href="/repair" className="hover:text-emerald-500">
             Repair
+          </Link>
+          <Link href="/errors" className="hover:text-emerald-500">
+            Error codes
           </Link>
           <a href="#api" className="hover:text-emerald-500">
             API
@@ -118,7 +121,7 @@ export default function Home() {
           <Link href="/failures" className="hover:text-emerald-500">
             Failure index
           </Link>
-          <Link href="/stats" className="hover:text-emerald-500">
+          <Link href="/stats" className="hidden hover:text-emerald-500 sm:inline">
             Usage
           </Link>
         </nav>

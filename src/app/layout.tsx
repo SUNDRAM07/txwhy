@@ -13,6 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://txwhy.vercel.app"),
   title: "TxWhy - fix failed Solana transactions",
   description: "Paste a failed Solana transaction. Get the exact cause and a rebuilt transaction, simulated to prove it passes. API for agents and bots.",
 };

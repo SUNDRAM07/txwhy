@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { SiteHeader } from "@/components/SiteHeader";
 import { readStats } from "@/lib/stats";
 
 export const dynamic = "force-dynamic";
@@ -58,19 +58,7 @@ export default async function StatsPage() {
 
   return (
     <main className="mx-auto w-full min-w-0 max-w-3xl px-4 py-10">
-      <header className="flex items-center justify-between">
-        <Link href="/" className="font-bold tracking-tight">
-          Tx<span className="text-emerald-500">Why</span>
-        </Link>
-        <nav className="flex gap-5 text-sm text-neutral-500">
-          <Link href="/repair" className="hover:text-emerald-500">
-            Repair
-          </Link>
-          <Link href="/#api" className="hover:text-emerald-500">
-            API
-          </Link>
-        </nav>
-      </header>
+      <SiteHeader />
 
       <h1 className="mt-8 text-2xl font-bold tracking-tight">Usage, in the open</h1>
       <p className="mt-2 text-sm leading-relaxed text-neutral-500">

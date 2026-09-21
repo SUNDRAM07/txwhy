@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { SiteHeader } from "@/components/SiteHeader";
 import { RepairPanel } from "@/components/RepairPanel";
 import { track } from "@/lib/stats";
 import { getTrace } from "@/lib/trace";
@@ -83,19 +83,7 @@ export default async function TxPage({
 
   return (
     <main className="mx-auto w-full min-w-0 max-w-3xl px-4 py-10">
-      <header className="flex items-center justify-between">
-        <Link href="/" className="font-bold tracking-tight">
-          Tx<span className="text-emerald-500">Why</span>
-        </Link>
-        <nav className="flex gap-5 text-sm text-neutral-500">
-          <Link href="/repair" className="hover:text-emerald-500">
-            Repair
-          </Link>
-          <Link href="/#api" className="hover:text-emerald-500">
-            API
-          </Link>
-        </nav>
-      </header>
+      <SiteHeader />
 
       <p className="mt-4 break-all font-mono text-xs text-neutral-400 dark:text-neutral-500">
         {signature}

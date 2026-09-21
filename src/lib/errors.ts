@@ -341,7 +341,7 @@ const IX_ERRORS: Record<string, DecodedError> = {
 };
 
 /** Anchor framework error codes (stable, published). */
-const ANCHOR_ERRORS: Record<number, DecodedError> = {
+export const ANCHOR_ERRORS: Record<number, DecodedError> = {
   100: { title: "InstructionMissing", cause: "8-byte instruction discriminator not found.", fix: "Call a real instruction on this program — likely wrong instruction data or wrong program." },
   101: { title: "InstructionFallbackNotFound", cause: "Fallback handler not found for unrecognized instruction.", fix: "The instruction discriminator does not match any handler — check IDL or client version drift." },
   102: { title: "InstructionDidNotDeserialize", cause: "The instruction data failed to deserialize into the expected arguments.", fix: "Regenerate the client from the current IDL — argument layout drifted." },
@@ -376,7 +376,7 @@ const ANCHOR_ERRORS: Record<number, DecodedError> = {
 };
 
 /** SPL Token program custom error codes. */
-const TOKEN_ERRORS: Record<number, DecodedError> = {
+export const TOKEN_ERRORS: Record<number, DecodedError> = {
   0: { title: "NotRentExempt", cause: "Lamport balance below rent-exempt minimum.", fix: "Fund the account to the rent-exempt minimum." },
   1: { title: "InsufficientFunds", cause: "The token account holds fewer tokens than the instruction needs.", fix: "Check the token balance in base units (respect mint decimals) before sending." },
   2: { title: "InvalidMint", cause: "The mint account is not valid.", fix: "Verify the mint address and that it was created by the token program in use." },
@@ -427,7 +427,7 @@ function bundledError(programId: string | null, code: number) {
 
 /** The System Program's own error enum. Its custom codes are small integers that look meaningless on their own. */
 const SYSTEM_PROGRAM = "11111111111111111111111111111111";
-const SYSTEM_ERRORS: Record<number, DecodedError> = {
+export const SYSTEM_ERRORS: Record<number, DecodedError> = {
   0: { title: "Account already in use", cause: "The System Program was asked to create an account at an address that already exists.", fix: "Use a fresh address, or skip creation when the account is already there. For token accounts prefer the idempotent create instruction." },
   1: { title: "Insufficient SOL", cause: "A transfer or account creation needs more lamports than the source account holds.", fix: "Fund the source account or lower the amount. Remember rent for any account being created." },
   2: { title: "Invalid program id", cause: "The account was assigned to, or expected to be owned by, a different program.", fix: "Check the owner program passed when creating or assigning the account." },
@@ -503,7 +503,7 @@ function decodeCustom(
 }
 
 /** Programs often publish a message that just repeats the error name. Say what it actually means. */
-function enrichCause(name: string, msg: string | undefined): string {
+export function enrichCause(name: string, msg: string | undefined): string {
   const n = name.toLowerCase();
   const thin = !msg || msg.replace(/[^a-z]/gi, "").toLowerCase() === name.replace(/[^a-z]/gi, "").toLowerCase() || msg.split(" ").length <= 4;
   if (!thin) return msg as string;
@@ -523,7 +523,7 @@ function enrichCause(name: string, msg: string | undefined): string {
 }
 
 /** Heuristic fixes for common IDL error names when the KB has no entry. */
-function suggestFixForName(name: string): string | undefined {
+export function suggestFixForName(name: string): string | undefined {
   const n = name.toLowerCase();
   if (n.includes("slippage")) return "Increase your slippage tolerance or reduce the trade size, then retry — the price moved between quote and execution.";
   if (n.includes("expired") || n.includes("stale")) return "Refresh the quote/price data and rebuild the transaction — the inputs went stale.";
