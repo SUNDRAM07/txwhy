@@ -95,24 +95,11 @@ async function simulate(tx: VersionedTransaction): Promise<SimValue> {
 }
 
 async function loadLookupTables(tx: VersionedTransaction): Promise<AddressLookupTableAccount[]> {
-  const lookups = tx.message.addressTableLookups ?? [];
-  const tables: AddressLookupTableAccount[] = [];
-  for (const lookup of lookups) {
-    const { value } = await rpc<{ value: { data: [string, string] } | null }>("getAccountInfo", [
-      lookup.accountKey.toBase58(),
-      { encoding: "base64", commitment: "confirmed" },
-    ]);
-    if (!value) {
-      throw new RepairInputError(
-        `Address lookup table ${lookup.accountKey.toBase58()} no longer exists, so this transaction cannot be rebuilt.`,
-      );
-    }
-    tables.push(
-      new AddressLookupTableAccount({
-        key: lookup.accountKey,
-        state: AddressLookupTableAccount.deserialize(Buffer.from(value.data[0], "base64")),
-      }),
-    );
+  const addresses = (tx.message.addressTableLookups ?? []).map((l) => l.accountKey.toBase58());
+  const tables = await loadTablesByAddress(addresses);
+  if (tables.length !== addresses.length) {
+    const missing = addresses.find((a) => !tables.some((t) => t.key.toBase58() === a));
+    throw new RepairInputError(`Address lookup table ${missing} no longer exists, so this transaction cannot be rebuilt.`);
   }
   return tables;
 }
@@ -321,18 +308,23 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
 
   // 1. Was the submitted blockhash still usable?
   const originalBlockhash = decompiled.recentBlockhash;
-  const { value: blockhashValid } = await rpc<{ value: boolean }>("isBlockhashValid", [
-    originalBlockhash,
-    { commitment: "confirmed" },
-  ]);
-  const { value: latest } = await rpc<{ value: { blockhash: string } }>("getLatestBlockhash", [
-    { commitment: "confirmed" },
+  const [{ value: blockhashValid }, { value: latest }] = await Promise.all([
+    rpc<{ value: boolean }>("isBlockhashValid", [originalBlockhash, { commitment: "confirmed" }]),
+    rpc<{ value: { blockhash: string } }>("getLatestBlockhash", [{ commitment: "confirmed" }]),
   ]);
 
   // 2. Simulate the transaction AS SUBMITTED (only the blockhash refreshed, otherwise
   //    an expired blockhash would mask every other problem).
   const asSubmitted = build(decompiled.payerKey, latest.blockhash, decompiled.instructions, tables, legacy);
-  const submittedSim = await simulate(asSubmitted);
+  // The as-submitted run and the maximum-budget probe (step 3) are independent, so they run together.
+  const probe = build(
+    decompiled.payerKey,
+    latest.blockhash,
+    [ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept, ...budget.rest],
+    tables,
+    legacy,
+  );
+  const [submittedSim, firstProbeSim] = await Promise.all([simulate(asSubmitted), simulate(probe)]);
   let cause = onchain?.error ?? (await decodeSimError(submittedSim.err, submittedSim.logs ?? []));
   if (landed) {
     changes.push({
@@ -360,14 +352,7 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
 
   // 3. Probe with the maximum compute budget to learn what the transaction really needs
   //    and whether anything other than the budget is wrong.
-  const probe = build(
-    decompiled.payerKey,
-    latest.blockhash,
-    [ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept, ...budget.rest],
-    tables,
-    legacy,
-  );
-  let probeSim = await simulate(probe);
+  let probeSim = firstProbeSim;
   let requoted = false;
   /** Set when the swap can never be repaired, so we say that instead of "get a fresh quote". */
   let finalVerdict: string | null = null;
