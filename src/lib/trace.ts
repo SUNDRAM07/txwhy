@@ -3,7 +3,7 @@ import { fetchIdlErrors } from "./idl";
 import { programName } from "./programs";
 import type { Trace, TraceNode } from "./types";
 
-const RPC_URL = process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com";
+import { FALLBACK_URL, RPC_URL } from "./rpc";
 
 interface ParsedInstruction {
   programId: string;
@@ -165,8 +165,9 @@ function buildTree(
   return roots;
 }
 
-export async function getTrace(signature: string): Promise<Trace | null> {
-  const res = await fetch(RPC_URL, {
+/** Confirmed transactions never change, so the response is cached for a day. */
+async function fetchTransaction(url: string, signature: string): Promise<RpcTransaction | null> {
+  const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -178,10 +179,20 @@ export async function getTrace(signature: string): Promise<Trace | null> {
         { encoding: "jsonParsed", maxSupportedTransactionVersion: 1, commitment: "confirmed" },
       ],
     }),
-    next: { revalidate: 86400 }, // confirmed transactions are immutable
+    next: { revalidate: 86400 },
   });
   if (!res.ok) throw new Error(`RPC responded ${res.status}`);
   const { result } = (await res.json()) as { result: RpcTransaction | null };
+  return result;
+}
+
+export async function getTrace(signature: string): Promise<Trace | null> {
+  // The fast endpoint keeps only recent history. Older signatures are found on the history endpoint.
+  let result = await fetchTransaction(RPC_URL, signature).catch((e) => {
+    if (FALLBACK_URL === RPC_URL) throw e;
+    return null;
+  });
+  if (!result && FALLBACK_URL !== RPC_URL) result = await fetchTransaction(FALLBACK_URL, signature);
   if (!result) return null;
 
   const err = result.meta.err;

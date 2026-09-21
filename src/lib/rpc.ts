@@ -1,8 +1,11 @@
 /** Minimal JSON-RPC client. Never cached: repair works on live chain state. */
 
 export const RPC_URL = process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com";
-/** Used only when the primary endpoint keeps failing. */
-const FALLBACK_URL = process.env.SOLANA_RPC_FALLBACK_URL ?? "https://api.mainnet-beta.solana.com";
+/**
+ * Used when the primary endpoint keeps failing, and for history: fast RPC providers keep only
+ * recent transactions, so an older signature that comes back empty is looked up here instead.
+ */
+export const FALLBACK_URL = process.env.SOLANA_RPC_FALLBACK_URL ?? "https://api.mainnet-beta.solana.com";
 
 export class RpcError extends Error {
   constructor(
@@ -41,7 +44,11 @@ export async function rpc<T>(method: string, params: unknown[]): Promise<T> {
   const plan = [RPC_URL, RPC_URL, RPC_URL, ...(FALLBACK_URL !== RPC_URL ? [FALLBACK_URL] : [])];
   for (let attempt = 0; attempt < plan.length; attempt++) {
     try {
-      return await once<T>(plan[attempt], method, params);
+      const result = await once<T>(plan[attempt], method, params);
+      if (result == null && method === "getTransaction" && FALLBACK_URL !== RPC_URL && plan[attempt] === RPC_URL) {
+        return await once<T>(FALLBACK_URL, method, params).catch(() => result);
+      }
+      return result;
     } catch (e) {
       last = e;
       const retryable =
