@@ -32,11 +32,13 @@ const MAX_CU = 1_400_000;
 const CU_HEADROOM = 1.15;
 const FEE_FLOOR = 1_000; // micro-lamports per CU
 const FEE_CEILING = 2_000_000;
+/** Never raise the total priority fee above this on someone's behalf (0.001 SOL). */
+const MAX_PRIORITY_LAMPORTS = 1_000_000;
 
 export type RepairStatus = "repaired" | "valid" | "needs_requote" | "not_repairable";
 
 export interface RepairChange {
-  type: "blockhash" | "compute_unit_limit" | "priority_fee" | "swap_quote";
+  type: "blockhash" | "compute_unit_limit" | "priority_fee" | "swap_quote" | "loaded_accounts_data_limit";
   before: string;
   after: string;
   reason: string;
@@ -113,6 +115,25 @@ async function loadLookupTables(tx: VersionedTransaction): Promise<AddressLookup
     );
   }
   return tables;
+}
+
+async function loadTablesByAddress(addresses: string[]): Promise<AddressLookupTableAccount[]> {
+  if (addresses.length === 0) return [];
+  const { value } = await rpc<{ value: ({ data: [string, string] } | null)[] }>("getMultipleAccounts", [
+    addresses,
+    { encoding: "base64", commitment: "confirmed" },
+  ]);
+  const out: AddressLookupTableAccount[] = [];
+  value.forEach((acc, i) => {
+    if (!acc) return;
+    out.push(
+      new AddressLookupTableAccount({
+        key: new PublicKey(addresses[i]),
+        state: AddressLookupTableAccount.deserialize(Buffer.from(acc.data[0], "base64")),
+      }),
+    );
+  });
+  return out;
 }
 
 export class RepairInputError extends Error {}
@@ -201,6 +222,11 @@ function build(
   }
 }
 
+/** ComputeBudget tag 4: SetLoadedAccountsDataSizeLimit. */
+const isLoadedDataLimit = (ix: TransactionInstruction) =>
+  ix.programId.toBase58() === COMPUTE_BUDGET_ID && ix.data[0] === 4;
+const hitLoadedDataLimit = (err: unknown) => JSON.stringify(err ?? "").includes("MaxLoadedAccountsDataSizeExceeded");
+
 const SLIPPAGE_PATTERN = /slippage|SlippageToleranceExceeded|ExceededSlippage|TooLittleOutput|price impact/i;
 
 function classifyUnrepairable(
@@ -284,8 +310,8 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
   }
   const landed = onchain != null;
 
-  const legacy = original.version === "legacy";
-  const tables = await loadLookupTables(original);
+  let legacy = original.version === "legacy";
+  let tables = await loadLookupTables(original);
   const decompiled = TransactionMessage.decompile(original.message, {
     addressLookupTableAccounts: tables,
   });
@@ -341,7 +367,32 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
     tables,
     legacy,
   );
-  const probeSim = await simulate(probe);
+  let probeSim = await simulate(probe);
+  let requoted = false;
+
+  const liftLoadedDataLimit = (reason: string) => {
+    const declared = budget.kept.find(isLoadedDataLimit);
+    if (!declared) return false;
+    budget.kept = budget.kept.filter((ix) => !isLoadedDataLimit(ix));
+    changes.push({
+      type: "loaded_accounts_data_limit",
+      before: `${declared.data.readUInt32LE(1).toLocaleString("en-US")} bytes`,
+      after: "runtime default (64 MB)",
+      reason,
+    });
+    return true;
+  };
+  if (hitLoadedDataLimit(probeSim.err) && liftLoadedDataLimit("The transaction loads more account data than the limit it declared for itself.")) {
+    probeSim = await simulate(
+      build(
+        decompiled.payerKey,
+        latest.blockhash,
+        [ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept, ...budget.rest],
+        tables,
+        legacy,
+      ),
+    );
+  }
 
   if (probeSim.err != null) {
     const probeCause = (await decodeSimError(probeSim.err, probeSim.logs ?? [])) ?? cause;
@@ -351,58 +402,79 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
     );
     if (landed && onchain?.error && probeCause && onchain.error.title !== probeCause.title) {
       notes.push(
-        `On chain it failed with "${onchain.error.title}". Against current state it now fails with "${probeCause.title}".`,
+        `Replayed against current state, the original instructions now stop at "${probeCause.title}". That is expected for an old transaction: its route and quote are stale.`,
       );
     }
     // Slippage: the amounts are inside the instruction, so rebuild the swap from a fresh quote.
-    if (verdict.status === "needs_requote") {
-      const requote = await requoteJupiter(decompiled.instructions, decompiled.payerKey);
+    // A landed swap that failed on slippage needs a fresh quote whatever its stale route does today.
+    const failedOnSlippage = onchain?.error != null && SLIPPAGE_PATTERN.test(`${onchain.error.title} ${onchain.error.code ?? ""}`);
+    const wantsRequote = verdict.status === "needs_requote" || failedOnSlippage;
+    if (wantsRequote) {
+      const requote = await requoteJupiter(budget.rest);
       if (requote.ok) {
-        const requoteSim = await simulate(requote.transaction);
-        const requoteError = await decodeSimError(requoteSim.err, requoteSim.logs ?? []);
-        if (requoteSim.err == null) {
-          return {
-            status: "repaired",
-            summary:
-              "Repaired with a fresh quote. The rebuilt swap keeps your tokens, amount and slippage tolerance, and passes simulation.",
-            cause: verdict.cause ?? probeCause,
-            changes: [
-              {
-                type: "swap_quote",
-                before: requote.before,
-                after: requote.after,
-                reason: "The price moved past the tolerance in the original transaction, so the route and amounts were rebuilt from a current quote.",
-              },
-            ],
-            repairedTransaction: Buffer.from(requote.transaction.serialize()).toString("base64"),
-            simulation: {
-              passed: true,
-              unitsConsumed: requoteSim.unitsConsumed ?? null,
-              error: null,
-              logsTail: (requoteSim.logs ?? []).slice(-8),
-            },
-            notes: [
-              ...requote.notes,
-              "Quotes go stale within seconds. Sign and send immediately.",
-              ...notes,
-            ],
-          };
+        try {
+          const extra = await loadTablesByAddress(requote.lookupTables.filter((a) => !tables.some((t) => t.key.toBase58() === a)));
+          const mergedTables = [...tables, ...extra];
+          const needsV0 = legacy && mergedTables.length > 0;
+          const reprobe = build(
+            decompiled.payerKey,
+            latest.blockhash,
+            [ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept, ...requote.instructions],
+            mergedTables,
+            legacy && !needsV0,
+          );
+          let reprobeSim = await simulate(reprobe);
+          if (
+            hitLoadedDataLimit(reprobeSim.err) &&
+            liftLoadedDataLimit("The fresh route loads different accounts than the limit the original transaction declared.")
+          ) {
+            reprobeSim = await simulate(
+              build(
+                decompiled.payerKey,
+                latest.blockhash,
+                [ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept, ...requote.instructions],
+                mergedTables,
+                legacy && !needsV0,
+              ),
+            );
+          }
+          if (reprobeSim.err == null) {
+            // Adopt the spliced instructions and carry on through sizing, fee and final proof.
+            budget.rest = requote.instructions;
+            tables = mergedTables;
+            if (needsV0) legacy = false;
+            probeSim = reprobeSim;
+            requoted = true;
+            cause = cause ?? verdict.cause ?? probeCause;
+            changes.push({
+              type: "swap_quote",
+              before: requote.before,
+              after: requote.after,
+              reason:
+                "The price moved past the tolerance in the original swap, so that one instruction was rebuilt from a current quote.",
+            });
+            notes.push(...requote.notes, "Quotes go stale within seconds. Sign and send immediately.");
+          } else {
+            const again = await decodeSimError(reprobeSim.err, reprobeSim.logs ?? []);
+            notes.push(
+              `A fresh quote was spliced in but the transaction still fails simulation (${again?.title ?? "unknown error"}), so it is not returned.`,
+            );
+          }
+        } catch (e) {
+          notes.push(e instanceof Error ? e.message : "The re-quoted transaction could not be assembled.");
         }
-        notes.push(
-          `A fresh quote was built but it also fails simulation (${requoteError?.title ?? "unknown error"}), so it is not returned.`,
-        );
       } else {
         notes.push(requote.reason);
       }
     }
 
-    return {
-      status: verdict.status,
+    if (!requoted) return {
+      status: wantsRequote ? "needs_requote" : verdict.status,
       summary:
-        verdict.status === "needs_requote"
+        wantsRequote
           ? "This transaction fails on slippage and needs a fresh quote. A blockhash or fee change cannot fix it."
           : "This transaction fails for a reason that cannot be fixed by rebuilding it.",
-      cause: verdict.cause ?? probeCause,
+      cause: landed ? (onchain?.error ?? verdict.cause ?? probeCause) : (verdict.cause ?? probeCause),
       changes: [],
       repairedTransaction: null,
       simulation: {
@@ -432,12 +504,13 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
   const limit = changes.some((c) => c.type === "compute_unit_limit") ? newLimit : (budget.limit as number);
 
   // 5. Priority fee from what the network is actually charging for these accounts.
-  const writable = original.message
-    .getAccountKeys({ addressLookupTableAccounts: tables })
-    .keySegments()
-    .flat()
-    .filter((_, i) => original.message.isAccountWritable(i));
-  const marketFee = await recentPriorityFee(writable);
+  const writableSet = new Map<string, PublicKey>([[decompiled.payerKey.toBase58(), decompiled.payerKey]]);
+  for (const ix of budget.rest) {
+    for (const k of ix.keys) if (k.isWritable) writableSet.set(k.pubkey.toBase58(), k.pubkey);
+  }
+  const writable = [...writableSet.values()];
+  const affordableRate = Math.floor((MAX_PRIORITY_LAMPORTS * 1_000_000) / Math.max(limit, 1));
+  const marketFee = Math.min(await recentPriorityFee(writable), affordableRate);
   const currentFee = budget.price == null ? 0 : Number(budget.price);
   let fee = currentFee;
   if (currentFee < marketFee) {
@@ -464,7 +537,31 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
     tables,
     legacy,
   );
-  const finalSim = await simulate(finalTx);
+  let finalSim = await simulate(finalTx);
+  let returned = finalTx;
+  if (finalSim.err != null && fee !== currentFee) {
+    // The raised fee may be more than the wallet can spare. Fall back to the fee it came with.
+    const fallback = build(
+      decompiled.payerKey,
+      latest.blockhash,
+      [
+        ComputeBudgetProgram.setComputeUnitLimit({ units: limit }),
+        ...(currentFee > 0 ? [ComputeBudgetProgram.setComputeUnitPrice({ microLamports: currentFee })] : []),
+        ...budget.kept,
+        ...budget.rest,
+      ],
+      tables,
+      legacy,
+    );
+    const fallbackSim = await simulate(fallback);
+    if (fallbackSim.err == null) {
+      finalSim = fallbackSim;
+      returned = fallback;
+      const i = changes.findIndex((c) => c.type === "priority_fee");
+      if (i >= 0) changes.splice(i, 1);
+      notes.push("The priority fee was left as it was: raising it to the market rate would cost more than this wallet can cover.");
+    }
+  }
   const finalError = await decodeSimError(finalSim.err, finalSim.logs ?? []);
   const passed = finalSim.err == null;
 
@@ -477,7 +574,7 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
 
   const wasBroken = cause != null;
   const budgetFixed = changes.some((c) => c.type === "compute_unit_limit" && /needs \d+ compute units/.test(c.reason));
-  if (passed && landed && !budgetFixed) {
+  if (passed && landed && !budgetFixed && !requoted) {
     notes.unshift(
       "The original failure depended on chain state at that moment (price, liquidity or account state). That condition no longer holds, which is why the same instructions pass now. Confirm the amounts are still what you want before signing.",
     );
@@ -486,6 +583,8 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
     status: passed ? (wasBroken ? "repaired" : "valid") : "not_repairable",
     summary: !passed
       ? "The rebuilt transaction still fails simulation."
+      : requoted
+        ? "Repaired with a fresh quote. Only the swap instruction changed. Your tokens, amount, slippage tolerance and every other instruction are kept, and the result passes simulation."
       : wasBroken
         ? landed
           ? `On chain this failed with "${cause?.title}". Rebuilt against current state, it passes simulation.`
@@ -495,7 +594,7 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
           : "The transaction already executes and needs no changes.",
     cause,
     changes,
-    repairedTransaction: passed ? Buffer.from(finalTx.serialize()).toString("base64") : null,
+    repairedTransaction: passed ? Buffer.from(returned.serialize()).toString("base64") : null,
     simulation: {
       passed,
       unitsConsumed: finalSim.unitsConsumed ?? null,

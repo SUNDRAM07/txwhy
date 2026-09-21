@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { RepairResult } from "@/lib/repair";
 
 const STATUS: Record<RepairResult["status"], { label: string; tone: string }> = {
@@ -15,6 +15,7 @@ const CHANGE_LABEL: Record<string, string> = {
   compute_unit_limit: "Compute unit limit",
   priority_fee: "Priority fee",
   swap_quote: "Swap quote",
+  loaded_accounts_data_limit: "Loaded account data limit",
 };
 
 function short(v: string) {
@@ -26,38 +27,52 @@ export interface RepairInput {
   transaction?: string;
 }
 
-/** State + trigger for a repair call. The caller decides when to run (a click or a form submit). */
-export function useRepair() {
-  const [result, setResult] = useState<RepairResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const run = useCallback(async (input: RepairInput) => {
-    setLoading(true);
-    setError(null);
-    setResult(null);
-    try {
-      const res = await fetch("/api/v1/repair", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(input),
-      });
-      const body = await res.json();
-      if (!res.ok) setError(body.error ?? "Repair failed.");
-      else setResult(body as RepairResult);
-    } catch {
-      setError("Could not reach the repair service.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  return { result, error, loading, run };
+async function callRepair(input: RepairInput): Promise<{ result: RepairResult | null; error: string | null }> {
+  try {
+    const res = await fetch("/api/v1/repair", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    const body = await res.json();
+    return res.ok ? { result: body as RepairResult, error: null } : { result: null, error: body.error ?? "Repair failed." };
+  } catch {
+    return { result: null, error: "Could not reach the repair service." };
+  }
 }
 
-/** Self-contained panel with its own button. Used on the transaction page. */
+/** State + trigger for a repair call. Pass `auto` to start one as soon as the component mounts. */
+export function useRepair(auto?: RepairInput) {
+  const [state, setState] = useState<{ result: RepairResult | null; error: string | null; loading: boolean }>({
+    result: null,
+    error: null,
+    loading: auto != null,
+  });
+
+  const run = useCallback(async (input: RepairInput) => {
+    setState({ result: null, error: null, loading: true });
+    setState({ ...(await callRepair(input)), loading: false });
+  }, []);
+
+  const autoKey = auto ? (auto.signature ?? auto.transaction ?? "") : null;
+  useEffect(() => {
+    if (autoKey == null || !auto) return;
+    let alive = true;
+    void callRepair(auto).then((outcome) => {
+      if (alive) setState({ ...outcome, loading: false });
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the input's identity, not the object
+  }, [autoKey]);
+
+  return { ...state, run };
+}
+
+/** Self-contained panel that repairs on load. Used on the transaction page. */
 export function RepairPanel({ signature }: { signature: string }) {
-  const state = useRepair();
+  const state = useRepair({ signature });
   return <RepairView {...state} onRun={() => state.run({ signature })} />;
 }
 
@@ -95,7 +110,7 @@ export function RepairView({
             onClick={onRun}
             className="ml-auto rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-emerald-500"
           >
-            {result || error ? "Run again" : "Try to repair"}
+            Run again
           </button>
         )}
       </div>

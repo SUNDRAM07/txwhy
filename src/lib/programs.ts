@@ -1,3 +1,6 @@
+import DEX_LABELS from "./data/dex-labels.json";
+import PROGRAM_ERRORS from "./data/program-errors.json";
+
 /** Known-program registry - layer 1 of the decoder. */
 export const KNOWN_PROGRAMS: Record<string, string> = {
   "11111111111111111111111111111111": "System Program",
@@ -11,10 +14,26 @@ export const KNOWN_PROGRAMS: Record<string, string> = {
   "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8": "Raydium AMM v4",
   MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr: "Memo",
   Vote111111111111111111111111111111111111111: "Vote Program",
+  Stake11111111111111111111111111111111111111: "Stake Program",
+  AddressLookupTab1e1111111111111111111111111: "Address Lookup Table",
+  Ed25519SigVerify111111111111111111111111111: "Ed25519 Signature Verify",
+  KeccakSecp256k11111111111111111111111111111: "Secp256k1 Signature Verify",
+  "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P": "Pump.fun",
 };
 
+/** Exchange programs Jupiter routes through, from Jupiter's own program-id-to-label list. */
+const DEX = DEX_LABELS as Record<string, string>;
+/** Programs whose error tables we bundle also carry a display name. */
+const BUNDLED = PROGRAM_ERRORS as unknown as Record<string, { name: string }>;
+
+/** True when we can put a real name on the program. */
+export function isNamedProgram(programId: string): boolean {
+  return Boolean(KNOWN_PROGRAMS[programId] ?? DEX[programId] ?? BUNDLED[programId]);
+}
+
 export function programName(programId: string, parsedProgram?: string): string {
-  if (KNOWN_PROGRAMS[programId]) return KNOWN_PROGRAMS[programId];
+  const named = KNOWN_PROGRAMS[programId] ?? DEX[programId] ?? BUNDLED[programId]?.name;
+  if (named) return named;
   if (parsedProgram) return parsedProgram;
   return programId.slice(0, 4) + "…" + programId.slice(-4);
 }

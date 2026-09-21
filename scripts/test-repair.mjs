@@ -1,6 +1,6 @@
 // End-to-end checks for POST /api/v1/repair against a running dev server.
 // Builds deliberately broken UNSIGNED transactions (simulation uses sigVerify:false, so no keys needed).
-import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+import { ComputeBudgetProgram, Connection, PublicKey, SystemProgram, TransactionInstruction, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
 const API = process.env.API ?? "http://localhost:3111/api/v1/repair";
 const conn = new Connection(process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com", "confirmed");
 // A long-lived, well-funded public account used only as a simulated fee payer.
@@ -19,6 +19,8 @@ const t = async (name, body, expect) => { total++; try { if (show(name, await ca
 await t("compute-unit limit far too low", { transaction: b64(RICH, blockhash, [ComputeBudgetProgram.setComputeUnitLimit({ units: 100 }), transfer]) }, "repaired");
 await t("expired blockhash", { transaction: b64(RICH, "EkSnNWid2cvwEVnVx9aBqawnmiCNiDgp3gUdkDPTKN1N", [transfer]) }, "repaired");
 await t("healthy transaction, no budget set", { transaction: b64(RICH, blockhash, [transfer]) }, "valid");
+const tinyDataLimit = new TransactionInstruction({ programId: ComputeBudgetProgram.programId, keys: [], data: Buffer.from([4, 1, 0, 0, 0]) }); // SetLoadedAccountsDataSizeLimit(1 byte)
+await t("loaded accounts data limit too small", { transaction: b64(RICH, blockhash, [tinyDataLimit, transfer]) }, "repaired");
 await t("insufficient funds", { transaction: b64(RICH, blockhash, [SystemProgram.transfer({ fromPubkey: RICH, toPubkey: DEST, lamports: BigInt(bal) * 1000n })]) }, "not_repairable");
 // A plain Jupiter swap built from a quote we inflate by 5%, so it fails on slippage exactly like a stale quote does.
 {

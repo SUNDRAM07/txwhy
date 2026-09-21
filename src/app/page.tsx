@@ -36,7 +36,12 @@ const FIXES: { failure: string; action: string; fixed: boolean }[] = [
   },
   {
     failure: "Slippage on a Jupiter swap",
-    action: "Rebuilt from a fresh quote with your tokens, amount and tolerance. We show how the minimum you receive changed.",
+    action: "Only the swap instruction is replaced with a freshly quoted one. Your tokens, amount, tolerance and every other instruction stay exactly as written, and we show how the minimum you receive changed.",
+    fixed: true,
+  },
+  {
+    failure: "Loaded account data limit too small",
+    action: "Lifted when the transaction declares a limit smaller than what it actually loads.",
     fixed: true,
   },
   {
@@ -221,8 +226,9 @@ export default function Home() {
       <section id="api" className="border-t border-neutral-200 py-12 dark:border-neutral-800">
         <h2 className="text-xl font-bold tracking-tight">For agents and bots</h2>
         <p className="mt-3 leading-relaxed text-neutral-600 dark:text-neutral-400">
-          One call inside your send loop. Pass the transaction that failed, or the one you are about
-          to send, and get back a version that passes.
+          One call inside your send loop. When your RPC rejects a transaction at simulation, pass it
+          here and get back a version that passes, typically in under a second. Most failures never
+          reach the chain. They happen at this step, and this is where TxWhy sits.
         </p>
         <pre className="mt-4 overflow-x-auto rounded-xl border border-neutral-200 p-4 font-mono text-xs leading-relaxed dark:border-neutral-800">
           {CURL}

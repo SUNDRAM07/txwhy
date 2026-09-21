@@ -5,7 +5,7 @@ const rpc = async (method, params) => (await (await fetch(RPC, { method: "POST",
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const want = Number(process.env.N ?? 10);
 let before, picked = [];
-for (let page = 0; page < 4 && picked.length < want; page++) {
+for (let page = 0; page < 8 && picked.length < want; page++) {
   const r = await rpc("getSignaturesForAddress", ["JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4", { limit: 1000, ...(before ? { before } : {}) }]);
   const list = r.result ?? []; if (!list.length) break; before = list.at(-1).signature;
   picked.push(...list.filter((s) => JSON.stringify(s.err ?? "").includes("6001")));

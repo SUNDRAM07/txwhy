@@ -70,25 +70,66 @@ function toNode(ix: ParsedInstruction, index: string, depth: number, failed: boo
   };
 }
 
+/** Precompiles are verified before execution and never log an invoke line. */
+const SILENT_PROGRAMS = new Set([
+  "Ed25519SigVerify111111111111111111111111111",
+  "KeccakSecp256k11111111111111111111111111111",
+  "Secp256r1SigVerify1111111111111111111111111",
+]);
+
+interface Invocation {
+  programId: string;
+  failed: boolean;
+}
+
 /**
- * Build the instruction tree: outer instructions from the message,
- * CPIs nested underneath via meta.innerInstructions stackHeight.
- * Failure marking follows the log-derived failure path, so a CPI that
- * completed before its sibling failed is not falsely implicated.
+ * Replay the runtime's own bookkeeping. Every program call logs "invoke [depth]" and then
+ * either "success" or "failed", so the log is an exact record of which calls failed.
+ * Returns calls in execution order, or null when the log was truncated and cannot be trusted.
+ */
+function invocationsFromLogs(logs: string[]): Invocation[] | null {
+  const calls: Invocation[] = [];
+  const stack: Invocation[] = [];
+  for (const line of logs) {
+    if (line.startsWith("Log truncated")) return null;
+    const invoke = line.match(/^Program ([1-9A-HJ-NP-Za-km-z]{32,44}) invoke \[(\d+)\]$/);
+    if (invoke) {
+      const call = { programId: invoke[1], failed: false };
+      calls.push(call);
+      stack.push(call);
+      continue;
+    }
+    const end = line.match(/^Program ([1-9A-HJ-NP-Za-km-z]{32,44}) (success|failed)/);
+    if (end && stack.length > 0 && stack[stack.length - 1].programId === end[1]) {
+      const call = stack.pop() as Invocation;
+      if (end[2] === "failed") call.failed = true;
+    }
+  }
+  return calls;
+}
+
+/**
+ * Build the instruction tree: outer instructions from the message, CPIs nested underneath
+ * via meta.innerInstructions stackHeight. Failure marks come from the log replay, so a call
+ * that completed before its sibling failed is never implicated. When the log is truncated
+ * we fall back to marking by program id along the failing outer instruction.
  */
 function buildTree(
   tx: RpcTransaction,
   failedOuterIndex: number | null,
   failedPrograms: Set<string>,
+  logs: string[],
 ): TraceNode[] {
   const inner = new Map<number, ParsedInstruction[]>();
   for (const group of tx.meta.innerInstructions ?? []) {
     inner.set(group.index, group.instructions);
   }
 
-  return tx.transaction.message.instructions.map((ix, i) => {
+  const ordered: TraceNode[] = []; // execution (pre-order) sequence, for matching against the log
+  const roots = tx.transaction.message.instructions.map((ix, i) => {
     const outerFailed = failedOuterIndex === i;
     const root = toNode(ix, String(i + 1), 0, outerFailed);
+    ordered.push(root);
 
     const stack: TraceNode[] = [root];
     for (const cpi of inner.get(i) ?? []) {
@@ -104,9 +145,24 @@ function buildTree(
       const failed = outerFailed && failedPrograms.has(cpi.programId);
       const node = toNode(cpi, `${parent.index}.${parent.children.length + 1}`, stack.length, failed);
       parent.children.push(node);
+      ordered.push(node);
     }
     return root;
   });
+
+  // Precise pass: align executed calls with the tree, in order.
+  const calls = invocationsFromLogs(logs);
+  if (calls && calls.length > 0) {
+    const executable = ordered.filter((n) => !SILENT_PROGRAMS.has(n.programId));
+    const aligned = calls.every((c, i) => executable[i]?.programId === c.programId);
+    if (aligned) {
+      for (const n of ordered) n.failed = false;
+      calls.forEach((c, i) => {
+        executable[i].failed = c.failed;
+      });
+    }
+  }
+  return roots;
 }
 
 export async function getTrace(signature: string): Promise<Trace | null> {
@@ -158,6 +214,6 @@ export async function getTrace(signature: string): Promise<Trace | null> {
     failedOuterIndex,
     error: decodeTransactionError(err, failedProgramId, logs, idlErrors),
     logs,
-    tree: buildTree(result, failedOuterIndex, failedPrograms),
+    tree: buildTree(result, failedOuterIndex, failedPrograms, logs),
   };
 }

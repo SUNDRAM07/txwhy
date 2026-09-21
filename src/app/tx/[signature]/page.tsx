@@ -1,9 +1,34 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { RepairPanel } from "@/components/RepairPanel";
 import { getTrace } from "@/lib/trace";
 import type { TraceNode } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ signature: string }>;
+}): Promise<Metadata> {
+  const { signature } = await params;
+  const short = `${signature.slice(0, 8)}…${signature.slice(-6)}`;
+  try {
+    const trace = await getTrace(signature);
+    if (trace) {
+      const title = trace.success
+        ? `Succeeded: ${short} | TxWhy`
+        : `Failed: ${trace.error?.title ?? "Solana transaction"} | TxWhy`;
+      const description = trace.success
+        ? "This Solana transaction succeeded."
+        : `${trace.error?.cause ?? "This Solana transaction failed."} See the exact failing step and get back a transaction that works.`;
+      return { title, description, openGraph: { title, description }, twitter: { card: "summary_large_image", title, description } };
+    }
+  } catch {
+    /* fall through to the generic title */
+  }
+  return { title: `Transaction ${short} | TxWhy` };
+}
 
 function Node({ node }: { node: TraceNode }) {
   return (
@@ -56,9 +81,19 @@ export default async function TxPage({
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10">
-      <Link href="/" className="font-bold tracking-tight">
-        Tx<span className="text-emerald-500">Why</span>
-      </Link>
+      <header className="flex items-center justify-between">
+        <Link href="/" className="font-bold tracking-tight">
+          Tx<span className="text-emerald-500">Why</span>
+        </Link>
+        <nav className="flex gap-5 text-sm text-neutral-500">
+          <Link href="/repair" className="hover:text-emerald-500">
+            Repair
+          </Link>
+          <Link href="/#api" className="hover:text-emerald-500">
+            API
+          </Link>
+        </nav>
+      </header>
 
       <p className="mt-4 break-all font-mono text-xs text-neutral-400 dark:text-neutral-500">
         {signature}

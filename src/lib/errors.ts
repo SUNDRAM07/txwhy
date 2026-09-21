@@ -1,6 +1,6 @@
 import PROGRAM_ERRORS from "./data/program-errors.json";
 import type { IdlErrorEntry } from "./idl";
-import { KNOWN_PROGRAMS } from "./programs";
+import { isNamedProgram, programName } from "./programs";
 import type { DecodedError } from "./types";
 
 /**
@@ -466,7 +466,7 @@ function decodeCustom(
     return {
       title: name,
       code: `Custom(${code}) — 0x${code.toString(16)}`,
-      cause: msg ?? "The program raised this named error (no message published in its IDL).",
+      cause: enrichCause(name, msg),
       fix:
         kb?.fix ??
         suggestFixForName(name) ??
@@ -484,7 +484,7 @@ function decodeCustom(
     return { ...ANCHOR_ERRORS[code], code: `Custom(${code}) — 0x${code.toString(16)}` };
   }
   const hex = `0x${code.toString(16)}`;
-  const knownName = failedProgramId ? (KNOWN_PROGRAMS[failedProgramId] ?? BUNDLED[failedProgramId]?.name) : undefined;
+  const knownName = failedProgramId && isNamedProgram(failedProgramId) ? programName(failedProgramId) : undefined;
   if (failedProgramId && !knownName) {
     const short = `${failedProgramId.slice(0, 4)}…${failedProgramId.slice(-4)}`;
     return {
@@ -500,6 +500,26 @@ function decodeCustom(
     cause: `${knownName ?? "The program"} returned a code that is not in its published error list.`,
     fix: "Check the program's current source or docs for this code. It may have been added in a recent upgrade.",
   };
+}
+
+/** Programs often publish a message that just repeats the error name. Say what it actually means. */
+function enrichCause(name: string, msg: string | undefined): string {
+  const n = name.toLowerCase();
+  const thin = !msg || msg.replace(/[^a-z]/gi, "").toLowerCase() === name.replace(/[^a-z]/gi, "").toLowerCase() || msg.split(" ").length <= 4;
+  if (!thin) return msg as string;
+  if (n.includes("slippage") || n.includes("toolittle") || n.includes("belowmin") || n.includes("amountoutbelow")) {
+    return "The swap would have paid out less than the minimum this transaction allowed. The price moved between the moment the quote was taken and the moment the transaction executed, by more than the slippage tolerance set in the swap.";
+  }
+  if (n.includes("overflow") || n.includes("underflow")) {
+    return "An arithmetic operation inside the program went out of range. In exchanges this usually means the amount, price or liquidity at that moment produced a number the pool cannot represent, often a trade far larger than the pool can absorb.";
+  }
+  if (n.includes("insufficient") || n.includes("notenough")) {
+    return "The account does not hold enough of the token or SOL this instruction tried to spend.";
+  }
+  if (n.includes("expired") || n.includes("stale")) {
+    return "The data this instruction relied on (a quote, price or order) was already out of date when it executed.";
+  }
+  return msg ?? "The program raised this named error and published no further explanation.";
 }
 
 /** Heuristic fixes for common IDL error names when the KB has no entry. */

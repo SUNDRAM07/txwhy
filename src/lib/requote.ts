@@ -1,4 +1,4 @@
-import { PublicKey, TransactionInstruction, VersionedTransaction } from "@solana/web3.js";
+import { PublicKey, TransactionInstruction } from "@solana/web3.js";
 import { rpc } from "./rpc";
 
 /**
@@ -7,23 +7,13 @@ import { rpc } from "./rpc";
  * The swap amounts live inside the instruction data, so a slippage failure cannot be
  * fixed by touching blockhash or fees. We read the user's original intent (tokens,
  * amount, slippage tolerance) out of the failed instruction, ask Jupiter for a current
- * route, and return the new unsigned swap. The tolerance the user chose is kept as is.
- * We never widen it on their behalf.
+ * route, and replace ONLY that one instruction. Every other instruction in the
+ * transaction (memos, fee transfers, tips, account setup) is kept exactly as written,
+ * in the same order. The tolerance the user chose is kept as is. We never widen it.
  */
 
 const JUPITER_V6 = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
 const JUPITER_API = process.env.JUPITER_API_BASE ?? "https://lite-api.jup.ag/swap/v1";
-
-/** Programs a plain retail swap may contain besides Jupiter. Anything else means custom logic we must not drop. */
-const PLAIN_SWAP_PROGRAMS = new Set([
-  JUPITER_V6,
-  "ComputeBudget111111111111111111111111111111",
-  "11111111111111111111111111111111",
-  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-  "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
-  "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
-  "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
-]);
 
 type Mode = "ExactIn" | "ExactOut";
 
@@ -65,7 +55,17 @@ export interface SwapIntent {
 }
 
 export type RequoteOutcome =
-  | { ok: true; transaction: VersionedTransaction; intent: SwapIntent; before: string; after: string; notes: string[] }
+  | {
+      ok: true;
+      /** The original instruction list with only the swap instruction replaced. */
+      instructions: TransactionInstruction[];
+      /** Lookup tables the new route needs, in addition to the original ones. */
+      lookupTables: string[];
+      intent: SwapIntent;
+      before: string;
+      after: string;
+      notes: string[];
+    }
   | { ok: false; reason: string; intent?: SwapIntent };
 
 function readAmounts(data: Buffer, at: number | "tail") {
@@ -127,7 +127,6 @@ function human(raw: bigint, decimals: number | undefined, mint: string): string 
 export async function readSwapIntent(
   instructions: TransactionInstruction[],
 ): Promise<{ intent?: SwapIntent; reason?: string }> {
-  const foreign = instructions.find((ix) => !PLAIN_SWAP_PROGRAMS.has(ix.programId.toBase58()));
   const jupiter = instructions.filter((ix) => ix.programId.toBase58() === JUPITER_V6);
   if (jupiter.length === 0) {
     return { reason: "The swap runs inside another program, so the route cannot be replaced from outside it." };
@@ -159,12 +158,6 @@ export async function readSwapIntent(
     quotedOther: amounts.second,
     slippageBps: amounts.slippageBps,
   };
-  if (foreign) {
-    return {
-      intent,
-      reason: `The transaction also calls ${foreign.programId.toBase58()}, which a rebuilt swap would drop. Rebuild it in your own client with a fresh quote.`,
-    };
-  }
   return { intent };
 }
 
@@ -187,10 +180,21 @@ interface Quote {
   routePlan?: { swapInfo?: { label?: string } }[];
 }
 
-export async function requoteJupiter(
-  instructions: TransactionInstruction[],
-  payer: PublicKey,
-): Promise<RequoteOutcome> {
+interface JupiterInstruction {
+  programId: string;
+  accounts: { pubkey: string; isSigner: boolean; isWritable: boolean }[];
+  data: string;
+}
+
+function toInstruction(ix: JupiterInstruction): TransactionInstruction {
+  return new TransactionInstruction({
+    programId: new PublicKey(ix.programId),
+    keys: ix.accounts.map((a) => ({ pubkey: new PublicKey(a.pubkey), isSigner: a.isSigner, isWritable: a.isWritable })),
+    data: Buffer.from(ix.data, "base64"),
+  });
+}
+
+export async function requoteJupiter(instructions: TransactionInstruction[]): Promise<RequoteOutcome> {
   const { intent, reason } = await readSwapIntent(instructions);
   if (!intent) return { ok: false, reason: reason ?? "No swap found." };
   if (reason) return { ok: false, reason, intent };
@@ -202,16 +206,9 @@ export async function requoteJupiter(
         "This is a circular arbitrage: the same token goes in and comes out. It only succeeds while a price gap exists, and the gap closed. There is nothing to repair.",
     };
   }
-  if (intent.user !== payer.toBase58()) {
-    return {
-      ok: false,
-      intent,
-      reason: "The fee payer is not the swapping wallet, so a rebuilt swap would change who pays. Rebuild it in your own client.",
-    };
-  }
 
   let quote: Quote;
-  let swapTransaction: string;
+  let built: { setupInstructions?: JupiterInstruction[]; swapInstruction: JupiterInstruction; addressLookupTableAddresses?: string[] };
   try {
     const q = new URLSearchParams({
       inputMint: intent.inputMint,
@@ -221,16 +218,13 @@ export async function requoteJupiter(
       swapMode: intent.mode,
     });
     quote = await jupiter<Quote>(`/quote?${q}`);
-    const built = await jupiter<{ swapTransaction: string }>("/swap", {
+    // wrapAndUnwrapSol is off on purpose: the original transaction already carries its own
+    // wrap and unwrap steps, and we keep those untouched.
+    built = await jupiter("/swap-instructions", {
       method: "POST",
-      body: JSON.stringify({
-        quoteResponse: quote,
-        userPublicKey: intent.user,
-        dynamicComputeUnitLimit: true,
-        wrapAndUnwrapSol: true,
-      }),
+      body: JSON.stringify({ quoteResponse: quote, userPublicKey: intent.user, wrapAndUnwrapSol: false }),
     });
-    swapTransaction = built.swapTransaction;
+    if (!built.swapInstruction) throw new Error("no swap instruction returned");
   } catch (e) {
     return {
       ok: false,
@@ -238,6 +232,12 @@ export async function requoteJupiter(
       reason: `Could not get a fresh route (${e instanceof Error ? e.message : "quote service error"}).`,
     };
   }
+
+  // Replace the one Jupiter instruction. Token-account creation that the new route needs is
+  // idempotent, so it is safe to place directly before the swap.
+  const replacement = [...(built.setupInstructions ?? []).map(toInstruction), toInstruction(built.swapInstruction)];
+  const spliced = instructions.flatMap((ix) => (ix.programId.toBase58() === JUPITER_V6 ? replacement : [ix]));
+  const kept = instructions.length - 1;
 
   const decimals = await decimalsOf([intent.inputMint, intent.outputMint]);
   const exactIn = intent.mode === "ExactIn";
@@ -263,9 +263,16 @@ export async function requoteJupiter(
     notes.push(`Price impact of the new route is ${(Number(quote.priceImpactPct) * 100).toFixed(2)}%.`);
   }
 
+  notes.push(
+    kept === 0
+      ? "The transaction contained only the swap."
+      : `Only the swap instruction was replaced. The other ${kept} instruction${kept === 1 ? " was" : "s were"} kept exactly as written, in the same order.`,
+  );
+
   return {
     ok: true,
-    transaction: VersionedTransaction.deserialize(Buffer.from(swapTransaction, "base64")),
+    instructions: spliced,
+    lookupTables: built.addressLookupTableAddresses ?? [],
     intent,
     before: `${word} ${human(oldLimit, otherDecimals, otherMint)} (quoted ${human(intent.quotedOther, otherDecimals, otherMint)})`,
     after: `${word} ${human(newLimit, otherDecimals, otherMint)} (quoted ${human(newQuoted, otherDecimals, otherMint)})`,
