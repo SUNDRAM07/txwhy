@@ -13,7 +13,12 @@ const URL_ = process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL;
 const TOKEN = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN;
 const SALT = process.env.STATS_SALT ?? "txwhy";
 
-export const statsEnabled = Boolean(URL_ && TOKEN);
+/** The always-on worker (Railway) holds the counters when configured. Upstash REST is the alternative. */
+const WORKER_URL = process.env.WORKER_URL?.replace(/\/$/, "");
+const WORKER_SECRET = process.env.WORKER_SECRET;
+const useWorker = Boolean(WORKER_URL && WORKER_SECRET);
+
+export const statsEnabled = useWorker || Boolean(URL_ && TOKEN);
 
 export type Channel = "web" | "api" | "mcp" | "telegram";
 
@@ -52,6 +57,20 @@ export interface TrackEvent {
 
 export async function track(event: TrackEvent): Promise<void> {
   if (!statsEnabled) return;
+  if (useWorker) {
+    try {
+      await fetch(`${WORKER_URL}/track`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${WORKER_SECRET}`, "content-type": "application/json" },
+        body: JSON.stringify(event),
+        cache: "no-store",
+        signal: AbortSignal.timeout(900),
+      });
+    } catch {
+      /* counting must never break a repair */
+    }
+    return;
+  }
   const day = today();
   const commands: Command[] = [
     ["INCR", `s:total:${event.kind}`],
@@ -93,6 +112,14 @@ function toRecord(flat: unknown): Record<string, number> {
 
 export async function readStats(): Promise<Stats | null> {
   if (!statsEnabled) return null;
+  if (useWorker) {
+    try {
+      const res = await fetch(`${WORKER_URL}/stats`, { cache: "no-store", signal: AbortSignal.timeout(3000) });
+      return res.ok ? ((await res.json()) as Stats) : null;
+    } catch {
+      return null;
+    }
+  }
   const dayKeys = Array.from({ length: 14 }, (_, i) => new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10)).reverse();
   const result = await pipeline(
     [
@@ -131,4 +158,28 @@ export async function readStats(): Promise<Stats | null> {
       repairs: Number(perDay[i * 2 + 1] ?? 0),
     })),
   };
+}
+
+export interface FailureIndex {
+  updatedAt: string | null;
+  since: string | null;
+  transactionsSeen: number;
+  failed: number;
+  failureRate: number;
+  classified: number;
+  source: Record<string, number>;
+  byProgram: { program: string; seen: number; failed: number; failureRate: number }[];
+  topCauses: { title: string; count: number }[];
+  topCulprits: { program: string; count: number }[];
+}
+
+/** The worker's live sample of mainnet failures. Null when no worker is attached. */
+export async function readFailureIndex(): Promise<FailureIndex | null> {
+  if (!WORKER_URL) return null;
+  try {
+    const res = await fetch(`${WORKER_URL}/index`, { cache: "no-store", signal: AbortSignal.timeout(3000) });
+    return res.ok ? ((await res.json()) as FailureIndex) : null;
+  } catch {
+    return null;
+  }
 }
