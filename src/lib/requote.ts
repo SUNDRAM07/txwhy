@@ -156,7 +156,10 @@ export function readSwapShape(ix: TransactionInstruction) {
     slippageBps: amounts.slippageBps,
     /** Where the input comes from and where the output lands. These must never change. */
     source: at(layout.source),
-    destinations: layout.destinations.map(at).join(","),
+    // Layouts list the destination in different slots, and an unused optional slot holds the
+    // Jupiter program id as a placeholder. What matters is the one account that actually
+    // receives the output: the optional override when present, otherwise the user's account.
+    receiver: layout.destinations.map(at).filter((a) => a && a !== JUPITER_V6).pop() ?? "",
   };
 }
 

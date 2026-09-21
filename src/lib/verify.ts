@@ -120,7 +120,7 @@ export function verifyInstructions(
         was.amount !== now.amount && "the amount",
         was.slippageBps !== now.slippageBps && "the slippage tolerance",
         was.source !== now.source && "the token account the input is taken from",
-        was.destinations !== now.destinations && "the token account that receives the output",
+        (!was.receiver || was.receiver !== now.receiver) && "the token account that receives the output",
       ].filter(Boolean);
       if (mismatches.length > 0) {
         violations.push(`The replacement swap changes ${mismatches.join(", ")}.`);

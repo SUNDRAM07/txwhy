@@ -574,7 +574,8 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
     { payer: decompiled.payerKey, instructions: finalInstructions },
   );
   if (!verification.ok) notes.unshift(`Internal verification refused this rebuild: ${verification.violations.join(" ")}`);
-  const passed = finalSim.err == null && verification.ok;
+  const simulated = finalSim.err == null;
+  const passed = simulated && verification.ok;
 
   if (!changes.some((c) => c.type === "blockhash")) {
     notes.push("A fresh blockhash is always applied, so sign and send within about 60 seconds.");
@@ -593,7 +594,9 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
   return {
     status: passed ? (wasBroken ? "repaired" : "valid") : "not_repairable",
     summary: !passed
-      ? "The rebuilt transaction still fails simulation."
+      ? simulated
+        ? "A rebuild was produced and it simulates, but it failed TxWhy's own safety check, so it is withheld. Nothing is returned that we cannot prove is the same transaction."
+        : "The rebuilt transaction still fails simulation."
       : requoted
         ? "Repaired with a fresh quote. Only the swap instruction changed. Your tokens, amount, slippage tolerance and every other instruction are kept, and the result passes simulation."
       : wasBroken
@@ -604,11 +607,11 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
           ? "The transaction already executes. Returned an optimised version that is more likely to land."
           : "The transaction already executes and needs no changes.",
     cause,
-    changes,
+    changes: passed ? changes : [],
     repairedTransaction: passed ? Buffer.from(returned.serialize()).toString("base64") : null,
     verification: passed ? verification : undefined,
     simulation: {
-      passed,
+      passed: simulated,
       unitsConsumed: finalSim.unitsConsumed ?? null,
       error: finalError,
       logsTail: (finalSim.logs ?? []).slice(-8),
