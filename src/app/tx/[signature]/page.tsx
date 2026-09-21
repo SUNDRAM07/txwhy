@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { RepairPanel } from "@/components/RepairPanel";
+import { track } from "@/lib/stats";
 import { getTrace } from "@/lib/trace";
 import type { TraceNode } from "@/lib/types";
 
@@ -75,6 +76,7 @@ export default async function TxPage({
   let fetchError: string | null = null;
   try {
     trace = await getTrace(signature);
+    if (trace) await track({ kind: "diagnosis", channel: "web", errorTitle: trace.error?.title });
   } catch (e) {
     fetchError = e instanceof Error ? e.message : "Unknown RPC error";
   }

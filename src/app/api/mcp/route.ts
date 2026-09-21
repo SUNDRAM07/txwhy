@@ -3,6 +3,7 @@ import { z } from "zod";
 import { decodeTransactionError } from "@/lib/errors";
 import { rateLimit, tooManyRequests } from "@/lib/ratelimit";
 import { RepairInputError, repair } from "@/lib/repair";
+import { track } from "@/lib/stats";
 import { extractSignature, getTrace } from "@/lib/trace";
 
 export const maxDuration = 30;
@@ -46,7 +47,9 @@ const handler = createMcpHandler(
         const sig = signature ? extractSignature(signature) : null;
         if (signature && !sig) return failure("That does not look like a transaction signature.");
         try {
-          return text(await repair({ transaction, signature: sig ?? undefined }));
+          const result = await repair({ transaction, signature: sig ?? undefined });
+          await track({ kind: "repair", channel: "mcp", status: result.status, errorTitle: result.cause?.title });
+          return text(result);
         } catch (e) {
           if (e instanceof RepairInputError) return failure(e.message);
           return failure(`Repair failed: ${e instanceof Error ? e.message : "unexpected error"}. Safe to retry.`);
@@ -70,6 +73,7 @@ const handler = createMcpHandler(
         try {
           const trace = await getTrace(sig);
           if (!trace) return failure("Transaction not found on mainnet.");
+          await track({ kind: "diagnosis", channel: "mcp", errorTitle: trace.error?.title });
           const failedPath: string[] = [];
           const walk = (nodes: typeof trace.tree) => {
             for (const n of nodes) {

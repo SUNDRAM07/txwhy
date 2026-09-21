@@ -107,6 +107,9 @@ export default function Home() {
           <a href="#api" className="hover:text-emerald-500">
             API
           </a>
+          <Link href="/stats" className="hover:text-emerald-500">
+            Usage
+          </Link>
         </nav>
       </header>
 

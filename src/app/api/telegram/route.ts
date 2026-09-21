@@ -1,4 +1,5 @@
 import { RepairInputError, repair, type RepairResult } from "@/lib/repair";
+import { track } from "@/lib/stats";
 import { extractSignature, getTrace } from "@/lib/trace";
 
 export const maxDuration = 30;
@@ -67,7 +68,7 @@ function renderRepair(result: RepairResult): string[] {
   return lines;
 }
 
-async function answerSignature(signature: string): Promise<string> {
+async function answerSignature(signature: string, caller: string): Promise<string> {
   const trace = await getTrace(signature);
   if (!trace) return "I could not find that transaction on mainnet. It may be too old for the RPC, or on another cluster.";
   if (trace.success) return `✅ That transaction <b>succeeded</b>. Nothing to fix.\n${SITE}/tx/${signature}`;
@@ -91,6 +92,7 @@ async function answerSignature(signature: string): Promise<string> {
   } catch {
     result = null;
   }
+  await track({ kind: "repair", channel: "telegram", status: result?.status, errorTitle: trace.error?.title, caller });
   const cause = result?.cause ?? trace.error;
   if (cause?.cause) out.push("", `<b>Why:</b> ${esc(cause.cause)}`);
   if (cause?.fix && result?.status !== "not_repairable") out.push(`<b>Fix:</b> ${esc(cause.fix)}`);
@@ -106,9 +108,10 @@ async function answerSignature(signature: string): Promise<string> {
   return out.join("\n");
 }
 
-async function answerTransaction(transaction: string): Promise<string> {
+async function answerTransaction(transaction: string, caller: string): Promise<string> {
   try {
     const result = await repair({ transaction });
+    await track({ kind: "repair", channel: "telegram", status: result.status, errorTitle: result.cause?.title, caller });
     const out: string[] = [];
     if (result.cause) out.push(`❌ <b>${esc(result.cause.title)}</b>`, esc(result.cause.cause), "");
     out.push(...renderRepair(result));
@@ -217,8 +220,8 @@ export async function POST(request: Request) {
 
   const signature = extractSignature(body);
   let reply: string;
-  if (signature) reply = await answerSignature(signature).catch(() => "The network did not answer. Try again in a moment.");
-  else if (looksLikeTransaction(body)) reply = await answerTransaction(body.replace(/\s+/g, ""));
+  if (signature) reply = await answerSignature(signature, `tg:${chatId}`).catch(() => "The network did not answer. Try again in a moment.");
+  else if (looksLikeTransaction(body)) reply = await answerTransaction(body.replace(/\s+/g, ""), `tg:${chatId}`);
   else if (isPrivate) reply = "That doesn't look like a signature, an explorer link or a base64 transaction. Send /help to see what I can read.";
   else return new Response("ok");
 

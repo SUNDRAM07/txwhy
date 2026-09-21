@@ -1,6 +1,7 @@
-import { rateLimit, tooManyRequests } from "@/lib/ratelimit";
+import { clientKey, rateLimit, tooManyRequests } from "@/lib/ratelimit";
 import { RepairInputError, repair } from "@/lib/repair";
 import { RpcError } from "@/lib/rpc";
+import { track } from "@/lib/stats";
 import { extractSignature } from "@/lib/trace";
 
 export const maxDuration = 30;
@@ -8,7 +9,7 @@ export const maxDuration = 30;
 const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "POST, OPTIONS",
-  "access-control-allow-headers": "content-type",
+  "access-control-allow-headers": "content-type, x-txwhy-client",
 };
 
 export function OPTIONS() {
@@ -41,6 +42,13 @@ export async function POST(request: Request) {
 
   try {
     const result = await repair({ signature: signature ?? undefined, transaction: body.transaction });
+    await track({
+      kind: "repair",
+      channel: request.headers.get("x-txwhy-client") === "web" ? "web" : "api",
+      status: result.status,
+      errorTitle: result.cause?.title,
+      caller: clientKey(request),
+    });
     return Response.json(result, { headers: CORS });
   } catch (e) {
     if (e instanceof RepairInputError) {

@@ -31,7 +31,7 @@ async function callRepair(input: RepairInput): Promise<{ result: RepairResult | 
   try {
     const res = await fetch("/api/v1/repair", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: { "content-type": "application/json", "x-txwhy-client": "web" },
       body: JSON.stringify(input),
     });
     const body = await res.json();
