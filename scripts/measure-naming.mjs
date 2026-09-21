@@ -10,7 +10,7 @@ for (const [label, id] of Object.entries(PROGRAMS)) {
   const failed = (r.result ?? []).filter((s) => s.err).slice(0, per);
   for (const s of failed) {
     await sleep(2300);
-    let res; try { res = await (await fetch(API, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ signature: s.signature }) })).json(); } catch { continue; }
+    let res; try { res = await (await fetch(API, { method: "POST", headers: { "content-type": "application/json", "x-txwhy-client": "test" }, body: JSON.stringify({ signature: s.signature }) })).json(); } catch { continue; }
     const title = res.cause?.title ?? res.error ?? "?"; total++;
     const isPrivate = /from a private program/.test(title);
     const isNamed = !isPrivate && !/ error \d+ \(0x|^(Unrecognized|\?)/.test(title);

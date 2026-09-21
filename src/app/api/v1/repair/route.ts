@@ -42,6 +42,8 @@ export async function POST(request: Request) {
 
   try {
     const result = await repair({ signature: signature ?? undefined, transaction: body.transaction });
+    // Our own test suite marks itself so public usage numbers only ever count real callers.
+    if (request.headers.get("x-txwhy-client") !== "test")
     await track({
       kind: "repair",
       channel: request.headers.get("x-txwhy-client") === "web" ? "web" : "api",

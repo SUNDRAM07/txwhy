@@ -17,7 +17,7 @@ const tally = {};
 for (const s of picked) {
   await sleep(2500);
   const t0 = Date.now();
-  let res; try { res = await (await fetch(API, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ signature: s.signature }) })).json(); } catch (e) { res = { error: e.message }; }
+  let res; try { res = await (await fetch(API, { method: "POST", headers: { "content-type": "application/json", "x-txwhy-client": "test" }, body: JSON.stringify({ signature: s.signature }) })).json(); } catch (e) { res = { error: e.message }; }
   const key = res.status ?? "error"; tally[key] = (tally[key] ?? 0) + 1;
   console.log(`\n- ${s.signature.slice(0, 18)}…  -> ${key} (${Date.now() - t0}ms) sim=${res.simulation?.passed} units=${res.simulation?.unitsConsumed}`);
   for (const c of res.changes ?? []) console.log(`    ${c.type}: ${c.before}\n      => ${c.after}`);

@@ -45,6 +45,8 @@ interface Store {
   pfcount(key: string): Promise<number>;
   getStr(key: string): Promise<string | null>;
   setStr(key: string, value: string): Promise<void>;
+  /** Delete every key with this prefix. Used once, to clear pre-launch test traffic. */
+  clear(prefix: string): Promise<number>;
 }
 
 function memoryStore(): Store {
@@ -64,6 +66,13 @@ function memoryStore(): Store {
     async pfcount(k) { return sets.get(k)?.size ?? 0; },
     async getStr(k) { return strs.get(k) ?? null; },
     async setStr(k, v) { strs.set(k, v); },
+    async clear(prefix) {
+      let n = 0;
+      for (const m of [nums, hashes, sets, strs] as Map<string, unknown>[]) {
+        for (const k of [...m.keys()]) if (k.startsWith(prefix) || k.startsWith(`z:${prefix}`)) { m.delete(k); n++; }
+      }
+      return n;
+    },
   };
 }
 
@@ -82,6 +91,12 @@ async function redisStore(url: string): Promise<Store> {
     async pfcount(k) { return client.pfCount(k); },
     async getStr(k) { return client.get(k); },
     async setStr(k, v) { await client.set(k, v); },
+    async clear(prefix) {
+      const keys: string[] = [];
+      for await (const batch of client.scanIterator({ MATCH: `${prefix}*`, COUNT: 200 })) keys.push(...(Array.isArray(batch) ? batch : [batch]));
+      if (keys.length) await client.del(keys);
+      return keys.length;
+    },
   };
 }
 
@@ -239,6 +254,10 @@ async function main() {
       if (req.method === "GET" && path === "/health") return json(res, 200, { ok: true });
       if (req.method === "GET" && path === "/stats") return json(res, 200, await readStats(store));
       if (req.method === "GET" && path === "/index") return json(res, 200, await readIndex(store));
+      if (req.method === "POST" && path === "/admin/reset-usage") {
+        if (!SECRET || req.headers.authorization !== `Bearer ${SECRET}`) return json(res, 401, { error: "unauthorized" });
+        return json(res, 200, { cleared: await store.clear("s:") });
+      }
       if (req.method === "POST" && path === "/track") {
         if (!SECRET || req.headers.authorization !== `Bearer ${SECRET}`) return json(res, 401, { error: "unauthorized" });
         await track(store, (await readBody(req)) as TrackEvent);

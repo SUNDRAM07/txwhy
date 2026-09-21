@@ -7,7 +7,7 @@ const conn = new Connection(process.env.SOLANA_RPC_URL ?? "https://api.mainnet-b
 const RICH = new PublicKey("5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9");
 const DEST = new PublicKey("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM");
 const b64 = (payer, blockhash, ixs) => Buffer.from(new VersionedTransaction(new TransactionMessage({ payerKey: payer, recentBlockhash: blockhash, instructions: ixs }).compileToV0Message()).serialize()).toString("base64");
-const call = async (body) => (await fetch(API, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })).json();
+const call = async (body) => (await fetch(API, { method: "POST", headers: { "content-type": "application/json", "x-txwhy-client": "test" }, body: JSON.stringify(body) })).json();
 const show = (name, r, expect) => { const ok = r.status === expect; console.log(`\n${ok ? "PASS" : "FAIL"}  ${name}\n  status=${r.status} (expected ${expect})  sim.passed=${r.simulation?.passed} units=${r.simulation?.unitsConsumed}\n  summary: ${r.summary ?? r.error}\n  cause: ${r.cause?.title ?? "-"}\n  changes: ${(r.changes ?? []).map(c => `${c.type}: ${c.before} -> ${c.after}`).join(" | ") || "-"}\n  notes: ${(r.notes ?? []).slice(0, 1).join("")}`); return ok; };
 
 const { blockhash } = await conn.getLatestBlockhash();
