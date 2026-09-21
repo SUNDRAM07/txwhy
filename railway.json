@@ -1,9 +1,0 @@
-{
-  "$schema": "https://railway.com/railway.schema.json",
-  "build": { "buildCommand": "npm ci" },
-  "deploy": {
-    "startCommand": "npx tsx worker/index.ts",
-    "healthcheckPath": "/health",
-    "restartPolicyType": "ON_FAILURE"
-  }
-}
