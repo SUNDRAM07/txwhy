@@ -55,6 +55,12 @@ const CURL = `curl -X POST https://txwhy.vercel.app/api/v1/repair \\
   -H "content-type: application/json" \\
   -d '{"transaction": "<base64, signed or unsigned>"}'`;
 
+const MCP_CONFIG = `{
+  "mcpServers": {
+    "txwhy": { "url": "https://txwhy.vercel.app/api/mcp" }
+  }
+}`;
+
 const RESPONSE = `{
   "status": "repaired",
   "cause": { "title": "Compute budget exceeded", ... },
@@ -223,6 +229,16 @@ export default function Home() {
         </pre>
         <pre className="mt-3 overflow-x-auto rounded-xl border border-neutral-200 p-4 font-mono text-xs leading-relaxed text-neutral-500 dark:border-neutral-800">
           {RESPONSE}
+        </pre>
+        <h3 className="mt-8 font-semibold">Or plug it into any agent as a tool</h3>
+        <p className="mt-2 text-sm leading-relaxed text-neutral-500">
+          TxWhy is an MCP server. Add the URL and your agent gets three tools:{" "}
+          <code className="font-mono">repair_transaction</code>,{" "}
+          <code className="font-mono">diagnose_transaction</code> and{" "}
+          <code className="font-mono">explain_error</code>. No key, no account.
+        </p>
+        <pre className="mt-3 overflow-x-auto rounded-xl border border-neutral-200 p-4 font-mono text-xs leading-relaxed dark:border-neutral-800">
+          {MCP_CONFIG}
         </pre>
         <p className="mt-3 text-sm text-neutral-500">
           You can also pass{" "}

@@ -6,6 +6,7 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
+import { rateLimit, tooManyRequests } from "@/lib/ratelimit";
 import { rpc } from "@/lib/rpc";
 
 /**
@@ -34,6 +35,9 @@ function encode(blockhash: string, instructions: TransactionInstruction[]) {
 }
 
 export async function GET(request: Request) {
+  const limit = rateLimit(request, "example", 12);
+  if (!limit.ok) return tooManyRequests(limit.retryAfterSeconds);
+
   const kind = new URL(request.url).searchParams.get("kind") ?? "compute";
   const transfer = SystemProgram.transfer({
     fromPubkey: DEMO_PAYER,

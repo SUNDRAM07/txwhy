@@ -44,3 +44,6 @@ next-env.d.ts
 claude-session.jsonl
 codex-session.jsonl
 conversation-*.txt
+
+.vercel
+.gstack/

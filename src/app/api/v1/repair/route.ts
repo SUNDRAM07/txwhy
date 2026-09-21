@@ -1,3 +1,4 @@
+import { rateLimit, tooManyRequests } from "@/lib/ratelimit";
 import { RepairInputError, repair } from "@/lib/repair";
 import { RpcError } from "@/lib/rpc";
 import { extractSignature } from "@/lib/trace";
@@ -20,6 +21,9 @@ export function OPTIONS() {
  *    or { "transaction": "<base64 serialized transaction, signed or unsigned>" }
  */
 export async function POST(request: Request) {
+  const limit = rateLimit(request, "repair", 30);
+  if (!limit.ok) return tooManyRequests(limit.retryAfterSeconds, CORS);
+
   let body: { signature?: string; transaction?: string };
   try {
     body = await request.json();
