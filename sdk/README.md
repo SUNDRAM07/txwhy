@@ -5,13 +5,13 @@
 TxWhy finds the exact reason a transaction fails, rebuilds it, and proves the rebuilt one passes by simulating it against live chain state. This package puts that inside your send loop, and lets you check every repair on your own machine before you sign it.
 
 ```bash
-npm i txwhy @solana/web3.js
+npm i @txwhy/sdk @solana/web3.js
 ```
 
 ## One line in your send loop
 
 ```ts
-import { sendWithRepair } from "txwhy";
+import { sendWithRepair } from "@txwhy/sdk";
 
 const { signature, repairs } = await sendWithRepair(connection, transaction, (tx) => wallet.signTransaction(tx));
 ```
@@ -64,7 +64,7 @@ A service that hands you a transaction to sign could hand you anything. So the r
 - at most one Jupiter swap may be replaced, and only by a swap for the same wallet, same source and receiving token accounts, same output token, same amount, same slippage tolerance
 
 ```ts
-import { verifyRepair } from "txwhy";
+import { verifyRepair } from "@txwhy/sdk";
 
 const check = await verifyRepair(connection, original, repairedBase64);
 if (!check.ok) throw new Error(check.violations.join(" ")); // never sign it
@@ -73,7 +73,7 @@ if (!check.ok) throw new Error(check.violations.join(" ")); // never sign it
 `verifyRepair` uses your connection only to expand address lookup tables. If you already have decompiled instructions, the core check has no network access and no runtime dependencies at all:
 
 ```ts
-import { verifyInstructions } from "txwhy/verify";
+import { verifyInstructions } from "@txwhy/sdk/verify";
 
 verifyInstructions({ payer, instructions: before }, { payer, instructions: after });
 ```
@@ -83,7 +83,7 @@ The TxWhy server runs this same function on its own output and refuses to return
 ## Just the repair call
 
 ```ts
-import { repair } from "txwhy";
+import { repair } from "@txwhy/sdk";
 
 const result = await repair({ transaction: tx });            // about to send
 const result = await repair({ signature: "5Nf…" });          // already failed on chain
@@ -107,7 +107,7 @@ Full example: `examples/paid-repair.mjs`.
 ## Command line
 
 ```bash
-npx txwhy <signature | explorer URL | base64 transaction> [--json]
+npx @txwhy/sdk <signature | explorer URL | base64 transaction> [--json]
 ```
 
 ## Also available as

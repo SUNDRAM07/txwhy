@@ -1,7 +1,7 @@
 // Pay per repair over x402: no account, no API key, no rate limit. The agent pays $0.001 in
 // USDC on Solana for each repair and the charge only settles after a successful answer.
 //
-//   npm i txwhy @x402/fetch @x402/svm @solana/kit
+//   npm i @txwhy/sdk @x402/fetch @x402/svm @solana/kit
 //   AGENT_KEYPAIR=./agent.json node examples/paid-repair.mjs
 //
 // The wallet needs a little USDC. The facilitator pays the network fee, so no SOL is needed.

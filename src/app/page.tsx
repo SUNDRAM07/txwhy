@@ -66,12 +66,12 @@ const MCP_CONFIG = `{
   }
 }`;
 
-/** Flip once the "txwhy" package is live on npm. Until then the name is never shown, so nobody can squat it. */
-const SDK_PUBLISHED = false;
+/** Flip once the "@txwhy/sdk" package is live on npm. Until then the name is never shown, so nobody can squat it. */
+const SDK_PUBLISHED = true;
 /** Flip once X402_PAY_TO is set on the deployment. */
 const X402_LIVE = false;
 
-const SDK = `import { sendWithRepair } from "txwhy";
+const SDK = `import { sendWithRepair } from "@txwhy/sdk";
 
 // simulate -> repair if it would fail -> verify locally -> sign -> send
 const { signature, repairs } = await sendWithRepair(
@@ -80,7 +80,7 @@ const { signature, repairs } = await sendWithRepair(
   (tx) => wallet.signTransaction(tx),   // your keys never leave your process
 );`;
 
-const VERIFY = `import { verifyRepair } from "txwhy";
+const VERIFY = `import { verifyRepair } from "@txwhy/sdk";
 
 const check = await verifyRepair(connection, original, repaired);
 if (!check.ok) throw new Error(check.violations.join(" "));  // never sign it`;
@@ -260,13 +260,13 @@ export default function Home() {
             rebuilt, is checked on your machine, and only then reaches your signer.
           </p>
           <pre className="mt-4 overflow-x-auto rounded-xl border border-neutral-200 p-4 font-mono text-xs leading-relaxed dark:border-neutral-800">
-            npm i txwhy
+            npm i @txwhy/sdk
           </pre>
           <pre className="mt-3 overflow-x-auto rounded-xl border border-neutral-200 p-4 font-mono text-xs leading-relaxed dark:border-neutral-800">
             {SDK}
           </pre>
           <p className="mt-3 text-sm text-neutral-500">
-            From a terminal: <code className="rounded bg-neutral-100 px-1.5 py-0.5 dark:bg-neutral-900">npx txwhy &lt;signature&gt;</code>
+            From a terminal: <code className="rounded bg-neutral-100 px-1.5 py-0.5 dark:bg-neutral-900">npx @txwhy/sdk &lt;signature&gt;</code>
           </p>
         </section>
       )}
