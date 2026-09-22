@@ -59,13 +59,15 @@ export async function globalLimit(
   request: Request,
   bucket: string,
   limitPerMinute: number,
+  /** Override the caller key. "everyone" makes it a total budget shared by all callers. */
+  caller: string = clientKey(request),
 ): Promise<{ ok: true } | { ok: false; retryAfterSeconds: number }> {
   if (!WORKER_URL || !WORKER_SECRET) return { ok: true };
   try {
     const res = await fetch(`${WORKER_URL}/limit`, {
       method: "POST",
       headers: { authorization: `Bearer ${WORKER_SECRET}`, "content-type": "application/json" },
-      body: JSON.stringify({ caller: clientKey(request), bucket, limit: limitPerMinute }),
+      body: JSON.stringify({ caller, bucket, limit: limitPerMinute }),
       cache: "no-store",
       signal: AbortSignal.timeout(1500),
     });

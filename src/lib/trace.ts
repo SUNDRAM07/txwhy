@@ -28,9 +28,12 @@ interface RpcTransaction {
 
 /** Pull a signature out of raw input — accepts bare signatures and explorer URLs. */
 export function extractSignature(input: string): string | null {
-  const matches = input.trim().match(/[1-9A-HJ-NP-Za-km-z]{80,90}/g);
+  if (typeof input !== "string" || input.length > 2_000) return null;
+  // A signature is 64 bytes, which base58 encodes to 87 or 88 characters. Inside a URL it is
+  // delimited by / ? # or the end of the string, so a longer run of base58 is not a signature.
+  const matches = input.trim().match(/(?<![1-9A-HJ-NP-Za-km-z])[1-9A-HJ-NP-Za-km-z]{86,88}(?![1-9A-HJ-NP-Za-km-z])/g);
   if (!matches) return null;
-  return matches.sort((a, b) => b.length - a.length)[0] ?? null;
+  return matches[0] ?? null;
 }
 
 /**

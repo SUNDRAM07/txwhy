@@ -1,4 +1,5 @@
 import { after } from "next/server";
+import { BodyError, REPAIR_BODY_LIMIT, readJson } from "@/lib/body";
 import { clientKey, globalLimit, rateLimit, tooManyRequests } from "@/lib/ratelimit";
 import { RepairInputError, repair } from "@/lib/repair";
 import { RpcError } from "@/lib/rpc";
@@ -28,9 +29,10 @@ export async function POST(request: Request) {
 
   let body: { signature?: string; transaction?: string };
   try {
-    body = await request.json();
-  } catch {
-    return Response.json({ error: "Body must be JSON." }, { status: 400, headers: CORS });
+    body = await readJson(request, REPAIR_BODY_LIMIT);
+  } catch (e) {
+    const status = e instanceof BodyError ? e.status : 400;
+    return Response.json({ error: e instanceof Error ? e.message : "Bad request." }, { status, headers: CORS });
   }
 
   const signature = body.signature ? extractSignature(body.signature) : null;
@@ -43,7 +45,9 @@ export async function POST(request: Request) {
 
   try {
     // Runs alongside the repair, so the global limit costs no time.
-    const allowed = globalLimit(request, "repair", 60);
+    const allowed = Promise.all([globalLimit(request, "repair", 60), globalLimit(request, "repair-all", 1200, "everyone")]).then(
+      (v) => v.find((x) => !x.ok) ?? { ok: true as const },
+    );
     const result = await repair({ signature: signature ?? undefined, transaction: body.transaction });
     const verdict = await allowed;
     if (!verdict.ok) return tooManyRequests(verdict.retryAfterSeconds, CORS);

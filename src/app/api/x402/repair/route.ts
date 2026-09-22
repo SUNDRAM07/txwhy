@@ -3,6 +3,8 @@ import { withX402 } from "@x402/next";
 import { registerExactSvmScheme } from "@x402/svm/exact/server";
 import { NextResponse, type NextRequest } from "next/server";
 import { after } from "next/server";
+import { BodyError, REPAIR_BODY_LIMIT, readJson } from "@/lib/body";
+import { rateLimit } from "@/lib/ratelimit";
 import { RepairInputError, repair } from "@/lib/repair";
 import { RPC_URL, RpcError } from "@/lib/rpc";
 import { track } from "@/lib/stats";
@@ -37,11 +39,14 @@ export function OPTIONS() {
 }
 
 async function handler(request: NextRequest): Promise<NextResponse> {
+  const limit = rateLimit(request, "x402", 300);
+  if (!limit.ok) return NextResponse.json({ error: "Too many requests. Slow down and retry.", retryable: true }, { status: 429, headers: CORS });
   let body: { signature?: string; transaction?: string };
   try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Body must be JSON." }, { status: 400, headers: CORS });
+    body = await readJson(request, REPAIR_BODY_LIMIT);
+  } catch (e) {
+    const status = e instanceof BodyError ? e.status : 400;
+    return NextResponse.json({ error: e instanceof Error ? e.message : "Bad request." }, { status, headers: CORS });
   }
   const signature = body.signature ? extractSignature(body.signature) : null;
   if (body.signature && !signature) {
