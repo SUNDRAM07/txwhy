@@ -23,6 +23,7 @@ const CHANNEL_LABEL: Record<string, string> = {
   telegram: "Telegram bot",
   sdk: "npm package",
   cli: "Command line",
+  x402: "Paid (x402)",
 };
 
 function Tile({ label, value, hint }: { label: string; value: string; hint?: string }) {

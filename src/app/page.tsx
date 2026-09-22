@@ -68,6 +68,8 @@ const MCP_CONFIG = `{
 
 /** Flip once the "txwhy" package is live on npm. Until then the name is never shown, so nobody can squat it. */
 const SDK_PUBLISHED = false;
+/** Flip once X402_PAY_TO is set on the deployment. */
+const X402_LIVE = false;
 
 const SDK = `import { sendWithRepair } from "txwhy";
 
@@ -296,6 +298,19 @@ export default function Home() {
           </pre>
         )}
       </section>
+
+      {X402_LIVE && (
+        <section id="pricing" className="border-t border-neutral-200 py-12 dark:border-neutral-800">
+          <h2 className="text-xl font-bold tracking-tight">Free for people. A tenth of a cent for agents.</h2>
+          <p className="mt-3 leading-relaxed text-neutral-600 dark:text-neutral-400">
+            The website, the bot and <code className="rounded bg-neutral-100 px-1.5 py-0.5 dark:bg-neutral-900">/api/v1/repair</code>{" "}
+            are free and rate limited. Agents that need guaranteed capacity call{" "}
+            <code className="rounded bg-neutral-100 px-1.5 py-0.5 dark:bg-neutral-900">/api/x402/repair</code> instead:
+            $0.001 in USDC per repair over x402, no account, no API key, charged only when the answer succeeds. A
+            repaired transaction that lands costs less than the priority fee on one that does not.
+          </p>
+        </section>
+      )}
 
       <section id="api" className="border-t border-neutral-200 py-12 dark:border-neutral-800">
         <h2 className="text-xl font-bold tracking-tight">For agents and bots</h2>

@@ -81,6 +81,18 @@ function toVersioned(tx: AnyTransaction | string): VersionedTransaction {
   return VersionedTransaction.deserialize(fromBase64(serialize(tx)));
 }
 
+/** The reason inside an x402 "payment-required" header, when the payment was attempted and refused. */
+function paymentProblem(res: Response): string | null {
+  try {
+    const header = res.headers.get("payment-required");
+    if (!header) return null;
+    const { error } = JSON.parse(atob(header)) as { error?: string };
+    return error && error !== "Payment required" ? `the facilitator refused the payment (${error})` : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Ask TxWhy to diagnose and rebuild a transaction.
  * Pass the transaction you are about to send (signed or not), or the signature of one that already failed.
@@ -96,6 +108,7 @@ export async function repair(
     body: JSON.stringify(body),
   });
   const json = (await res.json().catch(() => null)) as (RepairResult & { error?: string }) | null;
+  if (res.status === 402) throw new TxWhyError(`Payment required: ${paymentProblem(res) ?? json?.error ?? "this endpoint is paid per repair over x402"}.`);
   if (!res.ok || !json || json.error) throw new TxWhyError(json?.error ?? `TxWhy answered ${res.status}.`);
   return json;
 }

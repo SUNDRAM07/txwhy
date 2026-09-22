@@ -90,6 +90,20 @@ const result = await repair({ signature: "5Nf…" });          // already failed
 // result.status: "repaired" | "valid" | "needs_requote" | "not_repairable"
 ```
 
+## Pay per repair, no account (x402)
+
+The free endpoint is rate limited. `POST /api/x402/repair` is the same repair with no limit, paid per call in USDC on Solana over [x402](https://x402.org): $0.001 a repair, settled only after a successful answer, the facilitator pays the network fee. Same `repair()` call, a paying `fetch`:
+
+```ts
+import { wrapFetchWithPayment, x402Client } from "@x402/fetch";
+import { ExactSvmScheme } from "@x402/svm/exact/client";
+
+const paying = wrapFetchWithPayment(fetch, new x402Client().register("solana:*", new ExactSvmScheme(signer)));
+const result = await repair({ transaction: tx }, { endpoint: "https://txwhy.vercel.app/api/x402/repair", fetch: paying });
+```
+
+Full example: `examples/paid-repair.mjs`.
+
 ## Command line
 
 ```bash
