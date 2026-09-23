@@ -48,7 +48,11 @@ export async function POST(request: Request) {
     const allowed = Promise.all([globalLimit(request, "repair", 60), globalLimit(request, "repair-all", 1200, "everyone")]).then(
       (v) => v.find((x) => !x.ok) ?? { ok: true as const },
     );
-    const result = await repair({ signature: signature ?? undefined, transaction: body.transaction });
+    // Vercel stops the function at maxDuration. Answer before that with something a client can act on.
+    const result = await Promise.race([
+      repair({ signature: signature ?? undefined, transaction: body.transaction }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new RpcError("upstream did not answer in time")), 26_000)),
+    ]);
     const verdict = await allowed;
     if (!verdict.ok) return tooManyRequests(verdict.retryAfterSeconds, CORS);
     const client = request.headers.get("x-txwhy-client");

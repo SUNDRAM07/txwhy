@@ -56,7 +56,10 @@ async function handler(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: "That does not look like a transaction signature or explorer link." }, { status: 400, headers: CORS });
   }
   try {
-    const result = await repair({ signature: signature ?? undefined, transaction: body.transaction });
+    const result = await Promise.race([
+      repair({ signature: signature ?? undefined, transaction: body.transaction }),
+      new Promise<never>((_, reject) => setTimeout(() => reject(new RpcError("upstream did not answer in time")), 26_000)),
+    ]);
     if (request.headers.get("x-txwhy-client") !== "test") {
       after(() => track({ kind: "repair", channel: "x402", status: result.status, errorTitle: result.cause?.title }));
     }

@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
-    "@solana/web3.js": "^1.98.4",
+    "@solana/web3.js": "^1.99.0",
     "@x402/core": "^2.26.0",
     "@x402/next": "^2.26.0",
     "@x402/svm": "^2.26.0",

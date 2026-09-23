@@ -51,3 +51,5 @@ conversation-*.txt
 # SDK build output
 sdk/dist/
 sdk/LICENSE
+
+.env*

@@ -1,6 +1,7 @@
 import {
   AddressLookupTableAccount,
   ComputeBudgetProgram,
+  NonceAccount,
   PublicKey,
   TransactionInstruction,
   TransactionMessage,
@@ -91,6 +92,25 @@ async function decodeSimError(err: unknown, logs: string[]): Promise<DecodedErro
   return decodeTransactionError(err, programId, logs, idlErrors);
 }
 
+const SYSTEM_PROGRAM_ID = "11111111111111111111111111111111";
+
+/**
+ * A durable-nonce transaction starts with SystemProgram.AdvanceNonceAccount and carries the
+ * nonce value where the blockhash would be. Such a transaction never expires, and it must keep
+ * the nonce account's CURRENT value: a fresh blockhash would make it invalid.
+ */
+async function durableNonce(instructions: TransactionInstruction[]): Promise<{ account: string; current: string } | null> {
+  const first = instructions[0];
+  if (!first || first.programId.toBase58() !== SYSTEM_PROGRAM_ID) return null;
+  const data = Buffer.from(first.data);
+  if (data.length < 4 || data.readUInt32LE(0) !== 4 || first.keys.length < 1) return null;
+  const account = first.keys[0].pubkey.toBase58();
+  const { value } = await rpc<{ value: { data: [string, string] } | null }>("getAccountInfo", [account, { encoding: "base64", commitment: "confirmed" }]);
+  if (!value) throw new RepairInputError(`Nonce account ${account} does not exist, so this durable-nonce transaction cannot be sent.`);
+  const nonce = NonceAccount.fromAccountData(Buffer.from(value.data[0], "base64"));
+  return { account, current: nonce.nonce };
+}
+
 async function simulate(tx: VersionedTransaction): Promise<SimValue> {
   const encoded = Buffer.from(tx.serialize()).toString("base64");
   const { value } = await rpc<{ value: SimValue }>("simulateTransaction", [
@@ -165,6 +185,16 @@ interface BudgetInfo {
   /** Compute-budget instructions we keep untouched (heap frame, loaded-data size). */
   kept: TransactionInstruction[];
   rest: TransactionInstruction[];
+}
+
+/** Durable-nonce transactions must keep AdvanceNonceAccount as instruction 0, so budget instructions go right after it. */
+function isAdvanceNonce(ix: TransactionInstruction | undefined): boolean {
+  if (!ix || ix.programId.toBase58() !== SYSTEM_PROGRAM_ID) return false;
+  const data = Buffer.from(ix.data);
+  return data.length >= 4 && data.readUInt32LE(0) === 4;
+}
+function withBudget(budgetIxs: TransactionInstruction[], rest: TransactionInstruction[]): TransactionInstruction[] {
+  return isAdvanceNonce(rest[0]) ? [rest[0], ...budgetIxs, ...rest.slice(1)] : [...budgetIxs, ...rest];
 }
 
 function splitComputeBudget(instructions: TransactionInstruction[]): BudgetInfo {
@@ -293,7 +323,7 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
     return {
       status: "not_repairable",
       summary:
-        "Diagnosed, but not rebuilt: this is a version 1 transaction, a format the rebuild path does not support yet.",
+        "Diagnosed, but not rebuilt: this is a version 1 transaction (SIMD-0385, live on mainnet since Sep 15, 2026). Its compute settings live in the header rather than in instructions, and the rebuild path for that format is in progress.",
       cause: onchain?.error ?? null,
       changes: [],
       repairedTransaction: null,
@@ -314,10 +344,26 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
 
   // 1. Was the submitted blockhash still usable?
   const originalBlockhash = decompiled.recentBlockhash;
-  const [{ value: blockhashValid }, { value: latest }] = await Promise.all([
+  const [{ value: blockhashValid }, { value: fresh }, nonce] = await Promise.all([
     rpc<{ value: boolean }>("isBlockhashValid", [originalBlockhash, { commitment: "confirmed" }]),
     rpc<{ value: { blockhash: string } }>("getLatestBlockhash", [{ commitment: "confirmed" }]),
+    durableNonce(decompiled.instructions),
   ]);
+  // For a durable-nonce transaction the "blockhash" slot must hold the nonce account's current value.
+  const latest = nonce ? { blockhash: nonce.current } : fresh;
+  if (nonce) {
+    if (nonce.current !== originalBlockhash) {
+      notes.push(`Durable-nonce transaction: nonce account ${nonce.account} has advanced since this was built, so the current value is used in place of the original.`);
+      changes.push({
+        type: "blockhash",
+        before: originalBlockhash,
+        after: nonce.current,
+        reason: `Durable nonce: the nonce account ${nonce.account} has advanced since this transaction was built, so the transaction carries its current value.`,
+      });
+    } else {
+      notes.push(`Durable-nonce transaction (nonce account ${nonce.account}). It does not expire, and the nonce value was kept.`);
+    }
+  }
 
   // 2. Simulate the transaction AS SUBMITTED (only the blockhash refreshed, otherwise
   //    an expired blockhash would mask every other problem).
@@ -326,7 +372,7 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
   const probe = build(
     decompiled.payerKey,
     latest.blockhash,
-    [ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept, ...budget.rest],
+    withBudget([ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept], budget.rest),
     tables,
     legacy,
   );
@@ -339,7 +385,7 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
       after: latest.blockhash,
       reason: "The original transaction already landed and failed. Resending it requires a new blockhash.",
     });
-  } else if (!blockhashValid) {
+  } else if (!blockhashValid && !nonce) {
     const expired: DecodedError = {
       title: "Blockhash expired",
       code: "BlockhashNotFound",
@@ -380,7 +426,7 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
       build(
         decompiled.payerKey,
         latest.blockhash,
-        [ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept, ...budget.rest],
+        withBudget([ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept], budget.rest),
         tables,
         legacy,
       ),
@@ -412,7 +458,7 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
           const reprobe = build(
             decompiled.payerKey,
             latest.blockhash,
-            [ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept, ...requote.instructions],
+            withBudget([ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept], requote.instructions),
             mergedTables,
             legacy && !needsV0,
           );
@@ -425,7 +471,7 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
               build(
                 decompiled.payerKey,
                 latest.blockhash,
-                [ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept, ...requote.instructions],
+                withBudget([ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept], requote.instructions),
                 mergedTables,
                 legacy && !needsV0,
               ),
@@ -537,23 +583,23 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
   }
 
   // 6. Build the final transaction and prove it.
-  let finalInstructions = [
-    ComputeBudgetProgram.setComputeUnitLimit({ units: limit }),
-    ComputeBudgetProgram.setComputeUnitPrice({ microLamports: fee }),
-    ...budget.kept,
-    ...budget.rest,
-  ];
+  let finalInstructions = withBudget(
+    [ComputeBudgetProgram.setComputeUnitLimit({ units: limit }), ComputeBudgetProgram.setComputeUnitPrice({ microLamports: fee }), ...budget.kept],
+    budget.rest,
+  );
   const finalTx = build(decompiled.payerKey, latest.blockhash, finalInstructions, tables, legacy);
   let finalSim = await simulate(finalTx);
   let returned = finalTx;
   if (finalSim.err != null && fee !== currentFee) {
     // The raised fee may be more than the wallet can spare. Fall back to the fee it came with.
-    const fallbackInstructions = [
-      ComputeBudgetProgram.setComputeUnitLimit({ units: limit }),
-      ...(currentFee > 0 ? [ComputeBudgetProgram.setComputeUnitPrice({ microLamports: currentFee })] : []),
-      ...budget.kept,
-      ...budget.rest,
-    ];
+    const fallbackInstructions = withBudget(
+      [
+        ComputeBudgetProgram.setComputeUnitLimit({ units: limit }),
+        ...(currentFee > 0 ? [ComputeBudgetProgram.setComputeUnitPrice({ microLamports: currentFee })] : []),
+        ...budget.kept,
+      ],
+      budget.rest,
+    );
     const fallback = build(decompiled.payerKey, latest.blockhash, fallbackInstructions, tables, legacy);
     const fallbackSim = await simulate(fallback);
     if (fallbackSim.err == null) {

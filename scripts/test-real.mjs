@@ -1,3 +1,4 @@
+import "./_env.mjs";
 // Pull recent FAILED transactions from mainnet for busy programs and run them through the repair API.
 const RPC = process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com";
 const API = process.env.API ?? "http://localhost:3111/api/v1/repair";
