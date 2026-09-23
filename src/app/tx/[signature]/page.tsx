@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { after } from "next/server";
 import { SiteHeader } from "@/components/SiteHeader";
 import { RepairPanel } from "@/components/RepairPanel";
+import Link from "next/link";
+import { findError } from "@/lib/catalog";
 import { track } from "@/lib/stats";
 import { getTrace } from "@/lib/trace";
 import type { TraceNode } from "@/lib/types";
@@ -30,6 +32,21 @@ export async function generateMetadata({
     /* fall through to the generic title */
   }
   return { title: `Transaction ${short} | TxWhy` };
+}
+
+/** The innermost call that failed: CPI failures propagate outward, so the deepest failed node raised the error. */
+function innermostFailed(nodes: TraceNode[]): TraceNode | null {
+  for (const n of nodes) {
+    if (!n.failed) continue;
+    return innermostFailed(n.children) ?? n;
+  }
+  return null;
+}
+
+/** The numeric custom code out of a label like "Custom(6001) — 0x1771". */
+function customCode(label: string | undefined): number | null {
+  const m = label?.match(/Custom\((\d+)\)/);
+  return m ? Number(m[1]) : null;
 }
 
 function Node({ node }: { node: TraceNode }) {
@@ -148,6 +165,20 @@ export default async function TxPage({
                 </span>
                 {trace.error.fix}
               </p>
+              {(() => {
+                const code = customCode(trace.error.code);
+                const hit = code == null ? undefined : findError(innermostFailed(trace.tree)?.programId, code);
+                return hit ? (
+                  <p className="mt-3 text-sm">
+                    <Link
+                      href={`/errors/${hit.program.slug}/${hit.error.code}`}
+                      className="text-emerald-600 hover:underline dark:text-emerald-400"
+                    >
+                      About {hit.program.name} error {hit.error.code} ({hit.error.hex}) →
+                    </Link>
+                  </p>
+                ) : null;
+              })()}
             </div>
           )}
 

@@ -137,3 +137,15 @@ export function sameCodeElsewhere(code: number, exceptSlug: string): { program: 
 }
 
 export const catalogSize = () => CATALOG.reduce((sum, p) => sum + p.errors.length, 0);
+
+const BY_ADDRESS = new Map(CATALOG.filter((p) => p.address).map((p) => [p.address as string, p]));
+
+/** The catalog page for a program address and numeric code, when we have one. Anchor-range codes fall back to the framework table. */
+export function findError(address: string | null | undefined, code: number): { program: CatalogProgram; error: CatalogError } | undefined {
+  const program = address ? BY_ADDRESS.get(address) : undefined;
+  const own = program?.errors.find((e) => e.code === code);
+  if (program && own) return { program, error: own };
+  const anchor = BY_SLUG.get("anchor");
+  const framework = anchor?.errors.find((e) => e.code === code);
+  return anchor && framework ? { program: anchor, error: framework } : undefined;
+}
