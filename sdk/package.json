@@ -38,7 +38,7 @@
     }
   },
   "bin": {
-    "txwhy": "./bin/txwhy.mjs"
+    "txwhy": "bin/txwhy.mjs"
   },
   "files": [
     "dist",
