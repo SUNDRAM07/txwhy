@@ -20,6 +20,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Worth retrying: rate limits, upstream hiccups, and node-behind errors. Never retry a request the node understood and rejected. */
 const transientStatus = (status: number) => status === 429 || status >= 500;
 const transientRpcCode = (code: number) => code === -32005 || code === -32004 || code === -32014 || code === -32016;
+/** Some nodes report a warming-up or overloaded state with an ordinary code but a telling message. */
+const transientMessage = (message: string) => /not ready|behind|overloaded|unhealthy|timed? ?out|try again|too many requests/i.test(message);
 
 async function once<T>(url: string, method: string, params: unknown[]): Promise<T> {
   const res = await fetch(url, {
@@ -53,7 +55,8 @@ export async function rpc<T>(method: string, params: unknown[]): Promise<T> {
       last = e;
       const retryable =
         !(e instanceof RpcError) || // network failure or timeout
-        (e.code !== undefined && (transientStatus(e.code) || transientRpcCode(e.code)));
+        (e.code !== undefined && (transientStatus(e.code) || transientRpcCode(e.code))) ||
+        transientMessage(e.message);
       if (!retryable || attempt === plan.length - 1) break;
       await sleep(150 * (attempt + 1));
     }
