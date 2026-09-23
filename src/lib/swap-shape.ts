@@ -77,3 +77,79 @@ export function readSwapShape(ix: TransactionInstruction) {
     receiver: layout.destinations.map(at).filter((a) => a && a !== JUPITER_V6).pop() ?? "",
   };
 }
+
+/* ---------------------------------------------------------------------------------------------
+ * Direct DEX swaps: Pump.fun bonding curve and PumpSwap AMM. Unlike Jupiter, these carry no
+ * slippage tolerance: only an absolute limit (max cost for a buy, min output for a sell).
+ * A repair keeps the fixed amount and every account, and moves only the limit.
+ * ------------------------------------------------------------------------------------------- */
+
+export const PUMP_FUN = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
+export const PUMP_SWAP = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
+
+export interface DirectLayout {
+  program: "Pump.fun" | "PumpSwap";
+  name: string;
+  /** What the fixed argument is: tokens the user wants (buy), quote/SOL the user spends (buy_exact), tokens the user sells (sell). */
+  fixed: "tokens_out" | "quote_in" | "tokens_in";
+  /** What the limit argument is: a maximum the user pays, or a minimum the user receives. */
+  limit: "max_in" | "min_out";
+}
+
+/** Discriminators from the programs' on-chain IDLs (Sep 2026). Both args are u64 at bytes 8 and 16. */
+export const DIRECT_LAYOUTS: Record<string, Record<string, DirectLayout>> = {
+  [PUMP_FUN]: {
+    "66063d1201daebea": { program: "Pump.fun", name: "buy", fixed: "tokens_out", limit: "max_in" },
+    b817ee6167c5d33d: { program: "Pump.fun", name: "buy_v2", fixed: "tokens_out", limit: "max_in" },
+    "38fc74089edfcd5f": { program: "Pump.fun", name: "buy_exact_sol_in", fixed: "quote_in", limit: "min_out" },
+    c2ab1c46684d5b2f: { program: "Pump.fun", name: "buy_exact_quote_in_v2", fixed: "quote_in", limit: "min_out" },
+    "33e685a4017f83ad": { program: "Pump.fun", name: "sell", fixed: "tokens_in", limit: "min_out" },
+    "5df6823ce7e940b2": { program: "Pump.fun", name: "sell_v2", fixed: "tokens_in", limit: "min_out" },
+  },
+  [PUMP_SWAP]: {
+    "66063d1201daebea": { program: "PumpSwap", name: "buy", fixed: "tokens_out", limit: "max_in" },
+    c62e1552b4d9e870: { program: "PumpSwap", name: "buy_exact_quote_in", fixed: "quote_in", limit: "min_out" },
+    "33e685a4017f83ad": { program: "PumpSwap", name: "sell", fixed: "tokens_in", limit: "min_out" },
+  },
+};
+
+/** A repaired limit may never be worse for the user than this factor of the original. */
+export const DIRECT_LIMIT_CAP_BPS = 2_500;
+
+export function readDirectSwapShape(ix: TransactionInstruction) {
+  const layouts = DIRECT_LAYOUTS[ix.programId.toBase58()];
+  if (!layouts || ix.data.length < 24) return null;
+  const data = Buffer.from(ix.data);
+  const layout = layouts[data.subarray(0, 8).toString("hex")];
+  if (!layout) return null;
+  return {
+    ...layout,
+    discriminator: data.subarray(0, 8).toString("hex"),
+    amount: data.readBigUInt64LE(8),
+    limitValue: data.readBigUInt64LE(16),
+    accounts: ix.keys.map((k) => `${k.pubkey.toBase58()}:${k.isSigner ? "s" : ""}${k.isWritable ? "w" : ""}`),
+    /** Everything after the two u64 args (flags such as track_volume) must stay byte for byte. */
+    tail: data.subarray(24).toString("hex"),
+  };
+}
+
+/**
+ * True when `after` is the same direct swap as `before` with only the limit moved, and moved no
+ * further against the user than the cap allows.
+ */
+export function isAllowedDirectLimitChange(before: ReturnType<typeof readDirectSwapShape>, after: ReturnType<typeof readDirectSwapShape>): { ok: boolean; reason?: string } {
+  if (!before || !after) return { ok: false, reason: "not a recognised direct swap" };
+  if (before.discriminator !== after.discriminator || before.program !== after.program) return { ok: false, reason: "the instruction kind" };
+  if (before.amount !== after.amount) return { ok: false, reason: "the amount" };
+  if (before.tail !== after.tail) return { ok: false, reason: "the instruction flags" };
+  if (before.accounts.length !== after.accounts.length || before.accounts.some((a, i) => a !== after.accounts[i])) return { ok: false, reason: "the accounts" };
+  const cap = BigInt(DIRECT_LIMIT_CAP_BPS);
+  if (before.limit === "max_in") {
+    const worst = before.limitValue + (before.limitValue * cap) / BigInt(10_000);
+    if (after.limitValue > worst) return { ok: false, reason: `the maximum cost, by more than ${DIRECT_LIMIT_CAP_BPS / 100}%` };
+  } else {
+    const worst = before.limitValue - (before.limitValue * cap) / BigInt(10_000);
+    if (after.limitValue < worst) return { ok: false, reason: `the minimum received, by more than ${DIRECT_LIMIT_CAP_BPS / 100}%` };
+  }
+  return { ok: true };
+}

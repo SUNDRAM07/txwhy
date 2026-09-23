@@ -1,6 +1,8 @@
 import { PublicKey, TransactionInstruction } from "@solana/web3.js";
 import { rpc } from "./rpc";
 import { JUPITER_V6, LAYOUTS, readAmounts, readSwapShape, type Mode } from "./swap-shape";
+import { findDirectSwap, requoteDirect } from "./requote-pump";
+import { PUMP_FUN, PUMP_SWAP, readDirectSwapShape } from "./swap-shape";
 
 export { readSwapShape };
 
@@ -252,3 +254,30 @@ export async function requoteJupiter(instructions: TransactionInstruction[]): Pr
     notes,
   };
 }
+
+/**
+ * Re-quote whichever swap the transaction carries: a Jupiter route gets a fresh quote and
+ * route; a direct Pump.fun or PumpSwap swap gets only its limit moved to the current price.
+ */
+export async function requoteSwap(instructions: TransactionInstruction[]): Promise<RequoteOutcome & { program?: string; fits?: boolean }> {
+  const hasJupiter = instructions.some((ix) => ix.programId.toBase58() === JUPITER_V6);
+  if (hasJupiter) return requoteJupiter(instructions);
+  if (findDirectSwap(instructions)) {
+    const direct = await requoteDirect(instructions);
+    if (!direct.ok) return { ok: false, reason: direct.reason, final: direct.final, fits: direct.fits };
+    return {
+      ok: true,
+      instructions: direct.instructions,
+      lookupTables: [],
+      intent: { instruction: direct.program, mode: "ExactIn", user: "", inputMint: "", outputMint: "", amount: BigInt(0), quotedOther: BigInt(0), slippageBps: DIRECT_TOLERANCE_BPS_HINT },
+      before: direct.before,
+      after: direct.after,
+      notes: direct.notes,
+      program: direct.program,
+    };
+  }
+  const pumpUnknown = instructions.some((ix) => !readDirectSwapShape(ix) && [PUMP_FUN, PUMP_SWAP].includes(ix.programId.toBase58()));
+  return { ok: false, reason: pumpUnknown ? "The Pump swap here uses an instruction TxWhy does not recognise." : "No swap found that TxWhy can re-quote at the top level (Jupiter v6, Pump.fun and PumpSwap). A swap executed inside another program by CPI cannot have its limit moved from outside." };
+}
+const DIRECT_TOLERANCE_BPS_HINT = 100;
+

@@ -10,6 +10,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
+    "@pump-fun/pump-sdk": "^2.0.0",
+    "@pump-fun/pump-swap-sdk": "^1.20.0",
     "@solana/kit": "^8.3.0",
     "@solana/web3.js": "^1.99.0",
     "@x402/core": "^2.26.0",
@@ -25,6 +27,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/bn.js": "^5.2.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

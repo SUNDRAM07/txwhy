@@ -9,7 +9,7 @@ import {
 } from "@solana/web3.js";
 import { decodeTransactionError } from "./errors";
 import { fetchIdlErrors } from "./idl";
-import { requoteJupiter } from "./requote";
+import { requoteSwap } from "./requote";
 import { RpcError, rpc } from "./rpc";
 import { getTrace } from "./trace";
 import { V1_MAX_BYTES, decodeV1, inlineAddressCount, rebuildV1 } from "./v1";
@@ -281,7 +281,7 @@ const isLoadedDataLimit = (ix: TransactionInstruction) =>
   ix.programId.toBase58() === COMPUTE_BUDGET_ID && ix.data[0] === 4;
 const hitLoadedDataLimit = (err: unknown) => JSON.stringify(err ?? "").includes("MaxLoadedAccountsDataSizeExceeded");
 
-const SLIPPAGE_PATTERN = /slippage|SlippageToleranceExceeded|ExceededSlippage|TooLittleOutput|price impact/i;
+const SLIPPAGE_PATTERN = /slippage|SlippageToleranceExceeded|ExceededSlippage|TooLittleOutput|TooMuchSol|TooLittleSol|BelowMin|price impact/i;
 
 function classifyUnrepairable(
   cause: DecodedError,
@@ -512,8 +512,9 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
     // A landed swap that failed on slippage needs a fresh quote whatever its stale route does today.
     const failedOnSlippage = onchain?.error != null && SLIPPAGE_PATTERN.test(`${onchain.error.title} ${onchain.error.code ?? ""}`);
     const wantsRequote = verdict.status === "needs_requote" || failedOnSlippage;
+    let notSlippage = false;
     if (wantsRequote) {
-      const requote = await requoteJupiter(budget.rest);
+      const requote = await requoteSwap(budget.rest);
       if (requote.ok) {
         try {
           const extra = await loadTablesByAddress(requote.lookupTables.filter((a) => !tables.some((t) => t.key.toBase58() === a)));
@@ -553,8 +554,9 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
               type: "swap_quote",
               before: requote.before,
               after: requote.after,
-              reason:
-                "The price moved past the tolerance in the original swap, so that one instruction was rebuilt from a current quote.",
+              reason: requote.program
+                ? `The price moved past the limit in the original ${requote.program} swap, so only that limit was moved to the current price.`
+                : "The price moved past the tolerance in the original swap, so that one instruction was rebuilt from a current quote.",
             });
             notes.push(...requote.notes, "Quotes go stale within seconds. Sign and send immediately.");
           } else {
@@ -570,6 +572,7 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
         finalVerdict = requote.reason;
       } else {
         notes.push(requote.reason);
+        if (requote.fits) notSlippage = true;
       }
     }
 
@@ -591,9 +594,9 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
       };
     }
     if (!requoted) return {
-      status: wantsRequote ? "needs_requote" : verdict.status,
+      status: wantsRequote && !notSlippage ? "needs_requote" : verdict.status === "needs_requote" ? "not_repairable" : verdict.status,
       summary:
-        wantsRequote
+        wantsRequote && !notSlippage
           ? "This transaction fails on slippage and needs a fresh quote. A blockhash or fee change cannot fix it."
           : "This transaction fails for a reason that cannot be fixed by rebuilding it.",
       cause: landed ? (onchain?.error ?? verdict.cause ?? probeCause) : (verdict.cause ?? probeCause),
@@ -828,8 +831,9 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
     }
     const failedOnSlippage = onchain?.error != null && SLIPPAGE_PATTERN.test(`${onchain.error.title} ${onchain.error.code ?? ""}`);
     const wantsRequote = verdict.status === "needs_requote" || failedOnSlippage;
+    let notSlippage = false;
     if (wantsRequote) {
-      const requote = await requoteJupiter(decoded.instructions);
+      const requote = await requoteSwap(decoded.instructions);
       if (requote.ok) {
         const inline = inlineAddressCount(decoded.payerKey, requote.instructions);
         if (inline > 64) {
@@ -843,7 +847,7 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
               probeSim = reprobeSim;
               requoted = true;
               cause = cause ?? verdict.cause ?? probeCause;
-              changes.push({ type: "swap_quote", before: requote.before, after: requote.after, reason: "The price moved past the tolerance in the original swap, so that one instruction was rebuilt from a current quote." });
+              changes.push({ type: "swap_quote", before: requote.before, after: requote.after, reason: requote.program ? `The price moved past the limit in the original ${requote.program} swap, so only that limit was moved to the current price.` : "The price moved past the tolerance in the original swap, so that one instruction was rebuilt from a current quote." });
               notes.push(...requote.notes, "Quotes go stale within seconds. Sign and send immediately.");
             } else {
               const again = await decodeSimError(reprobeSim.err, reprobeSim.logs ?? []);
@@ -857,13 +861,15 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
         finalVerdict = requote.reason;
       } else {
         notes.push(requote.reason);
+        if (requote.fits) notSlippage = true;
       }
     }
     if (!requoted) {
       const base = landed ? (onchain?.error ?? verdict.cause ?? probeCause) : (verdict.cause ?? probeCause);
+      const slippageNow = wantsRequote && !notSlippage;
       return {
-        status: finalVerdict ? "not_repairable" : wantsRequote ? "needs_requote" : verdict.status,
-        summary: finalVerdict ?? (wantsRequote ? "This transaction fails on slippage and needs a fresh quote. A blockhash or fee change cannot fix it." : "This transaction fails for a reason that cannot be fixed by rebuilding it."),
+        status: finalVerdict ? "not_repairable" : slippageNow ? "needs_requote" : verdict.status === "needs_requote" ? "not_repairable" : verdict.status,
+        summary: finalVerdict ?? (slippageNow ? "This transaction fails on slippage and needs a fresh quote. A blockhash or fee change cannot fix it." : "This transaction fails for a reason that cannot be fixed by rebuilding it."),
         cause: finalVerdict && base ? { ...base, fix: "Nothing to fix. This transaction did what it was designed to do when the opportunity was gone." } : base,
         changes: [],
         repairedTransaction: null,

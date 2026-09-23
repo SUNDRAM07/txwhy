@@ -46,6 +46,30 @@ const ataCreate = new TransactionInstruction({ programId: ATA, keys: [{ pubkey: 
 const limit = (units: number) => ComputeBudgetProgram.setComputeUnitLimit({ units });
 const price = (microLamports: number) => ComputeBudgetProgram.setComputeUnitPrice({ microLamports });
 
+const PUMPSWAP = new PublicKey("pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA");
+/** A PumpSwap buy: discriminator, base_amount_out u64, max_quote_amount_in u64, track_volume flag. */
+function pumpBuy(opts: { amount?: bigint; max?: bigint; user?: PublicKey; tail?: number }) {
+  const data = Buffer.alloc(8 + 8 + 8 + 2);
+  Buffer.from("66063d1201daebea", "hex").copy(data, 0);
+  data.writeBigUInt64LE(opts.amount ?? BigInt(1_000_000), 8);
+  data.writeBigUInt64LE(opts.max ?? BigInt(100_000), 16);
+  data.writeUInt16LE(opts.tail ?? 1, 24);
+  const k = (pubkey: PublicKey, isSigner = false) => ({ pubkey, isSigner, isWritable: true });
+  return new TransactionInstruction({ programId: PUMPSWAP, keys: [k(dest), k(opts.user ?? payer, true), k(other), k(SOL), k(USDC)], data });
+}
+const pumpOriginal = [limit(100), pumpBuy({}), memo];
+/** Direct (PumpSwap) swaps: only the limit may move, and only within the cap. */
+const directCases: [string, TransactionInstruction[], boolean][] = [
+  ["pump buy: max cost raised 10%", [limit(180_000), pumpBuy({ max: BigInt(110_000) }), memo], true],
+  ["pump buy: max cost lowered (better for the user)", [limit(180_000), pumpBuy({ max: BigInt(90_000) }), memo], true],
+  ["pump buy: max cost raised exactly to the 25% cap", [limit(180_000), pumpBuy({ max: BigInt(125_000) }), memo], true],
+  ["ATTACK: pump buy max cost raised 26%", [limit(180_000), pumpBuy({ max: BigInt(126_000) }), memo], false],
+  ["ATTACK: pump buy amount changed", [limit(180_000), pumpBuy({ amount: BigInt(2_000_000), max: BigInt(110_000) }), memo], false],
+  ["ATTACK: pump buy for a different wallet", [limit(180_000), pumpBuy({ user: thief, max: BigInt(110_000) }), memo], false],
+  ["ATTACK: pump buy flags changed", [limit(180_000), pumpBuy({ max: BigInt(110_000), tail: 0 }), memo], false],
+  ["ATTACK: pump buy memo dropped", [limit(180_000), pumpBuy({ max: BigInt(110_000) })], false],
+];
+
 const original = [limit(100), swap({}), feeTransfer, memo];
 
 const cases: [string, TransactionInstruction[], PublicKey, boolean][] = [
@@ -79,5 +103,12 @@ for (const [name, repaired, repairedPayer, expectOk] of cases) {
   if (ok) pass++;
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}\n      -> ${v.ok ? `accepted (${v.kept} kept, ${v.changes.length} declared changes)` : `refused: ${v.violations[0]}`}`);
 }
-console.log(`\n${pass}/${cases.length} passed`);
-process.exit(pass === cases.length ? 0 : 1);
+for (const [name, repaired, expectOk] of directCases) {
+  const v = verifyInstructions({ payer, instructions: pumpOriginal }, { payer, instructions: repaired });
+  const ok = v.ok === expectOk;
+  if (ok) pass++;
+  console.log(`${ok ? "PASS" : "FAIL"}  ${name}\n      -> ${v.ok ? `accepted (${v.kept} kept, ${v.changes.map((c) => c.kind).join(",")})` : `refused: ${v.violations[0]}`}`);
+}
+const total = cases.length + directCases.length;
+console.log(`\n${pass}/${total} passed`);
+process.exit(pass === total ? 0 : 1);

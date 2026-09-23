@@ -1,5 +1,5 @@
 import type { PublicKey, TransactionInstruction } from "@solana/web3.js";
-import { readSwapShape } from "./swap-shape";
+import { DIRECT_LAYOUTS, isAllowedDirectLimitChange, readDirectSwapShape, readSwapShape } from "./swap-shape";
 
 /**
  * Verify a repair without trusting the service that made it.
@@ -10,7 +10,9 @@ import { readSwapShape } from "./swap-shape";
  *      SAME user, SAME source and destination token accounts, SAME output token, SAME amount
  *      and SAME slippage tolerance, optionally
  *      preceded by idempotent token-account creation.
- *   3. The recent blockhash (not an instruction, so not checked here).
+ *   3. One Pump.fun or PumpSwap swap may have ONLY its limit (max cost / min output) moved, by at
+ *      most 25% against the user; amount, accounts and flags identical.
+ *   4. The recent blockhash (not an instruction, so not checked here).
  *
  * Everything else must be identical and in the same order: same fee payer, same set of
  * signers, and every other instruction byte for byte. This file has no network access and
@@ -23,7 +25,7 @@ const ATA_PROGRAM = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 const JUPITER_V6 = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
 
 export interface InstructionChange {
-  kind: "kept" | "compute_budget" | "swap_replaced" | "token_account_setup";
+  kind: "kept" | "compute_budget" | "swap_replaced" | "token_account_setup" | "swap_limit_moved";
   program: string;
   detail: string;
 }
@@ -136,6 +138,24 @@ export function verifyInstructions(
       });
       i++;
       j = k + 1;
+      continue;
+    }
+    if (DIRECT_LAYOUTS[id(a[i].programId)] && id(b[j].programId) === id(a[i].programId)) {
+      // Allowed: the same Pump.fun / PumpSwap swap with only its limit moved, within the cap.
+      const was = readDirectSwapShape(a[i]);
+      const now = readDirectSwapShape(b[j]);
+      const verdict = isAllowedDirectLimitChange(was, now);
+      if (!verdict.ok || !was || !now) {
+        violations.push(`The replacement ${was?.program ?? "swap"} instruction changes ${verdict.reason ?? "the swap"}.`);
+        break;
+      }
+      changes.push({
+        kind: "swap_limit_moved",
+        program: was.program,
+        detail: `same ${was.name}, same amount and accounts; ${was.limit === "max_in" ? "maximum cost" : "minimum received"} ${was.limitValue} -> ${now.limitValue}`,
+      });
+      i++;
+      j++;
       continue;
     }
     violations.push(`Instruction ${i + 1} (program ${id(a[i].programId)}) is not the same in the repaired transaction.`);
