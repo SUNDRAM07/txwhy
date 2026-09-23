@@ -9,6 +9,7 @@ import {
 import { rateLimit, tooManyRequests } from "@/lib/ratelimit";
 import { rpc } from "@/lib/rpc";
 import { buildV1 } from "@/lib/v1";
+import { buildStalePumpSwapBuy } from "@/lib/pump-demo";
 
 /**
  * GET /api/v1/example?kind=compute|blockhash|slippage
@@ -91,6 +92,14 @@ export async function GET(request: Request) {
     const { value } = await rpc<{ value: { blockhash: string } }>("getLatestBlockhash", [
       { commitment: "confirmed" },
     ]);
+    if (kind === "pump") {
+      const { instructions, description } = await buildStalePumpSwapBuy(DEMO_PAYER);
+      return Response.json({
+        kind,
+        description,
+        transaction: encode(value.blockhash, [ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), ...instructions]),
+      });
+    }
     if (kind === "v1") {
       // A version 1 transaction (SIMD-0385): compute settings live in the header. This one has a
       // limit far too low and no loaded-data limit, which in v1 means zero bytes.
