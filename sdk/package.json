@@ -55,5 +55,11 @@
   },
   "scripts": {
     "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "@solana/kit": "^5.5.1",
+    "@x402/fetch": "^2.26.0",
+    "@x402/svm": "^2.26.0",
+    "bs58": "^6.0.0"
   }
 }
