@@ -1,0 +1,14 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.SUNDRAM07/txwhy",
+  "title": "TxWhy",
+  "description": "Failed Solana transaction in, working transaction out. Exact cause, rebuilt tx, verifiable repair.",
+  "version": "0.2.0",
+  "websiteUrl": "https://txwhy.vercel.app",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://txwhy.vercel.app/api/mcp"
+    }
+  ]
+}

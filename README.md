@@ -49,6 +49,19 @@ A rebuilt transaction is only ever returned if it passes simulation. TxWhy will 
 
 ## Use it
 
+### npm, one line in your send loop
+
+```bash
+npm i @txwhy/sdk
+```
+
+```ts
+import { sendWithRepair } from "@txwhy/sdk";
+const { signature, repairs } = await sendWithRepair(connection, tx, (t) => wallet.signTransaction(t));
+```
+
+Simulates on your RPC; if it passes, sends and never contacts TxWhy. If it would fail: repair, verify the repair locally, sign, send. Also `repair()`, `verifyRepair()`, and `npx txwhy <signature>`. Package docs: [sdk/README.md](sdk/README.md).
+
 ### REST
 
 ```bash
@@ -73,7 +86,11 @@ Pass `{"signature": "..."}` instead for a transaction that already landed and fa
 }
 ```
 
-`status` is one of `repaired`, `valid`, `needs_requote`, `not_repairable`.
+`status` is one of `repaired`, `valid`, `needs_requote`, `not_repairable`. Whenever a transaction is returned, `verification` carries the instruction-level proof of what changed (see below).
+
+### Pay per repair (x402)
+
+`POST /api/x402/repair` is the same repair with no rate limit: $0.001 in USDC on Solana per call over [x402](https://x402.org), settled only after a successful answer, no account or API key. Example paying client: [sdk/examples/paid-repair.mjs](sdk/examples/paid-repair.mjs).
 
 ### MCP (any agent)
 
@@ -86,6 +103,14 @@ Tools: `repair_transaction`, `diagnose_transaction`, `explain_error`. Stateless 
 ### Telegram
 
 Message [@txwhy_bot](https://t.me/txwhy_bot) a signature, an explorer link, or a base64 transaction. In groups, use `/why <signature>` or reply to a message containing one with `/why`. `/demo` breaks a real swap and repairs it in the chat.
+
+### Error code reference
+
+[txwhy.vercel.app/errors](https://txwhy.vercel.app/errors): 1,934 published custom error codes across 40 programs, one page each, searchable by hex, decimal or name, generated from the same tables the decoder uses.
+
+## You never have to trust us
+
+A service that hands you a transaction to sign could hand you anything. So the rule for what a repair may change is code you can run yourself, with no network access: same fee payer, same set of signers, every non-ComputeBudget instruction byte for byte in the same order, and at most one Jupiter swap replaced by one for the same wallet, same source and receiving token accounts, same output token, same amount and same slippage tolerance. It lives in [src/lib/verify.ts](src/lib/verify.ts), ships in the npm package as `verifyRepair` / `@txwhy/sdk/verify`, and the server runs it on its own output and refuses to return anything that fails it. `scripts/test-verify.ts` attacks it fifteen ways (extra transfer, redirected fee, new signer, widened slippage, proceeds redirected, layout switch); all are refused.
 
 ## Run it locally
 
@@ -113,6 +138,8 @@ node scripts/test-repair.mjs      # 7 repair scenarios, including a swap on a st
 node scripts/test-real.mjs        # real failed transactions pulled from mainnet
 node scripts/test-slippage.mjs    # real slippage failures
 node scripts/measure-naming.mjs   # how many real failures get a named cause
+npx tsx scripts/test-verify.ts    # 21 verifier cases, 15 of them attacks; no network
+cd sdk && node test.mjs           # the npm package end to end against production
 ```
 
 ## What we learned from real data
@@ -141,7 +168,7 @@ Next.js (App Router) and TypeScript on Vercel, `@solana/web3.js`, Jupiter swap A
 Built for Colosseum's Crypto World's Fair hackathon (Sep 14 to Oct 12, 2026), Solana track.
 
 - **Before the hackathon window (Sep 1 to 2):** the transaction trace, the CPI tree, on-chain IDL decoding and a first error knowledge base. At that point TxWhy only explained failures.
-- **Inside the window (from Sep 19):** the entire repair engine, slippage re-quoting, simulation proofs, the bundled error tables, exact failure paths, the MCP server, the Telegram bot, rate limiting, usage counters, link previews and the current site.
+- **Inside the window (from Sep 19):** the entire repair engine, slippage re-quoting, simulation proofs, the verifier and its attack suite, the bundled error tables and the 1,934 error-code pages, exact failure paths, the MCP server, the Telegram bot, the npm package and CLI, x402 pay-per-repair, the mainnet failure index worker, rate limiting, usage counters, link previews and the current site.
 
 ## License
 

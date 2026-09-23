@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { extractSignature } from "@/lib/trace";
+import usedBy from "@/lib/data/used-by.json";
+
+/** Projects with TxWhy in their send loop. Edit src/lib/data/used-by.json; the section hides while empty. */
+const USED_BY = usedBy as { name: string; url: string; how: string; quote?: string }[];
 
 const EXAMPLES = [
   {
@@ -268,6 +272,30 @@ export default function Home() {
           <p className="mt-3 text-sm text-neutral-500">
             From a terminal: <code className="rounded bg-neutral-100 px-1.5 py-0.5 dark:bg-neutral-900">npx @txwhy/sdk &lt;signature&gt;</code>
           </p>
+        </section>
+      )}
+
+      {USED_BY.length > 0 && (
+        <section id="used-by" className="border-t border-neutral-200 py-12 dark:border-neutral-800">
+          <h2 className="text-xl font-bold tracking-tight">Used by</h2>
+          <p className="mt-3 leading-relaxed text-neutral-600 dark:text-neutral-400">
+            Projects that put TxWhy in their send loop, and what they said. Every one of them is counted on the{" "}
+            <Link href="/stats" className="text-emerald-600 hover:underline dark:text-emerald-400">
+              usage page
+            </Link>
+            .
+          </p>
+          <ul className="mt-5 grid gap-3 sm:grid-cols-2">
+            {USED_BY.map((u) => (
+              <li key={u.name} className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
+                <a href={u.url} target="_blank" rel="noreferrer" className="font-semibold hover:text-emerald-500">
+                  {u.name}
+                </a>
+                <span className="ml-2 text-xs text-neutral-500">{u.how}</span>
+                {u.quote && <p className="mt-2 text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">&ldquo;{u.quote}&rdquo;</p>}
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 
