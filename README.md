@@ -155,6 +155,10 @@ cd sdk && node test.mjs           # the npm package end to end against productio
 - Simulation proves the transaction executes now. It cannot guarantee inclusion if state changes before it lands.
 - Rate limits are per server instance until shared storage is attached.
 
+- **Version 1 transactions** (SIMD-0385, live on mainnet since Sep 15, 2026) are diagnosed exactly (on-chain record or live simulation of the raw bytes) but not yet rebuilt: their compute settings live in the header, and that rebuild path is in progress.
+- **Durable-nonce transactions** are supported: the nonce advance stays instruction 0 and the nonce account's current value is used; they are never reported as expired.
+- **Size limit:** a legacy or v0 transaction already at the 1,232-byte limit has no room for a fee or limit instruction. TxWhy then keeps the original setting and says so, rather than returning something no node would accept.
+
 ## Stack
 
 Next.js (App Router) and TypeScript on Vercel, `@solana/web3.js`, Jupiter swap API, `mcp-handler` for the MCP server, Upstash Redis for counters.

@@ -111,8 +111,21 @@ async function durableNonce(instructions: TransactionInstruction[]): Promise<{ a
   return { account, current: nonce.nonce };
 }
 
+/** Legacy and v0 transactions may not exceed this many serialized bytes; the RPC rejects larger ones outright. */
+const MAX_TX_BYTES = 1232;
+class TooLargeError extends Error {
+  constructor(public readonly bytes: number) {
+    super(`The rebuilt transaction would be ${bytes} bytes, above the ${MAX_TX_BYTES}-byte limit.`);
+  }
+}
+function assertFits(tx: VersionedTransaction): VersionedTransaction {
+  const bytes = tx.serialize().length;
+  if (bytes > MAX_TX_BYTES) throw new TooLargeError(bytes);
+  return tx;
+}
+
 async function simulate(tx: VersionedTransaction): Promise<SimValue> {
-  const encoded = Buffer.from(tx.serialize()).toString("base64");
+  const encoded = Buffer.from(assertFits(tx).serialize()).toString("base64");
   const { value } = await rpc<{ value: SimValue }>("simulateTransaction", [
     encoded,
     { encoding: "base64", sigVerify: false, replaceRecentBlockhash: false, commitment: "confirmed" },
@@ -165,18 +178,31 @@ async function fetchRawTransaction(signature: string): Promise<VersionedTransact
     );
   }
   try {
-    return VersionedTransaction.deserialize(Buffer.from(result.transaction[0], "base64"));
-  } catch {
+    return guardVersion(VersionedTransaction.deserialize(Buffer.from(result.transaction[0], "base64")));
+  } catch (e) {
+    if (e instanceof UnsupportedVersionError || e instanceof RepairInputError) throw e;
     throw new UnsupportedVersionError();
   }
 }
 
+/** web3.js 1.99 can read version 1 transactions, but nothing here can rebuild them yet. Legacy and v0 must also respect the size limit. */
+function guardVersion(tx: VersionedTransaction): VersionedTransaction {
+  if (tx.version === 1) throw new UnsupportedVersionError();
+  const bytes = tx.serialize().length;
+  if (bytes > MAX_TX_BYTES) {
+    throw new RepairInputError(`This transaction is ${bytes} bytes, above the ${MAX_TX_BYTES}-byte limit for legacy and version 0 transactions, so no node would accept it as is.`);
+  }
+  return tx;
+}
+
 function parseTransaction(base64: string): VersionedTransaction {
+  let tx: VersionedTransaction;
   try {
-    return VersionedTransaction.deserialize(Buffer.from(base64.trim(), "base64"));
+    tx = VersionedTransaction.deserialize(Buffer.from(base64.trim(), "base64"));
   } catch {
     throw new RepairInputError("Could not decode that as a base64 Solana transaction.");
   }
+  return guardVersion(tx);
 }
 
 interface BudgetInfo {
@@ -320,15 +346,32 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
       : await fetchRawTransaction(input.signature as string);
   } catch (e) {
     if (!(e instanceof UnsupportedVersionError)) throw e;
+    // Nodes simulate version 1 bytes as they are, so a v1 transaction still gets an exact diagnosis.
+    let v1Sim: SimValue | null = null;
+    if (input.transaction && !onchain) {
+      try {
+        v1Sim = (await rpc<{ value: SimValue }>("simulateTransaction", [input.transaction.trim(), { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed" }])).value;
+      } catch {
+        /* diagnosis stays generic */
+      }
+    }
+    const cause = onchain?.error ?? (v1Sim ? await decodeSimError(v1Sim.err, v1Sim.logs ?? []) : null);
+    const passes = v1Sim != null && v1Sim.err == null;
     return {
-      status: "not_repairable",
-      summary:
-        "Diagnosed, but not rebuilt: this is a version 1 transaction (SIMD-0385, live on mainnet since Sep 15, 2026). Its compute settings live in the header rather than in instructions, and the rebuild path for that format is in progress.",
-      cause: onchain?.error ?? null,
+      status: passes ? "valid" : "not_repairable",
+      summary: passes
+        ? "This version 1 transaction passes simulation as it is."
+        : "Diagnosed, but not rebuilt: this is a version 1 transaction (SIMD-0385, live on mainnet since Sep 15, 2026). Its compute settings live in the header rather than in instructions, and the rebuild path for that format is in progress.",
+      cause,
       changes: [],
       repairedTransaction: null,
-      simulation: { passed: false, unitsConsumed: null, error: onchain?.error ?? null, logsTail: (onchain?.logs ?? []).slice(-8) },
-      notes: ["Apply the fix above when you rebuild the transaction in your own client."],
+      simulation: {
+        passed: passes,
+        unitsConsumed: v1Sim?.unitsConsumed ?? null,
+        error: cause,
+        logsTail: (onchain?.logs ?? v1Sim?.logs ?? []).slice(-8),
+      },
+      notes: passes ? [] : ["Apply the fix above when you rebuild the transaction in your own client."],
     };
   }
   const landed = onchain != null;
@@ -376,7 +419,15 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
     tables,
     legacy,
   );
-  const [submittedSim, firstProbeSim] = await Promise.all([simulate(asSubmitted), simulate(probe)]);
+  const [submittedSim, probeResult] = await Promise.all([
+    simulate(asSubmitted),
+    simulate(probe).catch((e) => {
+      if (e instanceof TooLargeError) return null; // no room for a measuring instruction; fall back to the as-submitted run
+      throw e;
+    }),
+  ]);
+  const firstProbeSim = probeResult ?? submittedSim;
+  if (!probeResult) notes.push("This transaction is at the 1,232-byte size limit, so no compute-budget instruction could be added to measure its real usage. Its own settings were kept.");
   let cause = onchain?.error ?? (await decodeSimError(submittedSim.err, submittedSim.logs ?? []));
   if (landed) {
     changes.push({
@@ -587,7 +638,26 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
     [ComputeBudgetProgram.setComputeUnitLimit({ units: limit }), ComputeBudgetProgram.setComputeUnitPrice({ microLamports: fee }), ...budget.kept],
     budget.rest,
   );
-  const finalTx = build(decompiled.payerKey, latest.blockhash, finalInstructions, tables, legacy);
+  let finalTx = build(decompiled.payerKey, latest.blockhash, finalInstructions, tables, legacy);
+  const fits = (tx: VersionedTransaction) => tx.serialize().length <= MAX_TX_BYTES;
+  if (!fits(finalTx)) {
+    // A transaction built right up to the size limit has no room for a fee instruction. Keep its fee.
+    const i = changes.findIndex((c) => c.type === "priority_fee");
+    if (i >= 0) changes.splice(i, 1);
+    notes.push("There is no room left in this transaction for a priority-fee instruction (1,232-byte limit), so its fee was left as it was.");
+    finalInstructions = withBudget([ComputeBudgetProgram.setComputeUnitLimit({ units: limit }), ...budget.kept], budget.rest);
+    finalTx = build(decompiled.payerKey, latest.blockhash, finalInstructions, tables, legacy);
+  }
+  if (!fits(finalTx)) {
+    const k = changes.findIndex((c) => c.type === "compute_unit_limit");
+    if (k >= 0) changes.splice(k, 1);
+    notes.push("Nor for a compute-limit instruction, so the original compute settings were kept.");
+    finalInstructions = withBudget(
+      [...(budget.limit != null ? [ComputeBudgetProgram.setComputeUnitLimit({ units: budget.limit })] : []), ...budget.kept],
+      budget.rest,
+    );
+    finalTx = build(decompiled.payerKey, latest.blockhash, finalInstructions, tables, legacy);
+  }
   let finalSim = await simulate(finalTx);
   let returned = finalTx;
   if (finalSim.err != null && fee !== currentFee) {
