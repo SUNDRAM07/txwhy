@@ -102,7 +102,7 @@ const paying = wrapFetchWithPayment(fetch, new x402Client().register("solana:*",
 const result = await repair({ transaction: tx }, { endpoint: "https://txwhy.vercel.app/api/x402/repair", fetch: paying });
 ```
 
-Full example: `examples/paid-repair.mjs`.
+Full example: `examples/paid-repair.mjs`. If you self-host: the receiving wallet must already hold a USDC token account (send it any USDC once), or every payment fails simulation at the facilitator.
 
 ## Command line
 

@@ -21,6 +21,9 @@ export const maxDuration = 30;
  * failed request costs nothing.
  *
  * Enabled by setting X402_PAY_TO (the wallet that receives the USDC). Until then it answers 503.
+ * That wallet MUST already hold a USDC token account (send it any amount of USDC once): the
+ * x402 client transfers into the existing account and never creates it, so payments to a wallet
+ * without one fail the facilitator's simulation.
  */
 const PAY_TO = process.env.X402_PAY_TO;
 const PRICE = process.env.X402_PRICE ?? "$0.001";
