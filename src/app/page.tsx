@@ -275,6 +275,47 @@ export default function Home() {
         </section>
       )}
 
+      <section id="proof" className="border-t border-neutral-200 py-12 dark:border-neutral-800">
+        <h2 className="text-xl font-bold tracking-tight">Proof, on chain</h2>
+        <p className="mt-3 leading-relaxed text-neutral-600 dark:text-neutral-400">
+          Two transactions on Solana mainnet you can open yourself. No screenshots, no staging.
+        </p>
+        <ul className="mt-4 space-y-3 text-sm leading-relaxed">
+          <li className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
+            <p className="font-semibold">A repaired transaction that landed</p>
+            <p className="mt-1 text-neutral-600 dark:text-neutral-400">
+              An agent built a swap on a stale quote. Without TxWhy it failed simulation with{" "}
+              <code className="rounded bg-neutral-100 px-1 dark:bg-neutral-900">0x1771</code>. With one line, it was rebuilt
+              from a fresh quote for the same trade, verified locally (four instructions untouched, same payer, same signers),
+              signed by the agent, and landed in slot 449,732,359.
+            </p>
+            <a
+              href="https://solscan.io/tx/5BaKDPgC4tK3prhiLGKFgHkcWTcvNGDBAjoBNiw9dTjx9o9v7DoX1qTwbks4W9uZPJKszju3MMMcoB5XZ6zXhymq"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-block break-all font-mono text-xs text-emerald-600 hover:underline dark:text-emerald-400"
+            >
+              5BaKDPgC…zXhymq on Solscan →
+            </a>
+          </li>
+          <li className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
+            <p className="font-semibold">An agent that paid for a repair</p>
+            <p className="mt-1 text-neutral-600 dark:text-neutral-400">
+              $0.001 in USDC over x402 for a verified slippage repair, settled only after the answer came back, network fee
+              paid by the facilitator. No account, no API key.
+            </p>
+            <a
+              href="https://solscan.io/tx/2t4hz3zmmBkAtVyNaMY48ot9uhP7uLLLogdq23PtzScHKmeTA276Gt8Y1uyyeDpNsUciaPhDzMiCQcPA9AcAUzrA"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-block break-all font-mono text-xs text-emerald-600 hover:underline dark:text-emerald-400"
+            >
+              2t4hz3zm…AcAUzrA on Solscan →
+            </a>
+          </li>
+        </ul>
+      </section>
+
       {USED_BY.length > 0 && (
         <section id="used-by" className="border-t border-neutral-200 py-12 dark:border-neutral-800">
           <h2 className="text-xl font-bold tracking-tight">Used by</h2>
