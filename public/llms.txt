@@ -1,0 +1,27 @@
+# TxWhy
+
+> Failed Solana transaction in, working transaction out. TxWhy finds the exact reason a Solana transaction fails, rebuilds it, proves the rebuilt one passes by simulating it against live mainnet state, and lets the caller verify offline that nothing else changed.
+
+Live: https://txwhy.vercel.app - MIT - no API key - agents are the primary users.
+
+## What it repairs
+- Compute unit limit (measured usage + 15%), expired blockhash, priority fee (75th percentile for the exact accounts, capped at 0.001 SOL), loaded-accounts data limit.
+- Jupiter v6 swap on a stale quote: only the swap instruction is replaced, same tokens, amount and tolerance.
+- Direct Pump.fun / PumpSwap swap on slippage: same amount and accounts, only the limit moved to the current price, never more than 25% against the user.
+- Legacy, v0 and version 1 (SIMD-0385) transactions; durable nonces.
+- Anything else is diagnosed: failing instruction, program, decoded error (1,934 published codes across 40 programs), what to do.
+
+## Rules a repair can never break (verifiable offline)
+Same fee payer, same signers, every non-ComputeBudget instruction byte for byte in order, at most one equivalent swap replacement or one bounded limit move. The verifier ships in the npm package and has no network access.
+
+## Use it
+- HTTP: POST https://txwhy.vercel.app/api/v1/repair with body {"transaction": "<base64>"} or {"signature": "<sig>"}. Response: {status, cause, changes, repairedTransaction, simulation, verification, notes}. status is one of repaired, valid, needs_requote, not_repairable.
+- Paid, no rate limit: POST https://txwhy.vercel.app/api/x402/repair ($0.001 USDC on Solana via x402, settled only on success).
+- MCP (Streamable HTTP): https://txwhy.vercel.app/api/mcp with tools repair_transaction, diagnose_transaction, explain_error.
+- npm: @txwhy/sdk with sendWithRepair(connection, tx, sign), repair(), verifyRepair(), and the CLI npx txwhy <signature>.
+- Error code pages: https://txwhy.vercel.app/errors/{program}/{code}
+- OpenAPI: https://txwhy.vercel.app/openapi.json - Agent skill: https://txwhy.vercel.app/skill.md
+- Telegram: https://t.me/txwhy_bot
+
+## Data
+Live failure index of Solana's busiest programs: https://txwhy.vercel.app/failures - Public usage: https://txwhy.vercel.app/stats

@@ -1,4 +1,5 @@
 import { HTTPFacilitatorClient, x402ResourceServer } from "@x402/core/server";
+import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { withX402 } from "@x402/next";
 import { registerExactSvmScheme } from "@x402/svm/exact/server";
 import { NextResponse, type NextRequest } from "next/server";
@@ -88,6 +89,30 @@ function build() {
       description: "Repair a failing Solana transaction: exact cause, rebuilt unsigned transaction, simulation proof, verification.",
       mimeType: "application/json",
       serviceName: "TxWhy",
+      tags: ["solana", "transactions", "repair", "simulation", "jupiter", "pump.fun", "agents"],
+      // Bazaar discovery: facilitators catalog this endpoint so paying agents can find it on their own.
+      extensions: {
+        ...declareDiscoveryExtension({
+          bodyType: "json",
+          input: { transaction: "<base64 serialized Solana transaction, signed or unsigned>" },
+          inputSchema: {
+            properties: {
+              transaction: { type: "string", description: "Base64 serialized transaction (legacy, v0 or v1), signed or unsigned" },
+              signature: { type: "string", description: "Or: the signature of a transaction that already failed on chain" },
+            },
+          },
+          output: {
+            example: {
+              status: "repaired",
+              cause: { title: "Compute budget exceeded", cause: "The transaction ran out of compute units before completing." },
+              changes: [{ type: "compute_unit_limit", before: "100", after: "518" }],
+              repairedTransaction: "<base64, unsigned>",
+              simulation: { passed: true, unitsConsumed: 450 },
+              verification: { ok: true, kept: 1 },
+            },
+          },
+        }),
+      },
       unpaidResponseBody: () => ({
         contentType: "application/json",
         body: { error: `Payment required: ${PRICE} in USDC on Solana per repair, settled only after a successful answer. The free, rate-limited endpoint is POST /api/v1/repair.` },

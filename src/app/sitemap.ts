@@ -4,7 +4,7 @@ import { listPrograms } from "@/lib/catalog";
 const BASE = "https://txwhy.vercel.app";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const pages = ["", "/repair", "/errors", "/failures", "/stats"].map((path) => ({
+  const pages = ["", "/repair", "/errors", "/failures", "/stats", "/llms.txt", "/skill.md", "/openapi.json"].map((path) => ({
     url: `${BASE}${path}`,
     changeFrequency: "daily" as const,
     priority: path === "" ? 1 : 0.8,
