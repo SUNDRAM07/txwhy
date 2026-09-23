@@ -80,6 +80,10 @@ verifyInstructions({ payer, instructions: before }, { payer, instructions: after
 
 The TxWhy server runs this same function on its own output and refuses to return anything that fails it.
 
+## Version 1 transactions
+
+TxWhy repairs the new v1 format (SIMD-0385, mainnet since Sep 15, 2026). web3.js 1.x can read v1 but cannot serialize, sign or send it, so for v1 use the string forms: `repair({ transaction: base64 })` returns rebuilt v1 bytes, `verifyRepair(connection, originalBase64, repairedBase64)` checks that only the header (compute settings) and, at most, one equivalent swap changed, and you sign and send the bytes with `@solana/kit`. `sendWithRepair` refuses v1 with a clear error rather than failing inside web3.js.
+
 ## Just the repair call
 
 ```ts

@@ -49,6 +49,11 @@ const FIXES: { failure: string; action: string; fixed: boolean }[] = [
     fixed: true,
   },
   {
+    failure: "Version 1 transactions (the new format)",
+    action: "SIMD-0385 went live on mainnet on Sep 15, 2026 and moved compute settings into the transaction header. TxWhy reads and rebuilds v1 natively: the same repairs, applied to the header, re-encoded with @solana/kit.",
+    fixed: true,
+  },
+  {
     failure: "Not enough SOL",
     action: "Not something a rebuild can fix. We give you the exact shortfall instead.",
     fixed: false,

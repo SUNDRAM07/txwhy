@@ -70,8 +70,14 @@ function fromBase64(text: string): Uint8Array {
   return out;
 }
 
+/** Version 1 transactions (SIMD-0385) can be read by web3.js 1.99 but never serialized, signed or sent by it. */
+const isV1 = (tx: AnyTransaction) => tx instanceof VersionedTransaction && (tx.version as number) === 1;
+
 function serialize(tx: AnyTransaction | string): string {
   if (typeof tx === "string") return tx;
+  if (isV1(tx)) {
+    throw new TxWhyError("This is a version 1 transaction, which web3.js cannot serialize. Pass its base64 bytes instead (repair() and verifyRepair() accept strings) and sign the result with @solana/kit.");
+  }
   if (tx instanceof VersionedTransaction) return toBase64(tx.serialize());
   return toBase64(tx.serialize({ requireAllSignatures: false, verifySignatures: false }));
 }
@@ -115,7 +121,8 @@ export async function repair(
 
 async function decompile(connection: Connection, tx: VersionedTransaction) {
   const tables: AddressLookupTableAccount[] = [];
-  for (const lookup of tx.message.addressTableLookups) {
+  // Version 1 messages carry no lookup tables; everything is inline.
+  for (const lookup of tx.message.addressTableLookups ?? []) {
     const { value } = await connection.getAddressLookupTable(lookup.accountKey);
     if (!value) throw new TxWhyError(`Address lookup table ${lookup.accountKey.toBase58()} was not found.`);
     tables.push(value);
@@ -173,6 +180,11 @@ export async function sendWithRepair(
   const maxRepairs = options.maxRepairs ?? 1;
   const repairs: RepairResult[] = [];
   let current = toVersioned(transaction);
+  if (isV1(current)) {
+    throw new TxWhyError(
+      "sendWithRepair cannot sign or send a version 1 transaction: web3.js 1.x only reads that format. Call repair({ transaction: base64 }) and verifyRepair(), then sign and send the returned bytes with @solana/kit.",
+    );
+  }
 
   for (let attempt = 0; ; attempt++) {
     const simulation = await connection.simulateTransaction(current, { sigVerify: false, commitment: "confirmed" });
