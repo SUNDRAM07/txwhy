@@ -122,9 +122,16 @@ const handler = createMcpHandler(
   },
 );
 
+/** An MCP tool call carries at most one base64 transaction, so anything past this is not a real client. */
+const MAX_BODY = 16_384;
+
 function limited(request: Request) {
   const limit = rateLimit(request, "mcp", 60);
-  return limit.ok ? handler(request) : tooManyRequests(limit.retryAfterSeconds);
+  if (!limit.ok) return tooManyRequests(limit.retryAfterSeconds);
+  if (Number(request.headers.get("content-length") ?? 0) > MAX_BODY) {
+    return Response.json({ error: `Body too large (limit ${MAX_BODY} bytes).` }, { status: 413 });
+  }
+  return handler(request);
 }
 
 export { limited as GET, limited as POST };
