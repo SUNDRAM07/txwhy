@@ -1,14 +1,15 @@
 // A trading agent with and without TxWhy in its send loop.
 //
 //   node examples/agent.mjs                      dry run: nothing is signed or sent
-//   AGENT_KEYPAIR=./agent.json node examples/agent.mjs --send
-//                                                real run: swaps 0.001 SOL to USDC from that wallet
+//   $env:AGENT_PRIVATE_KEY = "<base58 key from Phantom>"; node examples/agent.mjs --send
+//   (or AGENT_KEYPAIR=./agent.json)               real run: swaps 0.001 SOL to USDC from that wallet
 //
 // The agent trades on a quote that has gone stale, which is the most common way an agent's swap
 // fails. Without TxWhy the agent stops. With TxWhy the same call comes back repaired, is checked
 // locally, and lands.
 import { readFileSync } from "node:fs";
 import { Connection, Keypair, VersionedTransaction } from "@solana/web3.js";
+import bs58 from "bs58";
 import { sendWithRepair, TxWhyError } from "../dist/index.js";
 
 const SEND = process.argv.includes("--send");
@@ -39,7 +40,12 @@ async function buildStaleSwap(keypair) {
   return VersionedTransaction.deserialize(Buffer.from(swap.swapTransaction, "base64"));
 }
 
-const keypair = SEND ? Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(process.env.AGENT_KEYPAIR, "utf8")))) : null;
+const keypair = !SEND
+  ? null
+  : process.env.AGENT_PRIVATE_KEY
+    ? Keypair.fromSecretKey(bs58.decode(process.env.AGENT_PRIVATE_KEY.trim()))
+    : Keypair.fromSecretKey(Uint8Array.from(JSON.parse(readFileSync(process.env.AGENT_KEYPAIR, "utf8"))));
+if (keypair) say("agent", `wallet ${keypair.publicKey.toBase58()}`);
 if (!SEND) connection.sendTransaction = async () => "(dry run: not sent)";
 const sign = (tx) => {
   if (keypair) tx.sign([keypair]);
