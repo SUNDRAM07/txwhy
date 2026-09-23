@@ -73,7 +73,7 @@ const MCP_CONFIG = `{
 /** Flip once the "@txwhy/sdk" package is live on npm. Until then the name is never shown, so nobody can squat it. */
 const SDK_PUBLISHED = true;
 /** Flip once X402_PAY_TO is set on the deployment. */
-const X402_LIVE = false;
+const X402_LIVE = true;
 
 const SDK = `import { sendWithRepair } from "@txwhy/sdk";
 
