@@ -8,6 +8,7 @@ const DEMOS = [
   { kind: "compute", label: "Compute limit too low" },
   { kind: "blockhash", label: "Expired blockhash" },
   { kind: "slippage", label: "Swap on a stale quote" },
+  { kind: "v1", label: "Version 1 transaction" },
 ];
 
 export default function RepairPage() {

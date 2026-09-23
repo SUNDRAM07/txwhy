@@ -28,6 +28,7 @@ Most failures never reach the chain. Wallets and agents simulate first, and the 
 | Dropped under load | Sets the priority fee from what the network recently charged for the exact accounts written to. Never raises your total fee by more than 0.001 SOL, and falls back to your original fee if the wallet cannot afford more |
 | Slippage on a Jupiter swap | Replaces **only** the swap instruction with a freshly quoted one. Tokens, amount, slippage tolerance and every other instruction (memos, fee transfers, tips) stay exactly as written. Shows how the minimum you receive changed |
 | Loaded account data limit too small | Lifts a declared limit that is smaller than what the transaction loads |
+| Version 1 transaction (SIMD-0385) | Same repairs, applied to the header config instead of instructions; re-encoded with @solana/kit 8. `npx tsx scripts/test-v1.ts` covers it |
 
 And what it refuses to fake:
 
@@ -139,6 +140,7 @@ node scripts/test-real.mjs        # real failed transactions pulled from mainnet
 node scripts/test-slippage.mjs    # real slippage failures
 node scripts/measure-naming.mjs   # how many real failures get a named cause
 npx tsx scripts/test-verify.ts    # 21 verifier cases, 15 of them attacks; no network
+npx tsx scripts/test-v1.ts        # 8 version-1 cases: header repairs, expired blockhash, stale swap, a real landed v1
 cd sdk && node test.mjs           # the npm package end to end against production
 ```
 
@@ -155,7 +157,7 @@ cd sdk && node test.mjs           # the npm package end to end against productio
 - Simulation proves the transaction executes now. It cannot guarantee inclusion if state changes before it lands.
 - Rate limits are per server instance until shared storage is attached.
 
-- **Version 1 transactions** (SIMD-0385, live on mainnet since Sep 15, 2026) are diagnosed exactly (on-chain record or live simulation of the raw bytes) but not yet rebuilt: their compute settings live in the header, and that rebuild path is in progress.
+- **Version 1 transactions** (SIMD-0385, live on mainnet since Sep 15, 2026) are repaired natively: the compute settings (unit limit, priority fee in lamports, loaded-data limit) are edited in the header, a stale Jupiter swap is re-quoted the same way as in v0, and the rebuilt bytes are produced with @solana/kit 8. A v1 transaction with no loaded-data limit is budgeted zero bytes by the runtime; TxWhy sets it and says so. Routes needing more than 64 inline accounts cannot be carried by v1 and are reported as such.
 - **Durable-nonce transactions** are supported: the nonce advance stays instruction 0 and the nonce account's current value is used; they are never reported as expired.
 - **Size limit:** a legacy or v0 transaction already at the 1,232-byte limit has no room for a fee or limit instruction. TxWhy then keeps the original setting and says so, rather than returning something no node would accept.
 

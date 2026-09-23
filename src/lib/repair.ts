@@ -10,10 +10,11 @@ import {
 import { decodeTransactionError } from "./errors";
 import { fetchIdlErrors } from "./idl";
 import { requoteJupiter } from "./requote";
-import { rpc } from "./rpc";
+import { RpcError, rpc } from "./rpc";
 import { getTrace } from "./trace";
+import { V1_MAX_BYTES, decodeV1, inlineAddressCount, rebuildV1 } from "./v1";
 import { type Verification, verifyInstructions } from "./verify";
-import type { DecodedError } from "./types";
+import type { DecodedError, Trace } from "./types";
 
 /**
  * Repair engine v1.
@@ -163,8 +164,12 @@ async function loadTablesByAddress(addresses: string[]): Promise<AddressLookupTa
 }
 
 export class RepairInputError extends Error {}
-/** The transaction format is newer than the rebuild path understands. Diagnosis still works. */
-class UnsupportedVersionError extends Error {}
+/** Version 1 transactions take their own path; the error carries the raw bytes so that path can start from them. */
+class UnsupportedVersionError extends Error {
+  constructor(public readonly base64?: string) {
+    super("version 1 transaction");
+  }
+}
 
 /** Fetch a confirmed transaction's raw bytes by signature. */
 async function fetchRawTransaction(signature: string): Promise<VersionedTransaction> {
@@ -178,16 +183,16 @@ async function fetchRawTransaction(signature: string): Promise<VersionedTransact
     );
   }
   try {
-    return guardVersion(VersionedTransaction.deserialize(Buffer.from(result.transaction[0], "base64")));
+    return guardVersion(VersionedTransaction.deserialize(Buffer.from(result.transaction[0], "base64")), result.transaction[0]);
   } catch (e) {
     if (e instanceof UnsupportedVersionError || e instanceof RepairInputError) throw e;
-    throw new UnsupportedVersionError();
+    throw new UnsupportedVersionError(result.transaction[0]);
   }
 }
 
 /** web3.js 1.99 can read version 1 transactions, but nothing here can rebuild them yet. Legacy and v0 must also respect the size limit. */
-function guardVersion(tx: VersionedTransaction): VersionedTransaction {
-  if (tx.version === 1) throw new UnsupportedVersionError();
+function guardVersion(tx: VersionedTransaction, base64?: string): VersionedTransaction {
+  if (tx.version === 1) throw new UnsupportedVersionError(base64);
   const bytes = tx.serialize().length;
   if (bytes > MAX_TX_BYTES) {
     throw new RepairInputError(`This transaction is ${bytes} bytes, above the ${MAX_TX_BYTES}-byte limit for legacy and version 0 transactions, so no node would accept it as is.`);
@@ -202,7 +207,7 @@ function parseTransaction(base64: string): VersionedTransaction {
   } catch {
     throw new RepairInputError("Could not decode that as a base64 Solana transaction.");
   }
-  return guardVersion(tx);
+  return guardVersion(tx, base64.trim());
 }
 
 interface BudgetInfo {
@@ -346,6 +351,14 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
       : await fetchRawTransaction(input.signature as string);
   } catch (e) {
     if (!(e instanceof UnsupportedVersionError)) throw e;
+    if (e.base64) {
+      try {
+        return await repairV1(e.base64, onchain);
+      } catch (inner) {
+        if (inner instanceof RepairInputError || inner instanceof RpcError) throw inner;
+        /* fall through to diagnosis-only below */
+      }
+    }
     // Nodes simulate version 1 bytes as they are, so a v1 transaction still gets an exact diagnosis.
     let v1Sim: SimValue | null = null;
     if (input.transaction && !onchain) {
@@ -732,6 +745,227 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
       error: finalError,
       logsTail: (finalSim.logs ?? []).slice(-8),
     },
+    notes,
+  };
+}
+
+/**
+ * Version 1 transactions. Same decisions as the legacy path, but the compute settings live in
+ * the header config (priority fee in total lamports), there are no lookup tables, and the size
+ * limit is 4,096 bytes. Bytes are produced by @solana/kit; everything else reuses the engine.
+ */
+async function repairV1(base64: string, onchain: Trace | null): Promise<RepairResult> {
+  const decoded = decodeV1(base64);
+  const landed = onchain != null;
+  const notes: string[] = [];
+  const changes: RepairChange[] = [];
+  notes.push("Version 1 transaction (SIMD-0385): compute settings are carried in the header, so the repair edits the header instead of adding instructions.");
+
+  // 1. Lifetime: a fresh blockhash, or for a durable nonce the account's current value.
+  let lifetime: { blockhash?: string; nonce?: { value: string; account: string; authority: string } } = {};
+  let expiredCause: DecodedError | null = null;
+  if ("nonce" in decoded.lifetime) {
+    const first = decoded.instructions[0];
+    if (!isAdvanceNonce(first)) throw new RepairInputError("This version 1 transaction declares a nonce lifetime but does not start with AdvanceNonceAccount.");
+    const account = first.keys[0].pubkey.toBase58();
+    const authority = first.keys[2]?.pubkey.toBase58() ?? decoded.payerKey.toBase58();
+    const { value } = await rpc<{ value: { data: [string, string] } | null }>("getAccountInfo", [account, { encoding: "base64", commitment: "confirmed" }]);
+    if (!value) throw new RepairInputError(`Nonce account ${account} does not exist, so this durable-nonce transaction cannot be sent.`);
+    const current = NonceAccount.fromAccountData(Buffer.from(value.data[0], "base64")).nonce;
+    lifetime = { nonce: { value: current, account, authority } };
+    if (current !== decoded.lifetime.nonce) {
+      changes.push({ type: "blockhash", before: decoded.lifetime.nonce, after: current, reason: `Durable nonce: the nonce account ${account} has advanced since this transaction was built, so the transaction carries its current value.` });
+    } else {
+      notes.push(`Durable-nonce transaction (nonce account ${account}). It does not expire, and the nonce value was kept.`);
+    }
+  } else {
+    const [{ value: valid }, { value: fresh }] = await Promise.all([
+      rpc<{ value: boolean }>("isBlockhashValid", [decoded.lifetime.blockhash, { commitment: "confirmed" }]),
+      rpc<{ value: { blockhash: string } }>("getLatestBlockhash", [{ commitment: "confirmed" }]),
+    ]);
+    lifetime = { blockhash: fresh.blockhash };
+    if (landed) {
+      changes.push({ type: "blockhash", before: decoded.lifetime.blockhash, after: fresh.blockhash, reason: "The original transaction already landed and failed. Resending it requires a new blockhash." });
+    } else if (!valid) {
+      expiredCause = {
+        title: "Blockhash expired",
+        code: "BlockhashNotFound",
+        cause: "The recent blockhash in this transaction is no longer valid. Too much time passed between building and landing it (a blockhash lives roughly 60 to 90 seconds).",
+        fix: "Rebuild with a fresh blockhash immediately before signing and sending.",
+      };
+      changes.push({ type: "blockhash", before: decoded.lifetime.blockhash, after: fresh.blockhash, reason: "The original blockhash had expired." });
+    }
+  }
+
+  const simulateV1 = async (b64: string, bytes: number): Promise<SimValue> => {
+    if (bytes > V1_MAX_BYTES) throw new TooLargeError(bytes);
+    const { value } = await rpc<{ value: SimValue }>("simulateTransaction", [b64, { encoding: "base64", sigVerify: false, replaceRecentBlockhash: false, commitment: "confirmed" }]);
+    return value;
+  };
+  const build = (opts: Parameters<typeof rebuildV1>[1]) => rebuildV1(decoded, { ...lifetime, ...opts });
+
+  // 2. As submitted (lifetime refreshed only), and the maximum-budget probe, together.
+  const original = decoded.config;
+  const MAX_DATA = 64 * 1024 * 1024;
+  const probeConfig = { ...original, computeUnitLimit: MAX_CU, loadedAccountsDataSizeLimit: MAX_DATA };
+  const asSubmitted = build({});
+  const probe = build({ config: probeConfig });
+  const [submittedSim, probeSim0] = await Promise.all([simulateV1(asSubmitted.base64, asSubmitted.bytes), simulateV1(probe.base64, probe.bytes)]);
+  let cause = onchain?.error ?? (await decodeSimError(submittedSim.err, submittedSim.logs ?? [])) ?? expiredCause;
+  let probeSim = probeSim0;
+  let instructions = decoded.instructions;
+  let requoted = false;
+  // Unset means zero bytes in v1: every such transaction fails until the limit is set.
+  const liftedData = original.loadedAccountsDataSizeLimit == null || hitLoadedDataLimit(submittedSim.err);
+
+  // 3. Anything other than budget wrong? (Mirrors the legacy verdict logic.)
+  let finalVerdict: string | null = null;
+  if (probeSim.err != null) {
+    const probeCause = (await decodeSimError(probeSim.err, probeSim.logs ?? [])) ?? cause;
+    const verdict = classifyUnrepairable(probeCause ?? { title: "Unknown failure", cause: "", fix: "" }, probeSim.logs ?? []);
+    if (landed && onchain?.error && probeCause && onchain.error.title !== probeCause.title) {
+      notes.push(`Replayed against current state, the original instructions now stop at "${probeCause.title}". That is expected for an old transaction: its route and quote are stale.`);
+    }
+    const failedOnSlippage = onchain?.error != null && SLIPPAGE_PATTERN.test(`${onchain.error.title} ${onchain.error.code ?? ""}`);
+    const wantsRequote = verdict.status === "needs_requote" || failedOnSlippage;
+    if (wantsRequote) {
+      const requote = await requoteJupiter(decoded.instructions);
+      if (requote.ok) {
+        const inline = inlineAddressCount(decoded.payerKey, requote.instructions);
+        if (inline > 64) {
+          notes.push(`The fresh route needs ${inline} distinct accounts, more than the 64 a version 1 transaction can carry inline, so it was not applied.`);
+        } else {
+          try {
+            const reprobe = build({ config: probeConfig, instructions: requote.instructions });
+            const reprobeSim = await simulateV1(reprobe.base64, reprobe.bytes);
+            if (reprobeSim.err == null) {
+              instructions = requote.instructions;
+              probeSim = reprobeSim;
+              requoted = true;
+              cause = cause ?? verdict.cause ?? probeCause;
+              changes.push({ type: "swap_quote", before: requote.before, after: requote.after, reason: "The price moved past the tolerance in the original swap, so that one instruction was rebuilt from a current quote." });
+              notes.push(...requote.notes, "Quotes go stale within seconds. Sign and send immediately.");
+            } else {
+              const again = await decodeSimError(reprobeSim.err, reprobeSim.logs ?? []);
+              notes.push(`A fresh quote was spliced in but the transaction still fails simulation (${again?.title ?? "unknown error"}), so it is not returned.`);
+            }
+          } catch (e) {
+            notes.push(e instanceof Error ? e.message : "The re-quoted transaction could not be assembled.");
+          }
+        }
+      } else if (requote.final) {
+        finalVerdict = requote.reason;
+      } else {
+        notes.push(requote.reason);
+      }
+    }
+    if (!requoted) {
+      const base = landed ? (onchain?.error ?? verdict.cause ?? probeCause) : (verdict.cause ?? probeCause);
+      return {
+        status: finalVerdict ? "not_repairable" : wantsRequote ? "needs_requote" : verdict.status,
+        summary: finalVerdict ?? (wantsRequote ? "This transaction fails on slippage and needs a fresh quote. A blockhash or fee change cannot fix it." : "This transaction fails for a reason that cannot be fixed by rebuilding it."),
+        cause: finalVerdict && base ? { ...base, fix: "Nothing to fix. This transaction did what it was designed to do when the opportunity was gone." } : base,
+        changes: [],
+        repairedTransaction: null,
+        simulation: { passed: false, unitsConsumed: probeSim.unitsConsumed ?? null, error: probeCause, logsTail: (probeSim.logs ?? []).slice(-12) },
+        notes: finalVerdict ? [] : [...verdict.notes, ...notes],
+      };
+    }
+  }
+
+  // 4. Compute unit limit from the measurement.
+  const measured = probeSim.unitsConsumed ?? 0;
+  const newLimit = Math.min(MAX_CU, Math.ceil(measured * CU_HEADROOM));
+  const oldLimit = original.computeUnitLimit;
+  if (oldLimit == null || oldLimit < measured || oldLimit > newLimit * 3) {
+    changes.push({
+      type: "compute_unit_limit",
+      before: oldLimit == null ? "not set (zero: a version 1 transaction with no limit cannot run)" : String(oldLimit),
+      after: String(newLimit),
+      reason: oldLimit != null && oldLimit < measured ? `The transaction needs ${measured} compute units but its limit was ${oldLimit}.` : `Sized to measured usage (${measured} units) plus 15% headroom.`,
+    });
+  }
+  const limit = changes.some((c) => c.type === "compute_unit_limit") ? newLimit : (oldLimit as number);
+  if (liftedData) {
+    changes.push({
+      type: "loaded_accounts_data_limit",
+      before: original.loadedAccountsDataSizeLimit == null ? "not set (zero bytes in version 1)" : `${original.loadedAccountsDataSizeLimit.toLocaleString("en-US")} bytes`,
+      after: "64 MB",
+      reason: original.loadedAccountsDataSizeLimit == null ? "A version 1 transaction with no loaded-data limit is budgeted zero bytes and cannot run." : "The transaction loads more account data than the limit it declared for itself.",
+    });
+  }
+
+  // 5. Priority fee, in total lamports for v1.
+  const writableSet = new Map<string, PublicKey>([[decoded.payerKey.toBase58(), decoded.payerKey]]);
+  for (const ix of instructions) for (const k of ix.keys) if (k.isWritable) writableSet.set(k.pubkey.toBase58(), k.pubkey);
+  const rate = await recentPriorityFee([...writableSet.values()]); // micro-lamports per CU
+  const marketLamports = Math.min(MAX_PRIORITY_LAMPORTS, Math.ceil((rate * limit) / 1_000_000));
+  const currentLamports = Number(original.priorityFeeLamports ?? BigInt(0));
+  let feeLamports = currentLamports;
+  if (currentLamports < marketLamports) {
+    feeLamports = marketLamports;
+    changes.push({
+      type: "priority_fee",
+      before: currentLamports === 0 ? "none" : `${currentLamports} lamports`,
+      after: `${marketLamports} lamports (${rate} micro-lamports per CU x ${limit} units)`,
+      reason: "Below the 75th percentile recently paid for these accounts, so the transaction was likely to be dropped or delayed under load.",
+    });
+  }
+
+  // 6. Final build and proof.
+  const finalConfig = { ...original, computeUnitLimit: limit, priorityFeeLamports: BigInt(feeLamports), ...(liftedData ? { loadedAccountsDataSizeLimit: MAX_DATA } : {}) };
+  let final = build({ config: finalConfig, instructions });
+  let finalSim = await simulateV1(final.base64, final.bytes);
+  if (finalSim.err != null && feeLamports !== currentLamports) {
+    const fallback = build({ config: { ...finalConfig, priorityFeeLamports: BigInt(currentLamports) }, instructions });
+    const fallbackSim = await simulateV1(fallback.base64, fallback.bytes);
+    if (fallbackSim.err == null) {
+      final = fallback;
+      finalSim = fallbackSim;
+      const i = changes.findIndex((c) => c.type === "priority_fee");
+      if (i >= 0) changes.splice(i, 1);
+      notes.push("The priority fee was left as it was: raising it to the market rate would cost more than this wallet can cover.");
+    }
+  }
+  const finalError = await decodeSimError(finalSim.err, finalSim.logs ?? []);
+
+  const verification = verifyInstructions(
+    { payer: decoded.payerKey, instructions: decoded.instructions },
+    { payer: decoded.payerKey, instructions },
+  );
+  for (const c of changes) {
+    if (c.type === "compute_unit_limit" || c.type === "priority_fee" || c.type === "loaded_accounts_data_limit") {
+      verification.changes.push({ kind: "compute_budget", program: "Transaction header (v1)", detail: `${c.type.replace(/_/g, " ")} ${c.after}` });
+    }
+  }
+  if (!verification.ok) notes.unshift(`Internal verification refused this rebuild: ${verification.violations.join(" ")}`);
+  const simulated = finalSim.err == null;
+  const passed = simulated && verification.ok;
+  if (!changes.some((c) => c.type === "blockhash") && "blockhash" in decoded.lifetime) {
+    notes.push("A fresh blockhash is always applied, so sign and send within about 60 seconds.");
+  }
+  notes.push("Simulation runs against current chain state. It proves the transaction executes now. It cannot guarantee inclusion if state changes before it lands.");
+  const wasBroken = cause != null;
+  return {
+    status: passed ? (wasBroken ? "repaired" : "valid") : "not_repairable",
+    summary: !passed
+      ? simulated
+        ? "A rebuild was produced and it simulates, but it failed TxWhy's own safety check, so it is withheld."
+        : "The rebuilt transaction still fails simulation."
+      : requoted
+        ? "Repaired with a fresh quote. Only the swap instruction changed. Your tokens, amount, slippage tolerance and every other instruction are kept, and the result passes simulation."
+        : wasBroken
+          ? landed
+            ? `On chain this failed with "${cause?.title}". Rebuilt against current state, it passes simulation.`
+            : `Repaired. ${changes.length} change${changes.length === 1 ? "" : "s"} applied and the rebuilt transaction passes simulation.`
+          : changes.length > 0
+            ? "The transaction already executes. Returned an optimised version that is more likely to land."
+            : "The transaction already executes and needs no changes.",
+    cause,
+    changes: passed ? changes : [],
+    repairedTransaction: passed ? final.base64 : null,
+    verification: passed ? verification : undefined,
+    simulation: { passed: simulated, unitsConsumed: finalSim.unitsConsumed ?? null, error: finalError, logsTail: (finalSim.logs ?? []).slice(-8) },
     notes,
   };
 }

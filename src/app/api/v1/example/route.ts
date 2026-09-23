@@ -8,6 +8,7 @@ import {
 } from "@solana/web3.js";
 import { rateLimit, tooManyRequests } from "@/lib/ratelimit";
 import { rpc } from "@/lib/rpc";
+import { buildV1 } from "@/lib/v1";
 
 /**
  * GET /api/v1/example?kind=compute|blockhash|slippage
@@ -90,6 +91,15 @@ export async function GET(request: Request) {
     const { value } = await rpc<{ value: { blockhash: string } }>("getLatestBlockhash", [
       { commitment: "confirmed" },
     ]);
+    if (kind === "v1") {
+      // A version 1 transaction (SIMD-0385): compute settings live in the header. This one has a
+      // limit far too low and no loaded-data limit, which in v1 means zero bytes.
+      return Response.json({
+        kind,
+        description: "A version 1 transaction (the new format, live since Sep 15) with a compute limit far too low and no loaded-data limit.",
+        transaction: buildV1(DEMO_PAYER, value.blockhash, [transfer], { computeUnitLimit: 100 }),
+      });
+    }
     return Response.json({
       kind: "compute",
       description: "A transfer whose compute-unit limit is set far too low.",
