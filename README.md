@@ -146,6 +146,7 @@ npx tsx scripts/test-verify.ts    # 29 verifier cases, most of them attacks; no 
 npx tsx scripts/test-pump.ts      # real Pump.fun / PumpSwap slippage failures: repaired, capped, or explained
 npx tsx scripts/test-v1.ts        # 8 version-1 cases: header repairs, expired blockhash, stale swap, a real landed v1
 cd sdk && node test.mjs           # the npm package end to end against production
+node scripts/fuzz-repair.mjs      # 122 malformed, truncated, oversized and hostile inputs: never a 500, never a hang
 cd crates/txwhy-verify && cargo test   # 17 Rust verifier tests, incl. parity with real production repairs
 ```
 

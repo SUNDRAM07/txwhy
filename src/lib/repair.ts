@@ -321,7 +321,76 @@ export interface RepairInput {
   transaction?: string;
 }
 
+/**
+ * The node can refuse a transaction before running a single instruction ("invalid transaction: ..."):
+ * duplicate ComputeBudget instructions, malformed instruction data, a fee payer that is a program,
+ * too many account locks. That is a diagnosis of the caller's transaction, not an upstream fault, so
+ * it is answered as not_repairable with the exact reason instead of a retryable 502.
+ */
+const SANITIZE_PATTERN = /^invalid transaction: (.+)$/i;
+
+function sanitizeCause(reason: string): DecodedError {
+  const r = reason.replace(/\s+$/, "");
+  if (/duplicate instruction/i.test(r)) {
+    return {
+      title: "Duplicate compute-budget instruction",
+      code: "sanitize",
+      cause: `The node rejected the transaction before running it: ${r}. A transaction may carry at most one ComputeBudget instruction of each kind.`,
+      fix: "Keep one SetComputeUnitLimit, one SetComputeUnitPrice and at most one SetLoadedAccountsDataSizeLimit, then resend.",
+    };
+  }
+  if (/invalid instruction data/i.test(r)) {
+    return {
+      title: "Malformed instruction data",
+      code: "sanitize",
+      cause: `The node rejected the transaction before running it: ${r}. The instruction's data does not match what its program expects (wrong tag, missing fields, or truncated).`,
+      fix: "Rebuild the instruction with the program's SDK or IDL so its data layout is exactly what the program defines.",
+    };
+  }
+  if (/sanitize accounts offsets|fee payer|account index|invalid account reference|out of bounds|program.*cannot be/i.test(r)) {
+    return {
+      title: "Invalid account layout",
+      code: "sanitize",
+      cause: `The node rejected the transaction before running it: ${r}. The fee payer must be a signing wallet (never a program or the system program), and every instruction's account indexes must point inside the account list.`,
+      fix: "Set a real wallet as the fee payer and rebuild the account list with your SDK, then resend.",
+    };
+  }
+  if (/too many account locks|locks too many/i.test(r)) {
+    return {
+      title: "Too many accounts",
+      code: "sanitize",
+      cause: `The node rejected the transaction before running it: ${r}. A transaction may lock at most 64 accounts.`,
+      fix: "Split the transaction, or use an address lookup table so fewer accounts are listed inline.",
+    };
+  }
+  return {
+    title: "Rejected before execution",
+    code: "sanitize",
+    cause: `The node rejected the transaction before running it: ${r}.`,
+    fix: "Fix the transaction structure named above and resend; no repair can change it for you.",
+  };
+}
+
 export async function repair(input: RepairInput): Promise<RepairResult> {
+  try {
+    return await repairUnguarded(input);
+  } catch (e) {
+    const reason = e instanceof RpcError ? e.message.match(SANITIZE_PATTERN)?.[1] : undefined;
+    if (!reason) throw e;
+    const cause = sanitizeCause(reason);
+    return {
+      status: "not_repairable",
+      summary: `${cause.title}: the node refuses this transaction before executing it. ${cause.fix}`,
+      cause,
+      changes: [],
+      repairedTransaction: null,
+      simulation: { passed: false, unitsConsumed: null, error: cause, logsTail: [] },
+      notes: [],
+    };
+  }
+}
+
+async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
   if (!input.signature && !input.transaction) {
     throw new RepairInputError('Provide either "signature" or "transaction" (base64).');
   }
@@ -391,9 +460,13 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
 
   let legacy = original.version === "legacy";
   let tables = await loadLookupTables(original);
-  const decompiled = TransactionMessage.decompile(original.message, {
-    addressLookupTableAccounts: tables,
-  });
+  let decompiled: TransactionMessage;
+  try {
+    decompiled = TransactionMessage.decompile(original.message, { addressLookupTableAccounts: tables });
+  } catch (e) {
+    // web3 checks the header and account indexes here, not at deserialize time: bad input, not a server fault.
+    throw new RepairInputError(`This transaction's message is malformed (${e instanceof Error ? e.message : String(e)}); no node would accept it.`);
+  }
   const budget = splitComputeBudget(decompiled.instructions);
   const notes: string[] = [];
   const changes: RepairChange[] = [];

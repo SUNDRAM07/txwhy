@@ -1,0 +1,856 @@
+[
+ {
+  "name": "empty body",
+  "status": 400,
+  "kind": "Body must be JSON.",
+  "ms": 54,
+  "ok": true
+ },
+ {
+  "name": "not json",
+  "status": 400,
+  "kind": "Body must be JSON.",
+  "ms": 13,
+  "ok": true
+ },
+ {
+  "name": "array body",
+  "status": 400,
+  "kind": "Provide either \"signature\" or \"transaction\" (base64).",
+  "ms": 12,
+  "ok": true
+ },
+ {
+  "name": "null transaction",
+  "status": 400,
+  "kind": "Provide either \"signature\" or \"transaction\" (base64).",
+  "ms": 12,
+  "ok": true
+ },
+ {
+  "name": "number transaction",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 12,
+  "ok": true
+ },
+ {
+  "name": "object transaction",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 11,
+  "ok": true
+ },
+ {
+  "name": "empty string",
+  "status": 400,
+  "kind": "Provide either \"signature\" or \"transaction\" (base64).",
+  "ms": 10,
+  "ok": true
+ },
+ {
+  "name": "whitespace",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 7,
+  "ok": true
+ },
+ {
+  "name": "both fields",
+  "status": 400,
+  "kind": "That does not look like a transaction signature or explorer link.",
+  "ms": 7,
+  "ok": true
+ },
+ {
+  "name": "signature garbage",
+  "status": 400,
+  "kind": "That does not look like a transaction signature or explorer link.",
+  "ms": 8,
+  "ok": true
+ },
+ {
+  "name": "signature too short",
+  "status": 400,
+  "kind": "That does not look like a transaction signature or explorer link.",
+  "ms": 7,
+  "ok": true
+ },
+ {
+  "name": "signature url weird",
+  "status": 400,
+  "kind": "That does not look like a transaction signature or explorer link.",
+  "ms": 7,
+  "ok": true
+ },
+ {
+  "name": "signature nonexistent",
+  "status": 400,
+  "kind": "Transaction not found. It may be older than the RPC's history or on a different cluster.",
+  "ms": 8,
+  "ok": true
+ },
+ {
+  "name": "signature 88 chars of 9",
+  "status": 400,
+  "kind": "Transaction not found. It may be older than the RPC's history or on a different cluster.",
+  "ms": 8,
+  "ok": true
+ },
+ {
+  "name": "deep nesting",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 9,
+  "ok": true
+ },
+ {
+  "name": "unicode base64",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 7,
+  "ok": true
+ },
+ {
+  "name": "base64 with url alphabet",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 368,
+  "ok": true
+ },
+ {
+  "name": "base64 padding stripped",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 188,
+  "ok": true
+ },
+ {
+  "name": "hex instead of base64",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 18,
+  "ok": true
+ },
+ {
+  "name": "body 7.9 KB",
+  "status": 400,
+  "kind": "This transaction's message is malformed (Message header is invalid); no node would accept ",
+  "ms": 16,
+  "ok": true
+ },
+ {
+  "name": "body 9 KB",
+  "status": 413,
+  "kind": "Body too large (limit 8192 bytes).",
+  "ms": 10,
+  "ok": true
+ },
+ {
+  "name": "body 1 MB",
+  "status": 413,
+  "kind": "Body too large (limit 8192 bytes).",
+  "ms": 14,
+  "ok": true
+ },
+ {
+  "name": "random 1 bytes",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 14,
+  "ok": true
+ },
+ {
+  "name": "random 2 bytes",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 14,
+  "ok": true
+ },
+ {
+  "name": "random 3 bytes",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 11,
+  "ok": true
+ },
+ {
+  "name": "random 4 bytes",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 12,
+  "ok": true
+ },
+ {
+  "name": "random 8 bytes",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 11,
+  "ok": true
+ },
+ {
+  "name": "random 16 bytes",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 11,
+  "ok": true
+ },
+ {
+  "name": "random 64 bytes",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 10,
+  "ok": true
+ },
+ {
+  "name": "random 128 bytes",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 10,
+  "ok": true
+ },
+ {
+  "name": "random 300 bytes",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 11,
+  "ok": true
+ },
+ {
+  "name": "random 1232 bytes",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 11,
+  "ok": true
+ },
+ {
+  "name": "random 1233 bytes",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 10,
+  "ok": true
+ },
+ {
+  "name": "random 4096 bytes",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 10,
+  "ok": true
+ },
+ {
+  "name": "random 4097 bytes",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 11,
+  "ok": true
+ },
+ {
+  "name": "first byte 0 then random",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 14,
+  "ok": true
+ },
+ {
+  "name": "first byte 1 then random",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 22,
+  "ok": true
+ },
+ {
+  "name": "first byte 127 then random",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 33,
+  "ok": true
+ },
+ {
+  "name": "first byte 128 then random",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 12,
+  "ok": true
+ },
+ {
+  "name": "first byte 129 then random",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 14,
+  "ok": true
+ },
+ {
+  "name": "first byte 130 then random",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 10,
+  "ok": true
+ },
+ {
+  "name": "first byte 255 then random",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 11,
+  "ok": true
+ },
+ {
+  "name": "legacy truncated at 1",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 10,
+  "ok": true
+ },
+ {
+  "name": "legacy truncated at 3",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 10,
+  "ok": true
+ },
+ {
+  "name": "legacy truncated at 64",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 11,
+  "ok": true
+ },
+ {
+  "name": "legacy truncated at 65",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 9,
+  "ok": true
+ },
+ {
+  "name": "legacy truncated at 66",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 10,
+  "ok": true
+ },
+ {
+  "name": "legacy truncated at 67",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 9,
+  "ok": true
+ },
+ {
+  "name": "legacy truncated at 100",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 9,
+  "ok": true
+ },
+ {
+  "name": "legacy truncated at 215",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 11,
+  "ok": true
+ },
+ {
+  "name": "legacy truncated at 254",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 12,
+  "ok": true
+ },
+ {
+  "name": "v0 truncated at 1",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 10,
+  "ok": true
+ },
+ {
+  "name": "v0 truncated at 65",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 14,
+  "ok": true
+ },
+ {
+  "name": "v0 truncated at 66",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 14,
+  "ok": true
+ },
+ {
+  "name": "v0 truncated at 70",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 12,
+  "ok": true
+ },
+ {
+  "name": "v0 truncated at 100",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 13,
+  "ok": true
+ },
+ {
+  "name": "v0 truncated at 256",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 194,
+  "ok": true
+ },
+ {
+  "name": "legacy with extra trailing bytes",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 191,
+  "ok": true
+ },
+ {
+  "name": "v0 with extra trailing bytes",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 186,
+  "ok": true
+ },
+ {
+  "name": "legacy signature-count byte flipped",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 198,
+  "ok": true
+ },
+ {
+  "name": "v0 header required-signatures 255",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 11,
+  "ok": true
+ },
+ {
+  "name": "v0 last byte 200 (data length overflow)",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 10,
+  "ok": true
+ },
+ {
+  "name": "zero instructions",
+  "status": 200,
+  "kind": "repaired",
+  "ms": 372,
+  "ok": true
+ },
+ {
+  "name": "only compute budget",
+  "status": 200,
+  "kind": "repaired",
+  "ms": 663,
+  "ok": true
+ },
+ {
+  "name": "25 compute budget ixs",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 192,
+  "ok": true
+ },
+ {
+  "name": "compute limit 0",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 193,
+  "ok": true
+ },
+ {
+  "name": "compute limit u32 max",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 213,
+  "ok": true
+ },
+ {
+  "name": "priority fee u64 max",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 6350,
+  "ok": true
+ },
+ {
+  "name": "compute budget garbage data",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 420,
+  "ok": true
+ },
+ {
+  "name": "compute budget empty data",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 408,
+  "ok": true
+ },
+ {
+  "name": "compute budget tag 2 with 1 byte",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 405,
+  "ok": true
+ },
+ {
+  "name": "jupiter empty data",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 406,
+  "ok": true
+ },
+ {
+  "name": "jupiter 7-byte data",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 406,
+  "ok": true
+ },
+ {
+  "name": "jupiter route disc only",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 407,
+  "ok": true
+ },
+ {
+  "name": "jupiter route_v2 short amounts",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 429,
+  "ok": true
+ },
+ {
+  "name": "jupiter route_v2 no accounts",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 406,
+  "ok": true
+ },
+ {
+  "name": "jupiter route 200 zero bytes",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 416,
+  "ok": true
+ },
+ {
+  "name": "pumpswap buy disc only",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 429,
+  "ok": true
+ },
+ {
+  "name": "pumpswap buy 20 bytes no accounts",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 407,
+  "ok": true
+ },
+ {
+  "name": "pumpswap buy amount u64 max",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 6137,
+  "ok": true
+ },
+ {
+  "name": "pumpswap buy limit 0",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 425,
+  "ok": true
+ },
+ {
+  "name": "raydium tag 9 short",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 6193,
+  "ok": true
+ },
+ {
+  "name": "raydium tag 17 no accounts",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 826,
+  "ok": true
+ },
+ {
+  "name": "raydium tag 9 with 3 accounts",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 443,
+  "ok": true
+ },
+ {
+  "name": "raydium unknown tag 200",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 499,
+  "ok": true
+ },
+ {
+  "name": "nonce advance only",
+  "status": 400,
+  "kind": "Nonce account 5NpN1qtWD36EZPC3ERZaXcc2vUG4XCyTp8KbPUstNQEQ does not exist, so this durable",
+  "ms": 610,
+  "ok": true
+ },
+ {
+  "name": "nonce advance twice",
+  "status": 400,
+  "kind": "Nonce account 5NpN1qtWD36EZPC3ERZaXcc2vUG4XCyTp8KbPUstNQEQ does not exist, so this durable",
+  "ms": 220,
+  "ok": true
+ },
+ {
+  "name": "nonce advance after transfer",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 417,
+  "ok": true
+ },
+ {
+  "name": "transfer to self",
+  "status": 200,
+  "kind": "repaired",
+  "ms": 818,
+  "ok": true
+ },
+ {
+  "name": "transfer u64 max lamports",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 420,
+  "ok": true
+ },
+ {
+  "name": "unknown program random data",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 417,
+  "ok": true
+ },
+ {
+  "name": "20 transfers (near size cap)",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 404,
+  "ok": true
+ },
+ {
+  "name": "60 transfers as v0 (over 1232, hand-assembled)",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 837,
+  "ok": true
+ },
+ {
+  "name": "payer is system program",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 413,
+  "ok": true
+ },
+ {
+  "name": "payer is default pubkey",
+  "status": 200,
+  "kind": "not_repairable",
+  "ms": 6240,
+  "ok": true
+ },
+ {
+  "name": "v0 with fake lookup table",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 13,
+  "ok": true
+ },
+ {
+  "name": "v0 with 1 real-looking lookup table",
+  "status": 400,
+  "kind": "Address lookup table BEjwWbW38YFfsNjbXVvFruLwnKL2euwmdxpizcGB56sR no longer exists, so thi",
+  "ms": 213,
+  "ok": true
+ },
+ {
+  "name": "v1 minimal",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 15,
+  "ok": true
+ },
+ {
+  "name": "v1 compute limit 0",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 13,
+  "ok": true
+ },
+ {
+  "name": "v1 compute limit u32 max",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 12,
+  "ok": true
+ },
+ {
+  "name": "v1 fee u64 max",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 16,
+  "ok": true
+ },
+ {
+  "name": "v1 loaded u32 max",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 12,
+  "ok": true
+ },
+ {
+  "name": "v1 heap u32 max",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 24,
+  "ok": true
+ },
+ {
+  "name": "v1 zero instructions",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 10,
+  "ok": true
+ },
+ {
+  "name": "v1 program index out of range",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 9,
+  "ok": true
+ },
+ {
+  "name": "v1 account index out of range",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 10,
+  "ok": true
+ },
+ {
+  "name": "v1 zero accounts",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 8,
+  "ok": true
+ },
+ {
+  "name": "v1 65 accounts",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 9,
+  "ok": true
+ },
+ {
+  "name": "v1 required signatures 0",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 10,
+  "ok": true
+ },
+ {
+  "name": "v1 required signatures 255",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 9,
+  "ok": true
+ },
+ {
+  "name": "v1 no signatures",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 9,
+  "ok": true
+ },
+ {
+  "name": "v1 data length 255",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 9,
+  "ok": true
+ },
+ {
+  "name": "v1 truncated at 1",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 8,
+  "ok": true
+ },
+ {
+  "name": "v1 truncated at 2",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 7,
+  "ok": true
+ },
+ {
+  "name": "v1 truncated at 4",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 6,
+  "ok": true
+ },
+ {
+  "name": "v1 truncated at 10",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 7,
+  "ok": true
+ },
+ {
+  "name": "v1 truncated at 20",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 7,
+  "ok": true
+ },
+ {
+  "name": "v1 truncated at 40",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 7,
+  "ok": true
+ },
+ {
+  "name": "v1 truncated at 80",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 6,
+  "ok": true
+ },
+ {
+  "name": "v1 truncated at 120",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 8,
+  "ok": true
+ },
+ {
+  "name": "v1 random after version byte 4095",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 7,
+  "ok": true
+ },
+ {
+  "name": "v1 5000 bytes",
+  "status": 400,
+  "kind": "Could not decode that as a base64 Solana transaction.",
+  "ms": 10,
+  "ok": true
+ }
+]
