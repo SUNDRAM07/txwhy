@@ -7,7 +7,7 @@ Live: https://txwhy.vercel.app - MIT - no API key - agents are the primary users
 ## What it repairs
 - Compute unit limit (measured usage + 15%), expired blockhash, priority fee (75th percentile for the exact accounts, capped at 0.001 SOL), loaded-accounts data limit.
 - Jupiter v6 swap on a stale quote: only the swap instruction is replaced, same tokens, amount and tolerance.
-- Direct Pump.fun / PumpSwap swap on slippage: same amount and accounts, only the limit moved to the current price, never more than 25% against the user.
+- Direct Pump.fun / PumpSwap / Raydium AMM v4 swap on slippage: same amount and accounts, only the limit moved to the current price, never more than 25% against the user.
 - Legacy, v0 and version 1 (SIMD-0385) transactions; durable nonces.
 - Anything else is diagnosed: failing instruction, program, decoded error (1,934 published codes across 40 programs), what to do.
 

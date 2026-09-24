@@ -1,6 +1,6 @@
 ---
 name: txwhy
-description: Repair a failing Solana transaction before sending it, or diagnose one that failed. Fixes compute limit, expired blockhash, priority fee, loaded-data limit, Jupiter slippage (fresh quote, same trade) and direct Pump.fun/PumpSwap slippage (bounded limit move). Returns an unsigned rebuilt transaction with a simulation proof and an offline-verifiable diff. Legacy, v0 and v1 transactions. No API key.
+description: Repair a failing Solana transaction before sending it, or diagnose one that failed. Fixes compute limit, expired blockhash, priority fee, loaded-data limit, Jupiter slippage (fresh quote, same trade) and direct Pump.fun/PumpSwap/Raydium AMM v4 slippage (bounded limit move). Returns an unsigned rebuilt transaction with a simulation proof and an offline-verifiable diff. Legacy, v0 and v1 transactions. No API key.
 ---
 
 # TxWhy: failed transaction in, working transaction out
@@ -33,7 +33,7 @@ Add `{"mcpServers": {"txwhy": {"url": "https://txwhy.vercel.app/api/mcp"}}}`. To
 
 ## Rules to rely on
 
-- A repair only ever changes: compute budget, blockhash, one Jupiter swap replaced by an equivalent one (same wallet, accounts, output token, amount, tolerance), or one Pump.fun/PumpSwap limit moved at most 25% against the user. Everything else is byte for byte identical. Verify it yourself with `verifyRepair` from `@txwhy/sdk` (no network needed).
+- A repair only ever changes: compute budget, blockhash, one Jupiter swap replaced by an equivalent one (same wallet, accounts, output token, amount, tolerance), or one Pump.fun/PumpSwap/Raydium AMM v4 limit moved at most 25% against the user. Everything else is byte for byte identical. Verify it yourself with `verifyRepair` from `@txwhy/sdk` (no network needed).
 - `needs_requote` means the price moved past a tolerance TxWhy could not honour; get a fresh quote yourself.
 - `not_repairable` carries the exact cause and fix (for example insufficient SOL with the shortfall, a private program's own error, a circular arbitrage that cannot succeed).
 - Version 1 transactions: pass base64 strings; web3.js 1.x cannot serialize v1, so sign the returned bytes with @solana/kit.

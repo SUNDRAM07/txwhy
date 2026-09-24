@@ -36,7 +36,7 @@
     "/api/v1/example": {
       "get": {
         "summary": "A deliberately broken demo transaction",
-        "parameters": [{ "name": "kind", "in": "query", "schema": { "type": "string", "enum": ["compute", "blockhash", "slippage", "pump", "v1"] } }],
+        "parameters": [{ "name": "kind", "in": "query", "schema": { "type": "string", "enum": ["compute", "blockhash", "slippage", "pump", "raydium", "v1"] } }],
         "responses": { "200": { "description": "{ kind, description, transaction }" } }
       }
     }

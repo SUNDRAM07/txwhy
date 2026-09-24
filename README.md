@@ -28,7 +28,7 @@ Most failures never reach the chain. Wallets and agents simulate first, and the 
 | Dropped under load | Sets the priority fee from what the network recently charged for the exact accounts written to. Never raises your total fee by more than 0.001 SOL, and falls back to your original fee if the wallet cannot afford more |
 | Slippage on a Jupiter swap | Replaces **only** the swap instruction with a freshly quoted one. Tokens, amount, slippage tolerance and every other instruction (memos, fee transfers, tips) stay exactly as written. Shows how the minimum you receive changed |
 | Loaded account data limit too small | Lifts a declared limit that is smaller than what the transaction loads |
-| Slippage on a direct Pump.fun or PumpSwap swap | These instructions carry no tolerance, only a limit (max cost or min output). The amount and every account stay as written; only the limit moves to the current price using the programs' own published math, with a stated 1% tolerance and never more than 25% against you. Swaps routed through another program by CPI are explained, not touched |
+| Slippage on a direct Pump.fun, PumpSwap or Raydium AMM v4 swap | These instructions carry no tolerance, only a limit (max cost or min output). The amount and every account stay as written; only the limit moves to the current price using the programs' own published math, with a stated 1% tolerance and never more than 25% against you. Swaps routed through another program by CPI are explained, not touched |
 | Version 1 transaction (SIMD-0385) | Same repairs, applied to the header config instead of instructions; re-encoded with @solana/kit 8. `npx tsx scripts/test-v1.ts` covers it |
 
 And what it refuses to fake:

@@ -49,6 +49,11 @@ const FIXES: { failure: string; action: string; fixed: boolean }[] = [
     fixed: true,
   },
   {
+    failure: "Slippage on a direct Pump.fun, PumpSwap or Raydium swap",
+    action: "These instructions carry no tolerance, only a limit. The amount and every account stay as written; only the limit moves to the current price using the programs' own math, with a stated 1% tolerance and never more than 25% against you.",
+    fixed: true,
+  },
+  {
     failure: "Version 1 transactions (the new format)",
     action: "SIMD-0385 went live on mainnet on Sep 15, 2026 and moved compute settings into the transaction header. TxWhy reads and rebuilds v1 natively: the same repairs, applied to the header, re-encoded with @solana/kit.",
     fixed: true,
