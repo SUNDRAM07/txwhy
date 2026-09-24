@@ -148,6 +148,8 @@ npx tsx scripts/test-v1.ts        # 8 version-1 cases: header repairs, expired b
 cd sdk && node test.mjs           # the npm package end to end against production
 node scripts/fuzz-repair.mjs      # 122 malformed, truncated, oversized and hostile inputs: never a 500, never a hang
 node scripts/fuzz-mcp.mjs         # 52 malformed JSON-RPC calls and hostile tool arguments against the MCP server
+node scripts/stress.mjs 24        # 24 simultaneous repairs against production: status mix and latency spread, no 5xx
+node scripts/probe-ratelimit.mjs  # proves forged x-forwarded-for headers cannot dodge the per-IP limit
 cd crates/txwhy-verify && cargo test   # 17 Rust verifier tests, incl. parity with real production repairs
 ```
 

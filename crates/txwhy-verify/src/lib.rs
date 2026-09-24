@@ -13,7 +13,7 @@
 //! Everything else must be identical and in the same order: same fee payer, same set of signers,
 //! every other instruction byte for byte. No network access, no Solana dependencies.
 //!
-//! This is a port of `src/lib/verify.ts` from TxWhy (https://txwhy.vercel.app), and the
+//! This is a port of `src/lib/verify.ts` from TxWhy (<https://txwhy.vercel.app>), and the
 //! server runs the same rule on its own output.
 
 use std::collections::BTreeSet;
