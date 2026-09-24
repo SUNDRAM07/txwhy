@@ -1,5 +1,5 @@
 import { HTTPFacilitatorClient, x402ResourceServer } from "@x402/core/server";
-import { declareDiscoveryExtension } from "@x402/extensions/bazaar";
+import { bazaarResourceServerExtension, declareDiscoveryExtension } from "@x402/extensions/bazaar";
 import { withX402 } from "@x402/next";
 import { registerExactSvmScheme } from "@x402/svm/exact/server";
 import { NextResponse, type NextRequest } from "next/server";
@@ -82,6 +82,9 @@ function build() {
   }
   const server = new x402ResourceServer(new HTTPFacilitatorClient({ url: FACILITATOR }));
   registerExactSvmScheme(server, { networks: [SOLANA_MAINNET], rpcUrl: RPC_URL });
+  // Fills in the HTTP method and route on the discovery declaration at request time; without it the
+  // declaration fails the Bazaar schema ("input: must have required property method") and is dropped.
+  server.registerExtension(bazaarResourceServerExtension);
   return withX402(
     handler,
     {
