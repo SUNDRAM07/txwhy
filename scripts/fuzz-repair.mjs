@@ -8,7 +8,7 @@ import { ComputeBudgetProgram, Keypair, PublicKey, SystemProgram, TransactionMes
 import { writeFileSync } from "node:fs";
 
 const BASE = process.env.TXWHY_URL ?? "http://localhost:3111";
-const PER_MINUTE = BASE.includes("localhost") ? 0 : 50;
+const PER_MINUTE = BASE.includes("localhost") ? 0 : 25; // the public limit is 30 per minute per IP
 const b64 = (u8) => Buffer.from(u8).toString("base64");
 const rnd = (n) => { const u = new Uint8Array(n); for (let i = 0; i < n; i++) u[i] = Math.floor(Math.random() * 256); return u; };
 const payer = new PublicKey("5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9");
