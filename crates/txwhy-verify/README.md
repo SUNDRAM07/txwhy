@@ -10,6 +10,11 @@ TxWhy takes a failing Solana transaction and returns a rebuilt one that simulate
 
 Everything else must be byte for byte identical and in the same order: fee payer, signer set, every other instruction.
 
+```toml
+[dependencies]
+txwhy-verify = "0.1"
+```
+
 ```rust
 use txwhy_verify::{verify_instructions, Instruction, AccountMeta};
 
