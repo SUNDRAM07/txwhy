@@ -1,0 +1,16 @@
+[package]
+name = "txwhy-verify"
+version = "0.1.0"
+edition = "2021"
+description = "Offline verifier for TxWhy transaction repairs: proves a rebuilt Solana transaction only differs from the original in the ways a repair is allowed to."
+license = "MIT"
+repository = "https://github.com/SUNDRAM07/txwhy"
+keywords = ["solana", "transaction", "repair", "verify", "jupiter"]
+categories = ["cryptography::cryptocurrencies"]
+
+[dependencies]
+bs58 = "0.5"
+
+[dev-dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

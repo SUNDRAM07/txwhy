@@ -112,7 +112,9 @@ Message [@txwhy_bot](https://t.me/txwhy_bot) a signature, an explorer link, or a
 
 ## You never have to trust us
 
-A service that hands you a transaction to sign could hand you anything. So the rule for what a repair may change is code you can run yourself, with no network access: same fee payer, same set of signers, every non-ComputeBudget instruction byte for byte in the same order, and at most one Jupiter swap replaced by one for the same wallet, same source and receiving token accounts, same output token, same amount and same slippage tolerance. It lives in [src/lib/verify.ts](src/lib/verify.ts), ships in the npm package as `verifyRepair` / `@txwhy/sdk/verify`, and the server runs it on its own output and refuses to return anything that fails it. `scripts/test-verify.ts` attacks it fifteen ways (extra transfer, redirected fee, new signer, widened slippage, proceeds redirected, layout switch); all are refused.
+A service that hands you a transaction to sign could hand you anything. So the rule for what a repair may change is code you can run yourself, with no network access: same fee payer, same set of signers, every non-ComputeBudget instruction byte for byte in the same order, and at most one Jupiter swap replaced by one for the same wallet, same source and receiving token accounts, same output token, same amount and same slippage tolerance. It lives in [src/lib/verify.ts](src/lib/verify.ts), ships in the npm package as `verifyRepair` / `@txwhy/sdk/verify`, and the server runs it on its own output and refuses to return anything that fails it. `scripts/test-verify.ts` attacks it fifteen ways (extra transfer, redirected fee, new signer, widened slippage, proceeds redirected, layout switch); all are refused. Direct Pump.fun, PumpSwap and Raydium AMM v4 swaps may only have their limit moved, never more than 25% against the user; `scripts/test-verify.ts` covers eight more cases for those.
+
+The same rule also exists as a Rust crate with no Solana dependencies, [crates/txwhy-verify](crates/txwhy-verify), for Rust bots and programs that sign what TxWhy returns. Its `tests/parity.rs` replays real repairs produced by the live API (compute, Jupiter, PumpSwap, Raydium) and checks that the Rust and TypeScript verifiers reach the same verdict, then flips one byte in a real repair and checks it is refused.
 
 ## Run it locally
 
@@ -140,10 +142,11 @@ node scripts/test-repair.mjs      # 7 repair scenarios, including a swap on a st
 node scripts/test-real.mjs        # real failed transactions pulled from mainnet
 node scripts/test-slippage.mjs    # real slippage failures
 node scripts/measure-naming.mjs   # how many real failures get a named cause
-npx tsx scripts/test-verify.ts    # 21 verifier cases, 15 of them attacks; no network
+npx tsx scripts/test-verify.ts    # 29 verifier cases, most of them attacks; no network
 npx tsx scripts/test-pump.ts      # real Pump.fun / PumpSwap slippage failures: repaired, capped, or explained
 npx tsx scripts/test-v1.ts        # 8 version-1 cases: header repairs, expired blockhash, stale swap, a real landed v1
 cd sdk && node test.mjs           # the npm package end to end against production
+cd crates/txwhy-verify && cargo test   # 17 Rust verifier tests, incl. parity with real production repairs
 ```
 
 ## What we learned from real data
