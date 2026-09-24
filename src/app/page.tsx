@@ -282,6 +282,11 @@ export default function Home() {
           <p className="mt-3 text-sm text-neutral-500">
             From a terminal: <code className="rounded bg-neutral-100 px-1.5 py-0.5 dark:bg-neutral-900">npx @txwhy/sdk &lt;signature&gt;</code>
           </p>
+          <p className="mt-3 text-sm text-neutral-500">
+            On @solana/kit? The same loop, with no web3.js and with version 1 transactions included:{" "}
+            <code className="rounded bg-neutral-100 px-1.5 py-0.5 dark:bg-neutral-900">import {"{ sendWithRepair }"} from &quot;@txwhy/sdk/kit&quot;</code>
+            {" "}and pass your rpc, the transaction and your signer.
+          </p>
         </section>
       )}
 
