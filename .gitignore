@@ -53,3 +53,5 @@ sdk/dist/
 sdk/LICENSE
 
 .env*
+scripts/fuzz-results.json
+scripts/stress-results.json
