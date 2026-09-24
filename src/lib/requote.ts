@@ -2,7 +2,7 @@ import { PublicKey, TransactionInstruction } from "@solana/web3.js";
 import { rpc } from "./rpc";
 import { JUPITER_V6, LAYOUTS, readAmounts, readSwapShape, type Mode } from "./swap-shape";
 import { findDirectSwap, requoteDirect } from "./requote-pump";
-import { PUMP_FUN, PUMP_SWAP, readDirectSwapShape } from "./swap-shape";
+import { PUMP_FUN, PUMP_SWAP, RAYDIUM_V4, readDirectSwapShape } from "./swap-shape";
 
 export { readSwapShape };
 
@@ -276,8 +276,8 @@ export async function requoteSwap(instructions: TransactionInstruction[]): Promi
       program: direct.program,
     };
   }
-  const pumpUnknown = instructions.some((ix) => !readDirectSwapShape(ix) && [PUMP_FUN, PUMP_SWAP].includes(ix.programId.toBase58()));
-  return { ok: false, reason: pumpUnknown ? "The Pump swap here uses an instruction TxWhy does not recognise." : "No swap found that TxWhy can re-quote at the top level (Jupiter v6, Pump.fun and PumpSwap). A swap executed inside another program by CPI cannot have its limit moved from outside." };
+  const pumpUnknown = instructions.some((ix) => !readDirectSwapShape(ix) && [PUMP_FUN, PUMP_SWAP, RAYDIUM_V4].includes(ix.programId.toBase58()));
+  return { ok: false, reason: pumpUnknown ? "The Pump swap here uses an instruction TxWhy does not recognise." : "No swap found that TxWhy can re-quote at the top level (Jupiter v6, Pump.fun, PumpSwap and Raydium AMM v4). A swap executed inside another program by CPI cannot have its limit moved from outside." };
 }
 const DIRECT_TOLERANCE_BPS_HINT = 100;
 

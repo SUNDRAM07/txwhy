@@ -9,7 +9,7 @@ import {
 import { rateLimit, tooManyRequests } from "@/lib/ratelimit";
 import { rpc } from "@/lib/rpc";
 import { buildV1 } from "@/lib/v1";
-import { buildStalePumpSwapBuy } from "@/lib/pump-demo";
+import { buildStalePumpSwapBuy, buildStaleRaydiumSwap } from "@/lib/pump-demo";
 
 /**
  * GET /api/v1/example?kind=compute|blockhash|slippage
@@ -94,6 +94,14 @@ export async function GET(request: Request) {
     ]);
     if (kind === "pump") {
       const { instructions, description } = await buildStalePumpSwapBuy(DEMO_PAYER);
+      return Response.json({
+        kind,
+        description,
+        transaction: encode(value.blockhash, [ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), ...instructions]),
+      });
+    }
+    if (kind === "raydium") {
+      const { instructions, description } = await buildStaleRaydiumSwap(DEMO_PAYER);
       return Response.json({
         kind,
         description,

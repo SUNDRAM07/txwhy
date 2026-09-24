@@ -86,10 +86,15 @@ export function readSwapShape(ix: TransactionInstruction) {
 
 export const PUMP_FUN = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 export const PUMP_SWAP = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
+export const RAYDIUM_V4 = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
 
 export interface DirectLayout {
-  program: "Pump.fun" | "PumpSwap";
+  program: "Pump.fun" | "PumpSwap" | "Raydium AMM v4";
   name: string;
+  /** Length of the instruction tag in bytes (8 for Anchor discriminators, 1 for Raydium's u8). Both u64 args follow it. */
+  tagLength?: number;
+  /** True when the limit argument comes before the fixed amount (Raydium's newer exact-out swap). */
+  limitFirst?: boolean;
   /** What the fixed argument is: tokens the user wants (buy), quote/SOL the user spends (buy_exact), tokens the user sells (sell). */
   fixed: "tokens_out" | "quote_in" | "tokens_in";
   /** What the limit argument is: a maximum the user pays, or a minimum the user receives. */
@@ -111,6 +116,14 @@ export const DIRECT_LAYOUTS: Record<string, Record<string, DirectLayout>> = {
     c62e1552b4d9e870: { program: "PumpSwap", name: "buy_exact_quote_in", fixed: "quote_in", limit: "min_out" },
     "33e685a4017f83ad": { program: "PumpSwap", name: "sell", fixed: "tokens_in", limit: "min_out" },
   },
+  // Raydium AMM v4: a one-byte instruction tag, then amount_in/min_out (9) or amount_out/max_in (11).
+  // Tags 9/11 carry the legacy OpenBook accounts (17-18); tags 16/17 are the same swaps without them (8 accounts).
+  [RAYDIUM_V4]: {
+    "09": { program: "Raydium AMM v4", name: "swap_base_in", fixed: "tokens_in", limit: "min_out", tagLength: 1 },
+    "0b": { program: "Raydium AMM v4", name: "swap_base_out", fixed: "tokens_out", limit: "max_in", tagLength: 1 },
+    "10": { program: "Raydium AMM v4", name: "swap_base_in", fixed: "tokens_in", limit: "min_out", tagLength: 1 },
+    "11": { program: "Raydium AMM v4", name: "swap_base_out", fixed: "tokens_out", limit: "max_in", tagLength: 1, limitFirst: true },
+  },
 };
 
 /** A repaired limit may never be worse for the user than this factor of the original. */
@@ -118,18 +131,25 @@ export const DIRECT_LIMIT_CAP_BPS = 2_500;
 
 export function readDirectSwapShape(ix: TransactionInstruction) {
   const layouts = DIRECT_LAYOUTS[ix.programId.toBase58()];
-  if (!layouts || ix.data.length < 24) return null;
+  if (!layouts) return null;
   const data = Buffer.from(ix.data);
-  const layout = layouts[data.subarray(0, 8).toString("hex")];
+  const tagLength = Object.values(layouts)[0]?.tagLength ?? 8;
+  if (data.length < tagLength + 16) return null;
+  const discriminator = data.subarray(0, tagLength).toString("hex");
+  const layout = layouts[discriminator];
   if (!layout) return null;
+  const amountOffset = layout.limitFirst ? tagLength + 8 : tagLength;
+  const limitOffset = layout.limitFirst ? tagLength : tagLength + 8;
   return {
     ...layout,
-    discriminator: data.subarray(0, 8).toString("hex"),
-    amount: data.readBigUInt64LE(8),
-    limitValue: data.readBigUInt64LE(16),
+    discriminator,
+    /** Byte offset of the limit argument, for rewriting it in place. */
+    limitOffset,
+    amount: data.readBigUInt64LE(amountOffset),
+    limitValue: data.readBigUInt64LE(limitOffset),
     accounts: ix.keys.map((k) => `${k.pubkey.toBase58()}:${k.isSigner ? "s" : ""}${k.isWritable ? "w" : ""}`),
     /** Everything after the two u64 args (flags such as track_volume) must stay byte for byte. */
-    tail: data.subarray(24).toString("hex"),
+    tail: data.subarray(tagLength + 16).toString("hex"),
   };
 }
 

@@ -75,3 +75,27 @@ export async function buildStalePumpSwapBuy(payer: PublicKey): Promise<{ instruc
   }
   throw new Error(`No suitable PumpSwap pool for the demo right now${lastError ? ` (${lastError.slice(0, 80)})` : ""}.`);
 }
+
+/* ------------------------------------------------------------------------------------------- */
+
+import { Raydium, TxVersion } from "@raydium-io/raydium-sdk-v2";
+
+const SOL_USDC_V4 = "58oQChx4yWmvKdwLLZzBi4ChoCc2fqCUWBkwMihLYQo2";
+
+/**
+ * A genuine Raydium AMM v4 swap (1 USDC to SOL on the SOL/USDC pool) built with Raydium's SDK,
+ * whose minimum output is set 10% above the fair price, so it fails on slippage.
+ */
+export async function buildStaleRaydiumSwap(payer: PublicKey): Promise<{ instructions: TransactionInstruction[]; description: string }> {
+  const connection = new Connection(RPC_URL, "confirmed");
+  const raydium = await Raydium.load({ connection, owner: payer, disableLoadToken: true, disableFeatureCheck: true });
+  const { poolInfo, poolKeys, poolRpcData } = await raydium.liquidity.getPoolInfoFromRpc({ poolId: SOL_USDC_V4 });
+  const live = { ...poolInfo, baseReserve: poolRpcData.baseReserve, quoteReserve: poolRpcData.quoteReserve, status: poolRpcData.status.toNumber(), version: 4 as const };
+  const amountIn = new BN(1_000_000);
+  const fair = raydium.liquidity.computeAmountOut({ poolInfo: live, amountIn, mintIn: poolInfo.mintB.address, mintOut: poolInfo.mintA.address, slippage: 0 });
+  const tooHigh = fair.amountOut.muln(110).divn(100);
+  const built = await raydium.liquidity.swap({ poolInfo: live, poolKeys, amountIn, amountOut: tooHigh, inputMint: poolInfo.mintB.address, fixedSide: "in", txVersion: TxVersion.LEGACY });
+  const instructions = (built.builder?.allInstructions ?? []) as TransactionInstruction[];
+  if (!instructions.some((ix) => ix.programId.toBase58() === "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8")) throw new Error("Raydium SDK did not produce a swap instruction.");
+  return { instructions, description: "A Raydium AMM v4 swap of 1 USDC to SOL whose minimum output is 10% above the fair price, so it fails on slippage." };
+}

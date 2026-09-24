@@ -9,6 +9,7 @@ const DEMOS = [
   { kind: "blockhash", label: "Expired blockhash" },
   { kind: "slippage", label: "Swap on a stale quote" },
   { kind: "pump", label: "PumpSwap buy on a stale price" },
+  { kind: "raydium", label: "Raydium swap on a stale price" },
   { kind: "v1", label: "Version 1 transaction" },
 ];
 

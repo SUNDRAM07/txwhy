@@ -1,12 +1,13 @@
 import { OnlinePumpAmmSdk, buyBaseInput, buyQuoteInput, sellBaseInput } from "@pump-fun/pump-swap-sdk";
 import { OnlinePumpSdk, getBuySolAmountFromTokenAmount, getBuyTokenAmountFromSolAmount, getSellSolAmountFromTokenAmount } from "@pump-fun/pump-sdk";
 import BN from "bn.js";
+import { Raydium } from "@raydium-io/raydium-sdk-v2";
 import { Connection, PublicKey, type TransactionInstruction } from "@solana/web3.js";
 import { RPC_URL } from "./rpc";
-import { DIRECT_LIMIT_CAP_BPS, PUMP_FUN, PUMP_SWAP, readDirectSwapShape } from "./swap-shape";
+import { DIRECT_LIMIT_CAP_BPS, PUMP_FUN, PUMP_SWAP, RAYDIUM_V4, readDirectSwapShape } from "./swap-shape";
 
 /**
- * Slippage repair for direct Pump.fun (bonding curve) and PumpSwap (AMM) swaps.
+ * Slippage repair for direct Pump.fun (bonding curve), PumpSwap (AMM) and Raydium AMM v4 swaps.
  *
  * These instructions carry no slippage tolerance, only an absolute limit: the most quote/SOL a
  * buy may cost, or the least a sell/exact-in buy must return. When the price moves past that
@@ -33,6 +34,9 @@ const withTolerance = (v: bigint, direction: "up" | "down") =>
 
 let connection: Connection | null = null;
 const conn = () => (connection ??= new Connection(RPC_URL, "confirmed"));
+let raydium: Promise<Raydium> | null = null;
+const ray = () => (raydium ??= Raydium.load({ connection: conn(), disableLoadToken: true, disableFeatureCheck: true }));
+const ceilDiv = (a: bigint, b: bigint) => (a + b - BigInt(1)) / b;
 
 /** Find the one direct swap in the instruction list. Two would be ambiguous, and are refused. */
 export function findDirectSwap(instructions: TransactionInstruction[]): { index: number; shape: NonNullable<ReturnType<typeof readDirectSwapShape>> } | null {
@@ -100,6 +104,34 @@ async function freshLimit(ix: TransactionInstruction, shape: NonNullable<ReturnT
     const out = getSellSolAmountFromTokenAmount({ global, feeConfig, mintSupply, bondingCurve, amount: bn(shape.amount) });
     return { limit: withTolerance(big(out), "down"), expected: big(out), unit };
   }
+  if (programId === RAYDIUM_V4) {
+    // Accounts: [1] amm, the user's source and destination token accounts are the last three with the owner.
+    const amm = ix.keys[1].pubkey;
+    const userSource = ix.keys[ix.keys.length - 3].pubkey;
+    const [info, src] = await Promise.all([(await ray()).liquidity.getRpcPoolInfo(amm.toBase58()), conn().getParsedAccountInfo(userSource)]);
+    const srcMint = (src.value?.data as { parsed?: { info?: { mint?: string } } })?.parsed?.info?.mint;
+    if (!srcMint) throw new Error("could not read the source token account");
+    const inIsBase = srcMint === info.baseMint.toBase58();
+    if (!inIsBase && srcMint !== info.quoteMint.toBase58()) throw new Error("the source token account does not belong to this pool");
+    const reserveIn = BigInt((inIsBase ? info.baseReserve : info.quoteReserve).toString());
+    const reserveOut = BigInt((inIsBase ? info.quoteReserve : info.baseReserve).toString());
+    const feeNum = BigInt(info.swapFeeNumerator.toString());
+    const feeDen = BigInt(info.swapFeeDenominator.toString());
+    const outMint = inIsBase ? info.quoteMint.toBase58() : info.baseMint.toBase58();
+    const unitOf = (mint: string) => (mint === SOL_MINT ? "SOL" : "tokens");
+    if (shape.name === "swap_base_in") {
+      // Raydium v4: fee is taken from the input, then constant product.
+      const fee = ceilDiv(shape.amount * feeNum, feeDen);
+      const inAfterFee = shape.amount - fee;
+      const out = (inAfterFee * reserveOut) / (reserveIn + inAfterFee);
+      return { limit: withTolerance(out, "down"), expected: out, unit: unitOf(outMint) };
+    }
+    // swap_base_out: amount is the exact output; the limit is the most input the user pays.
+    if (shape.amount >= reserveOut) throw new Error("the pool cannot supply that output amount");
+    const inAfterFee = ceilDiv(shape.amount * reserveIn, reserveOut - shape.amount);
+    const needed = ceilDiv(inAfterFee * feeDen, feeDen - feeNum);
+    return { limit: withTolerance(needed, "up"), expected: needed, unit: unitOf(srcMint) };
+  }
   throw new Error("not a direct swap");
 }
 
@@ -136,7 +168,7 @@ export async function requoteDirect(instructions: TransactionInstruction[]): Pro
     return { ok: false, fits: true, reason: `The ${shape.program} ${shape.name} fits its own limit at the current price (${label(shape)} ${fmt(shape.limitValue, fresh.unit)}, now ${fmt(fresh.expected, fresh.unit)}), so what fails now is not slippage.` };
   }
   const data = Buffer.from(ix.data);
-  data.writeBigUInt64LE(fresh.limit, 16);
+  data.writeBigUInt64LE(fresh.limit, shape.limitOffset);
   const rebuilt = new (ix.constructor as typeof TransactionInstruction)({ programId: ix.programId, keys: ix.keys, data });
   const out = [...instructions];
   out[index] = rebuilt;
