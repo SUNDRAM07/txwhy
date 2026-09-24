@@ -147,6 +147,7 @@ npx tsx scripts/test-pump.ts      # real Pump.fun / PumpSwap slippage failures: 
 npx tsx scripts/test-v1.ts        # 8 version-1 cases: header repairs, expired blockhash, stale swap, a real landed v1
 cd sdk && node test.mjs           # the npm package end to end against production
 node scripts/fuzz-repair.mjs      # 122 malformed, truncated, oversized and hostile inputs: never a 500, never a hang
+node scripts/fuzz-mcp.mjs         # 52 malformed JSON-RPC calls and hostile tool arguments against the MCP server
 cd crates/txwhy-verify && cargo test   # 17 Rust verifier tests, incl. parity with real production repairs
 ```
 
