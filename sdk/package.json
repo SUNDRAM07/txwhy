@@ -1,6 +1,6 @@
 {
   "name": "@txwhy/sdk",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Failed Solana transaction in, working transaction out. Repair inside your send loop, and verify every repair offline.",
   "license": "MIT",
   "author": "Sundram Mahajan",
@@ -35,6 +35,11 @@
       "types": "./dist/types/sdk/src/verify.d.ts",
       "import": "./dist/verify.js",
       "require": "./dist/verify.cjs"
+    },
+    "./kit": {
+      "types": "./dist/types/sdk/src/kit.d.ts",
+      "import": "./dist/kit.js",
+      "require": "./dist/kit.cjs"
     }
   },
   "bin": {
@@ -51,15 +56,24 @@
     "node": ">=18"
   },
   "peerDependencies": {
+    "@solana/kit": ">=5.0.0",
     "@solana/web3.js": "^1.99.0"
   },
   "scripts": {
     "build": "node build.mjs"
   },
   "devDependencies": {
-    "@solana/kit": "^5.5.1",
+    "@solana/kit": "^8.3.0",
     "@x402/fetch": "^2.26.0",
     "@x402/svm": "^2.26.0",
     "bs58": "^6.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@solana/web3.js": {
+      "optional": true
+    },
+    "@solana/kit": {
+      "optional": true
+    }
   }
 }

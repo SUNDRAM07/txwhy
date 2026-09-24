@@ -10,9 +10,20 @@ connection.sendTransaction = async () => "STUBBED-NOT-SENT";
 const opts = { client: "test", endpoint: `${BASE}/api/v1/repair` };
 let pass = 0, total = 0;
 const check = (name, ok, detail = "") => { total++; if (ok) pass++; console.log(`${ok ? "PASS" : "FAIL"}  ${name} ${detail}`); };
+/** The demo endpoint builds real transactions against live state; one retry covers a transient upstream hiccup. */
+async function getExample(kind) {
+  for (let i = 0; i < 3; i++) {
+    const res = await fetch(`${BASE}/api/v1/example?kind=${kind}`, { headers: { "x-txwhy-client": "test" } });
+    const json = await res.json().catch(() => null);
+    if (json?.transaction) return json;
+    console.log(`      example(${kind}) answered ${res.status}, retrying`);
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  throw new Error(`example(${kind}) unavailable`);
+}
 
 for (const kind of ["compute", "blockhash", "slippage"]) {
-  const example = await (await fetch(`${BASE}/api/v1/example?kind=${kind}`)).json();
+  const example = await getExample(kind);
   const tx = VersionedTransaction.deserialize(Buffer.from(example.transaction, "base64"));
   const started = Date.now();
   const out = await sendWithRepair(connection, tx, (t) => t, { ...opts, onRepair: (r, v) => console.log(`      repaired: ${r.changes.map((c) => c.type).join(", ")} | local verification ok=${v?.ok} kept=${v?.kept}`) });
@@ -23,7 +34,7 @@ for (const kind of ["compute", "blockhash", "slippage"]) {
     const result = await repair({ transaction: tx }, opts);
     const honest = await verifyRepair(connection, tx, result.repairedTransaction);
     check("verifyRepair accepts the honest repair", honest.ok);
-    const other = await (await fetch(`${BASE}/api/v1/example?kind=slippage`)).json();
+    const other = await getExample("slippage");
     const swapped = await verifyRepair(connection, tx, other.transaction);
     check("verifyRepair refuses a different transaction", !swapped.ok, `-> ${swapped.violations[0]}`);
   }
@@ -34,6 +45,30 @@ try {
   check("bad input throws TxWhyError", false);
 } catch (e) {
   check("bad input throws TxWhyError", e instanceof TxWhyError, `-> ${e.message}`);
+}
+// The @solana/kit entry: same loop, no web3.js, and version 1 transactions included.
+{
+  const { createSolanaRpc } = await import("@solana/kit");
+  const kit = await import("./dist/kit.js");
+  const real = createSolanaRpc(process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com");
+  const rpc = new Proxy(real, { get: (t, p) => (p === "sendTransaction" ? () => ({ send: async () => "STUBBED-NOT-SENT" }) : Reflect.get(t, p)) });
+  const examples = {};
+  for (const kind of ["compute", "slippage", "v1"]) {
+    const example = (examples[kind] = await getExample(kind));
+    const started = Date.now();
+    try {
+      const out = await kit.sendWithRepair(rpc, example.transaction, (t) => t, { ...opts, maxRepairs: 2, onRepair: (r) => console.log(`      repaired: ${r.changes.map((c) => c.type).join(", ")}`) });
+      check(`kit sendWithRepair(${kind})`, out.signature === "STUBBED-NOT-SENT" && out.repairs.length >= 1, `${Date.now() - started} ms, ${out.repairs.length} repair(s)`);
+    } catch (e) {
+      check(`kit sendWithRepair(${kind})`, false, `-> ${e.message}`);
+    }
+  }
+  const v1 = examples.v1;
+  const result = await kit.repair({ transaction: v1.transaction }, opts);
+  const honest = await kit.verifyRepair(rpc, v1.transaction, result.repairedTransaction);
+  check("kit verifyRepair accepts the honest v1 repair", honest.ok, honest.ok ? "" : `-> ${honest.violations[0]}`);
+  const swapped = await kit.verifyRepair(rpc, v1.transaction, examples.slippage.transaction);
+  check("kit verifyRepair refuses a different transaction", !swapped.ok, `-> ${swapped.violations[0]}`);
 }
 console.log(`\n${pass}/${total} passed`);
 process.exit(pass === total ? 0 : 1);

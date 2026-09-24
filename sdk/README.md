@@ -80,9 +80,21 @@ verifyInstructions({ payer, instructions: before }, { payer, instructions: after
 
 The TxWhy server runs this same function on its own output and refuses to return anything that fails it.
 
-## Version 1 transactions
+## @solana/kit users, and version 1 transactions
 
-TxWhy repairs the new v1 format (SIMD-0385, mainnet since Sep 15, 2026). web3.js 1.x can read v1 but cannot serialize, sign or send it, so for v1 use the string forms: `repair({ transaction: base64 })` returns rebuilt v1 bytes, `verifyRepair(connection, originalBase64, repairedBase64)` checks that only the header (compute settings) and, at most, one equivalent swap changed, and you sign and send the bytes with `@solana/kit`. `sendWithRepair` refuses v1 with a clear error rather than failing inside web3.js.
+The same loop exists for [@solana/kit](https://github.com/anza-xyz/kit), with no web3.js involved, and it is the way to send **version 1** transactions (SIMD-0385, mainnet since Sep 15, 2026), which web3.js 1.x can read but never serialize, sign or send:
+
+```ts
+import { createSolanaRpc, signTransaction } from "@solana/kit";
+import { sendWithRepair } from "@txwhy/sdk/kit";
+
+const rpc = createSolanaRpc(process.env.RPC_URL);
+const { signature, repairs } = await sendWithRepair(rpc, transaction, (tx) => signTransaction([keyPair], tx));
+```
+
+`transaction` is a kit `Transaction` of any version or its base64 wire bytes. The rpc is used for the simulation, for expanding lookup tables (v0 only) during local verification, and for the send. `repair()` and `verifyRepair(rpc, original, repaired)` are exported from the same entry. For v1 the repair lives in the header (compute limit, priority fee, loaded-data limit), and the verifier checks that only the header and, at most, one equivalent swap changed.
+
+The web3.js entry's `sendWithRepair` refuses v1 with a clear error rather than failing inside web3.js; use the kit entry above.
 
 ## Just the repair call
 
@@ -116,7 +128,8 @@ npx @txwhy/sdk <signature | explorer URL | base64 transaction> [--json]
 
 ## Also available as
 
-- HTTP: `POST https://txwhy.vercel.app/api/v1/repair`
+- HTTP: `POST https://txwhy.vercel.app/api/v1/repair` ([OpenAPI](https://txwhy.vercel.app/openapi.json))
+- Rust: [`txwhy-verify`](https://github.com/SUNDRAM07/txwhy/tree/main/crates/txwhy-verify), the same offline verifier with no Solana dependencies
 - MCP server for AI agents: `https://txwhy.vercel.app/api/mcp`
 - Telegram: [@txwhy_bot](https://t.me/txwhy_bot)
 - Error code reference: https://txwhy.vercel.app/errors

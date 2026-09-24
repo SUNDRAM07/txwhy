@@ -62,7 +62,7 @@ import { sendWithRepair } from "@txwhy/sdk";
 const { signature, repairs } = await sendWithRepair(connection, tx, (t) => wallet.signTransaction(t));
 ```
 
-Simulates on your RPC; if it passes, sends and never contacts TxWhy. If it would fail: repair, verify the repair locally, sign, send. Also `repair()`, `verifyRepair()`, and `npx txwhy <signature>`. Package docs: [sdk/README.md](sdk/README.md).
+Simulates on your RPC; if it passes, sends and never contacts TxWhy. If it would fail: repair, verify the repair locally, sign, send. Also `repair()`, `verifyRepair()`, and `npx txwhy <signature>`. `@txwhy/sdk/kit` is the same loop for @solana/kit users with no web3.js, and the way to send version 1 transactions. Package docs: [sdk/README.md](sdk/README.md).
 
 ### REST
 

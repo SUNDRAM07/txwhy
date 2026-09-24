@@ -18,7 +18,8 @@ Same fee payer, same signers, every non-ComputeBudget instruction byte for byte 
 - HTTP: POST https://txwhy.vercel.app/api/v1/repair with body {"transaction": "<base64>"} or {"signature": "<sig>"}. Response: {status, cause, changes, repairedTransaction, simulation, verification, notes}. status is one of repaired, valid, needs_requote, not_repairable.
 - Paid, no rate limit: POST https://txwhy.vercel.app/api/x402/repair ($0.001 USDC on Solana via x402, settled only on success).
 - MCP (Streamable HTTP): https://txwhy.vercel.app/api/mcp with tools repair_transaction, diagnose_transaction, explain_error.
-- npm: @txwhy/sdk with sendWithRepair(connection, tx, sign), repair(), verifyRepair(), and the CLI npx txwhy <signature>.
+- npm: @txwhy/sdk with sendWithRepair(connection, tx, sign), repair(), verifyRepair(), and the CLI npx txwhy <signature>. @txwhy/sdk/kit is the same for @solana/kit (rpc, tx, sign) and handles version 1.
+- Rust: crate txwhy-verify, the offline verifier with no Solana dependencies (crates/txwhy-verify in the repo).
 - Error code pages: https://txwhy.vercel.app/errors/{program}/{code}
 - OpenAPI: https://txwhy.vercel.app/openapi.json - Agent skill: https://txwhy.vercel.app/skill.md
 - Telegram: https://t.me/txwhy_bot
