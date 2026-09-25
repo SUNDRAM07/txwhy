@@ -1,5 +1,7 @@
 # TxWhy
 
+[![ci](https://github.com/SUNDRAM07/txwhy/actions/workflows/ci.yml/badge.svg)](https://github.com/SUNDRAM07/txwhy/actions/workflows/ci.yml) [![npm](https://img.shields.io/npm/v/%40txwhy%2Fsdk)](https://www.npmjs.com/package/@txwhy/sdk) [![crates.io](https://img.shields.io/crates/v/txwhy-verify)](https://crates.io/crates/txwhy-verify)
+
 **Failed transaction in. Working transaction out.**
 
 TxWhy finds the exact reason a Solana transaction failed, rebuilds it, and proves the rebuilt one works by simulating it against live mainnet state. It returns the fix unsigned, so your keys never leave your machine.
