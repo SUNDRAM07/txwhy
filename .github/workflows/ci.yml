@@ -1,0 +1,29 @@
+name: ci
+
+on:
+  push:
+    branches: [main, repair-engine]
+  pull_request:
+
+jobs:
+  offline:
+    # Everything here runs with no network access to Solana: the verifier suites, type checks and the package builds.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Type check
+        run: npx tsc --noEmit -p tsconfig.json
+      - name: Verifier attack suite (29 cases)
+        run: npx tsx scripts/test-verify.ts
+      - name: SDK build (web3.js, kit and verify entries)
+        working-directory: sdk
+        run: npm ci && npm run build
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Rust verifier (unit + parity with real production repairs)
+        working-directory: crates/txwhy-verify
+        run: cargo test --locked
