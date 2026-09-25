@@ -100,6 +100,56 @@ export default async function FailuresPage() {
             </section>
           </div>
 
+          {index.repair && index.repair.attempted > 0 && (
+            <section className="mt-10 rounded-2xl border border-neutral-200 p-5 dark:border-neutral-800">
+              <h2 className="text-lg font-semibold">Could TxWhy have fixed it?</h2>
+              <p className="mt-1 text-xs leading-relaxed text-neutral-500">
+                The worker also pushes a sample of these real, already-landed failures through the repair engine and
+                records only the verdict. Landed failures are the hard case: the price has moved and the blockhash has
+                expired by the time we see them, so this is a floor, not a ceiling, for what pre-send repair achieves.
+              </p>
+              <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {[
+                  ["Attempted", n(index.repair.attempted)],
+                  ["Rebuilt and verified", pct(index.repair.repairedRate)],
+                  ["Moved too far", n(index.repair.verdicts.moved_too_far ?? 0)],
+                  ["Average time", `${(index.repair.averageMs / 1000).toFixed(1)} s`],
+                ].map(([k, v]) => (
+                  <div key={k} className="rounded-xl bg-neutral-50 p-3 dark:bg-neutral-900">
+                    <dt className="text-xs text-neutral-500">{k}</dt>
+                    <dd className="mt-1 text-xl font-semibold tabular-nums">{v}</dd>
+                  </div>
+                ))}
+              </dl>
+              <div className="mt-5 grid gap-6 sm:grid-cols-2">
+                <div>
+                  <h3 className="text-sm font-semibold">Rebuilt, by program</h3>
+                  <Bars
+                    rows={Object.entries(index.repair.repairedByProgram)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([label, value]) => ({ label, value }))}
+                  />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold">Why the rest could not be</h3>
+                  <p className="mt-1 text-xs text-neutral-500">Ranked by how often real senders hit it. This list decides what gets built next.</p>
+                  <Bars rows={index.repair.unrepairable.map((c) => ({ label: c.title, value: c.count }))} />
+                </div>
+              </div>
+              {index.repair.engineErrors.length > 0 && (
+                <p className="mt-4 text-xs text-amber-600 dark:text-amber-400">
+                  Engine errors seen: {index.repair.engineErrors.map((e) => `${e.title} (${e.count})`).join("; ")}
+                </p>
+              )}
+              {index.repair.last && (
+                <p className="mt-3 text-xs text-neutral-500">
+                  Last attempt {new Date(index.repair.last.at).toUTCString()}: {index.repair.last.program}, {index.repair.last.verdict.replace(/_/g, " ")}
+                  {index.repair.last.detail ? ` (${index.repair.last.detail})` : ""}, {(index.repair.last.ms / 1000).toFixed(1)} s.
+                </p>
+              )}
+            </section>
+          )}
+
           <p className="mt-10 text-sm leading-relaxed text-neutral-500">
             Most failures on these programs are automated traders firing transactions they expect to miss. The ones
             that hurt are the rest: an agent or an app whose swap, payment or transfer should have worked.{" "}

@@ -14,6 +14,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { createClient } from "redis";
 import { decodeTransactionError } from "../src/lib/errors";
 import { fetchIdlErrors } from "../src/lib/idl";
+import { RepairInputError, repair } from "../src/lib/repair";
 import { isNamedProgram, programName } from "../src/lib/programs";
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -22,6 +23,8 @@ const RPC_URL = process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.c
 const SALT = process.env.STATS_SALT ?? "txwhy";
 const POLL_MS = Number(process.env.INDEX_POLL_MS ?? 90_000);
 const SAMPLE_PER_PROGRAM = Number(process.env.INDEX_SAMPLE ?? 4);
+/** Real failures per program per pass that are pushed through the repair engine to measure our own hit rate. */
+const REPAIR_SAMPLE = Number(process.env.INDEX_REPAIR_SAMPLE ?? 1);
 
 const WATCHED: Record<string, string> = {
   JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4: "Jupiter",
@@ -219,9 +222,54 @@ async function sampleOnce(store: Store) {
       if (culprit) await store.zincr("i:culprits", isPrivate ? "Private programs (unnamed)" : programName(culprit));
       await new Promise((r) => setTimeout(r, 700));
     }
+
+    // Could TxWhy have fixed it? Push a few of the same real failures through the engine and keep the verdicts.
+    // This is the live, honest measurement of our own hit rate, and the ranked list of what we do not handle yet.
+    for (const s of failed.slice(0, REPAIR_SAMPLE)) {
+      await attemptRepair(store, label, s.signature);
+      await new Promise((r) => setTimeout(r, 500));
+    }
     await new Promise((r) => setTimeout(r, 1500));
   }
   await store.setStr("i:updated", new Date().toISOString());
+}
+
+/** "Title: reason" with numbers and addresses blanked, so the same kind of failure lands on the same row of the ranked list. */
+function reasonKey(title: string | undefined, summary: string): string {
+  const reason = summary.replace(/[1-9A-HJ-NP-Za-km-z]{32,}/g, "…").replace(/[1-9A-HJ-NP-Za-km-z]{4}…[1-9A-HJ-NP-Za-km-z]{4}/g, "…").replace(/-?\d[\d.,]*\s?%?/g, "N");
+  const t = (title ?? "").replace(/\([^)]*\)/g, "").trim();
+  return `${t ? `${t}: ` : ""}${reason}`.slice(0, 120);
+}
+
+/** Runs one landed failure through the repair engine and records only the verdict. Nothing about the transaction is stored. */
+async function attemptRepair(store: Store, program: string, signature: string) {
+  const started = Date.now();
+  let verdict: string;
+  let detail: string | null = null;
+  try {
+    const result = await repair({ signature });
+    if (result.status === "repaired" && result.verification?.ok && result.simulation.passed) verdict = "repaired";
+    else if (result.status === "repaired") verdict = "repaired_unverified";
+    else if (result.status === "valid") verdict = "valid";
+    else if (result.status === "needs_requote") verdict = "moved_too_far";
+    else verdict = "not_repairable";
+    if (verdict === "not_repairable" || verdict === "moved_too_far") detail = reasonKey(result.cause?.title, result.summary);
+  } catch (e) {
+    if (e instanceof RepairInputError) {
+      verdict = "not_repairable";
+      detail = e.message.slice(0, 80);
+    } else {
+      verdict = "engine_error";
+      detail = (e instanceof Error ? e.message : String(e)).slice(0, 80);
+    }
+  }
+  const ms = Date.now() - started;
+  await store.incr("i:repair:attempted");
+  await store.incr("i:repair:ms", ms);
+  await store.hincr("i:repair:verdicts", verdict);
+  await store.hincr(`i:repair:by_program:${verdict}`, program);
+  if (detail) await store.zincr(`i:repair:detail:${verdict}`, detail);
+  await store.setStr("i:repair:last", JSON.stringify({ at: new Date().toISOString(), program, verdict, detail, ms }));
 }
 
 async function readIndex(store: Store) {
@@ -240,6 +288,26 @@ async function readIndex(store: Store) {
     byProgram: Object.keys(seenBy).map((p) => ({ program: p, seen: seenBy[p], failed: failedBy[p] ?? 0, failureRate: seenBy[p] ? (failedBy[p] ?? 0) / seenBy[p] : 0 })).sort((a, b) => b.failed - a.failed),
     topCauses: (await store.ztop("i:causes", 12)).map((r) => ({ title: r.member, count: r.score })),
     topCulprits: (await store.ztop("i:culprits", 10)).map((r) => ({ program: r.member, count: r.score })),
+    repair: await readRepairStats(store),
+  };
+}
+
+/** Our own hit rate on real failures: how many of the sampled landed failures the engine rebuilt, and why the rest could not be. */
+async function readRepairStats(store: Store) {
+  const attempted = await store.get("i:repair:attempted");
+  const verdicts = await store.hgetall("i:repair:verdicts");
+  const last = await store.getStr("i:repair:last");
+  const byProgram = async (v: string) => store.hgetall(`i:repair:by_program:${v}`);
+  return {
+    attempted,
+    verdicts,
+    repairedRate: attempted ? (verdicts.repaired ?? 0) / attempted : 0,
+    averageMs: attempted ? Math.round((await store.get("i:repair:ms")) / attempted) : 0,
+    repairedByProgram: await byProgram("repaired"),
+    unrepairable: (await store.ztop("i:repair:detail:not_repairable", 12)).map((r) => ({ title: r.member, count: r.score })),
+    movedTooFar: (await store.ztop("i:repair:detail:moved_too_far", 6)).map((r) => ({ title: r.member, count: r.score })),
+    engineErrors: (await store.ztop("i:repair:detail:engine_error", 6)).map((r) => ({ title: r.member, count: r.score })),
+    last: last ? JSON.parse(last) : null,
   };
 }
 

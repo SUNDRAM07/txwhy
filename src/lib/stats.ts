@@ -171,6 +171,18 @@ export interface FailureIndex {
   byProgram: { program: string; seen: number; failed: number; failureRate: number }[];
   topCauses: { title: string; count: number }[];
   topCulprits: { program: string; count: number }[];
+  /** The worker's own hit rate: sampled landed failures pushed through the repair engine. Absent on older workers. */
+  repair?: {
+    attempted: number;
+    verdicts: Record<string, number>;
+    repairedRate: number;
+    averageMs: number;
+    repairedByProgram: Record<string, number>;
+    unrepairable: { title: string; count: number }[];
+    movedTooFar: { title: string; count: number }[];
+    engineErrors: { title: string; count: number }[];
+    last: { at: string; program: string; verdict: string; detail: string | null; ms: number } | null;
+  };
 }
 
 /** The worker's live sample of mainnet failures. Null when no worker is attached. */
