@@ -25,6 +25,11 @@ const POLL_MS = Number(process.env.INDEX_POLL_MS ?? 90_000);
 const SAMPLE_PER_PROGRAM = Number(process.env.INDEX_SAMPLE ?? 4);
 /** Real failures per program per pass that are pushed through the repair engine to measure our own hit rate. */
 const REPAIR_SAMPLE = Number(process.env.INDEX_REPAIR_SAMPLE ?? 1);
+/** Wallet watcher: how often watched addresses are polled, and where failure alerts are sent (the site relays them to Telegram). */
+const WATCH_POLL_MS = Number(process.env.WATCH_POLL_MS ?? 30_000);
+const SITE_URL = (process.env.SITE_URL ?? "https://txwhy.vercel.app").replace(/\/$/, "");
+const WATCH_MAX_PER_CHAT = 3;
+const WATCH_ALERTS_PER_HOUR = 5;
 
 const WATCHED: Record<string, string> = {
   JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4: "Jupiter",
@@ -52,6 +57,10 @@ interface Store {
   hit(key: string, windowSeconds: number): Promise<number>;
   /** Delete every key with this prefix. Used once, to clear pre-launch test traffic. */
   clear(prefix: string): Promise<number>;
+  /** String-valued hashes, for the wallet watcher's small lists. */
+  hset(key: string, field: string, value: string): Promise<void>;
+  hdel(key: string, field: string): Promise<void>;
+  hgetallStr(key: string): Promise<Record<string, string>>;
 }
 
 function memoryStore(): Store {
@@ -61,6 +70,8 @@ function memoryStore(): Store {
   const strs = new Map<string, string>();
   const windows = new Map<string, { n: number; until: number }>();
   const h = (k: string) => hashes.get(k) ?? hashes.set(k, new Map()).get(k)!;
+  const shashes = new Map<string, Map<string, string>>();
+  const sh = (k: string) => shashes.get(k) ?? shashes.set(k, new Map()).get(k)!;
   return {
     async incr(k, by = 1) { nums.set(k, (nums.get(k) ?? 0) + by); },
     async hincr(k, f, by = 1) { h(k).set(f, (h(k).get(f) ?? 0) + by); },
@@ -82,9 +93,12 @@ function memoryStore(): Store {
       }
       return ++w.n;
     },
+    async hset(k, f, v) { sh(k).set(f, v); },
+    async hdel(k, f) { sh(k).delete(f); },
+    async hgetallStr(k) { return Object.fromEntries(sh(k)); },
     async clear(prefix) {
       let n = 0;
-      for (const m of [nums, hashes, sets, strs] as Map<string, unknown>[]) {
+      for (const m of [nums, hashes, sets, strs, shashes] as Map<string, unknown>[]) {
         for (const k of [...m.keys()]) if (k.startsWith(prefix) || k.startsWith(`z:${prefix}`)) { m.delete(k); n++; }
       }
       return n;
@@ -112,6 +126,9 @@ async function redisStore(url: string): Promise<Store> {
       if (n === 1) await client.expire(k, windowSeconds);
       return n;
     },
+    async hset(k, f, v) { await client.hSet(k, f, v); },
+    async hdel(k, f) { await client.hDel(k, f); },
+    async hgetallStr(k) { return client.hGetAll(k); },
     async clear(prefix) {
       const keys: string[] = [];
       for await (const batch of client.scanIterator({ MATCH: `${prefix}*`, COUNT: 200 })) keys.push(...(Array.isArray(batch) ? batch : [batch]));
@@ -273,6 +290,109 @@ async function attemptRepair(store: Store, program: string, signature: string) {
   await store.setStr("i:repair:last", JSON.stringify({ at: new Date().toISOString(), program, verdict, detail, ms }));
 }
 
+// ---------------------------------------------------------------- wallet watcher
+//
+// A Telegram user says /watch <address>; the bot registers it here. Every WATCH_POLL_MS the worker looks
+// for new failed transactions from each watched address, runs the diagnosis, and asks the site to send the
+// alert (the site holds the bot token; this process never does). Stored: the address, the chat id, a
+// signature cursor. /unwatch deletes all of it.
+
+const short = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
+const isAddress = (a: string) => /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(a);
+
+async function watchOp(store: Store, op: string, chatId: number, address?: string) {
+  const chatKey = `w:chat:${chatId}`;
+  if (op === "list") return { ok: true, addresses: Object.keys(await store.hgetallStr(chatKey)) };
+  if (!address || !isAddress(address)) return { ok: false, error: "That is not a Solana address." };
+  if (op === "remove") {
+    await store.hdel(chatKey, address);
+    await store.hdel(`w:addr:${address}`, String(chatId));
+    if (Object.keys(await store.hgetallStr(`w:addr:${address}`)).length === 0) await store.hdel("w:list", address);
+    return { ok: true, addresses: Object.keys(await store.hgetallStr(chatKey)) };
+  }
+  if (op === "add") {
+    const mine = await store.hgetallStr(chatKey);
+    if (!(address in mine) && Object.keys(mine).length >= WATCH_MAX_PER_CHAT) {
+      return { ok: false, error: `You can watch up to ${WATCH_MAX_PER_CHAT} addresses. /unwatch one first.` };
+    }
+    // Start from now: only failures after the /watch are reported.
+    if (!(await store.getStr(`w:cursor:${address}`))) {
+      const latest = await rpc<SigInfo[]>("getSignaturesForAddress", [address, { limit: 1 }]);
+      if (latest?.[0]) await store.setStr(`w:cursor:${address}`, latest[0].signature);
+    }
+    const now = new Date().toISOString();
+    await store.hset(chatKey, address, now);
+    await store.hset(`w:addr:${address}`, String(chatId), now);
+    await store.hset("w:list", address, now);
+    return { ok: true, addresses: Object.keys(await store.hgetallStr(chatKey)) };
+  }
+  return { ok: false, error: "unknown op" };
+}
+
+async function notify(chatId: number, html: string) {
+  try {
+    await fetch(`${SITE_URL}/api/telegram/notify`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${SECRET}`, "content-type": "application/json" },
+      body: JSON.stringify({ chatId, html }),
+      signal: AbortSignal.timeout(8000),
+    });
+  } catch (e) {
+    console.error("notify:", e instanceof Error ? e.message : e);
+  }
+}
+
+const escapeHtml = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+async function alertFor(address: string, signature: string): Promise<string> {
+  const lines = [`🔴 <b>Transaction failed</b> from <code>${short(address)}</code>`];
+  try {
+    const result = await repair({ signature });
+    if (result.cause) {
+      lines.push(`<b>${escapeHtml(result.cause.title)}</b>: ${escapeHtml(result.cause.cause)}`);
+      // The engine's verdict explains the situation (for example a circular arbitrage that only wins while the
+      // opportunity exists); the generic "nothing to fix" line would only confuse a person reading an alert.
+      if (result.status === "not_repairable" && result.summary) lines.push(escapeHtml(result.summary));
+      else if (result.cause.fix) lines.push(`Fix: ${escapeHtml(result.cause.fix)}`);
+    } else {
+      lines.push(escapeHtml(result.summary));
+    }
+    if (result.status === "repaired") lines.push("✅ TxWhy rebuilt it and the rebuilt transaction passes simulation. Open the link to get it, unsigned.");
+    else if (result.status === "needs_requote") lines.push("🟠 The price moved past your tolerance. Get a fresh quote and resend.");
+  } catch (e) {
+    lines.push(escapeHtml(e instanceof Error ? e.message : "Could not fetch the details."));
+  }
+  lines.push(`<a href="${SITE_URL}/tx/${signature}">Full breakdown on TxWhy</a>`);
+  return lines.join("\n");
+}
+
+async function watchOnce(store: Store) {
+  const addresses = Object.keys(await store.hgetallStr("w:list"));
+  for (const address of addresses) {
+    const cursor = await store.getStr(`w:cursor:${address}`);
+    const sigs = await rpc<SigInfo[]>("getSignaturesForAddress", [address, { limit: 25, ...(cursor ? { until: cursor } : {}) }]);
+    if (!sigs || sigs.length === 0) continue;
+    await store.setStr(`w:cursor:${address}`, sigs[0].signature);
+    const failed = sigs.filter((s) => s.err).reverse(); // oldest first
+    if (failed.length === 0) continue;
+    const chats = Object.keys(await store.hgetallStr(`w:addr:${address}`)).map(Number);
+    if (chats.length === 0) continue;
+    for (const s of failed) {
+      const n = await store.hit(`w:cap:${address}`, 3600);
+      if (n > WATCH_ALERTS_PER_HOUR) {
+        if (n === WATCH_ALERTS_PER_HOUR + 1) {
+          for (const c of chats) await notify(c, `<code>${short(address)}</code> is failing a lot (${WATCH_ALERTS_PER_HOUR}+ this hour). Muting alerts for it until the hour is over; /unwatch to stop entirely.`);
+        }
+        break;
+      }
+      const html = await alertFor(address, s.signature);
+      for (const c of chats) await notify(c, html);
+      await store.incr("w:alerts");
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+}
+
 async function readIndex(store: Store) {
   const seen = await store.get("i:seen");
   const failed = await store.get("i:failed");
@@ -290,6 +410,7 @@ async function readIndex(store: Store) {
     topCauses: (await store.ztop("i:causes", 12)).map((r) => ({ title: r.member, count: r.score })),
     topCulprits: (await store.ztop("i:culprits", 10)).map((r) => ({ program: r.member, count: r.score })),
     repair: await readRepairStats(store),
+    watch: { addresses: Object.keys(await store.hgetallStr("w:list")).length, alerts: await store.get("w:alerts") },
   };
 }
 
@@ -341,6 +462,12 @@ async function main() {
       if (req.method === "GET" && path === "/health") return json(res, 200, { ok: true });
       if (req.method === "GET" && path === "/stats") return json(res, 200, await readStats(store));
       if (req.method === "GET" && path === "/index") return json(res, 200, await readIndex(store));
+      if (req.method === "POST" && path === "/watch") {
+        if (!SECRET || req.headers.authorization !== `Bearer ${SECRET}`) return json(res, 401, { error: "unauthorized" });
+        const body = (await readBody(req)) as { op?: string; chatId?: number; address?: string };
+        if (!body || typeof body.chatId !== "number" || !body.op) return json(res, 400, { error: "bad request" });
+        return json(res, 200, await watchOp(store, body.op, body.chatId, body.address?.trim()));
+      }
       if (req.method === "POST" && path === "/admin/reset-usage") {
         if (!SECRET || req.headers.authorization !== `Bearer ${SECRET}`) return json(res, 401, { error: "unauthorized" });
         return json(res, 200, { cleared: await store.clear("s:") });
@@ -377,6 +504,17 @@ async function main() {
     };
     void loop();
   }
+
+  // Wallet watcher: independent cadence, so a slow index pass never delays an alert.
+  const watchLoop = async () => {
+    try {
+      await watchOnce(store);
+    } catch (e) {
+      console.error("watch:", e instanceof Error ? e.message : e);
+    }
+    setTimeout(watchLoop, WATCH_POLL_MS);
+  };
+  void watchLoop();
 }
 
 void main();

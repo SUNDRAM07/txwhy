@@ -9,6 +9,7 @@ TxWhy finds the exact reason a Solana transaction failed, rebuilds it, and prove
 - Live: **https://txwhy.vercel.app**
 - For agents (MCP): `https://txwhy.vercel.app/api/mcp`
 - Telegram: **[@txwhy_bot](https://t.me/txwhy_bot)** (try `/demo`)
+  In a private chat, `/watch <address>` makes the bot message you the moment a transaction from that wallet fails, with the cause and the fix (up to 3 wallets, 5 alerts an hour each; `/unwatch` deletes it).
 - Usage, in the open: https://txwhy.vercel.app/stats
 
 ## Why

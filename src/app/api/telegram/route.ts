@@ -1,4 +1,7 @@
 import { RepairInputError, repair, type RepairResult } from "@/lib/repair";
+import { workerCall } from "@/lib/ratelimit";
+import { escapeHtml, sendTelegram } from "@/lib/telegram";
+import { PublicKey } from "@solana/web3.js";
 import { track } from "@/lib/stats";
 import { extractSignature, getTrace } from "@/lib/trace";
 
@@ -17,22 +20,8 @@ const TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const SECRET = process.env.TELEGRAM_WEBHOOK_SECRET;
 const SITE = "https://txwhy.vercel.app";
 
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-async function send(chatId: number, html: string, replyTo?: number) {
-  if (!TOKEN) return;
-  await fetch(`https://api.telegram.org/bot${TOKEN}/sendMessage`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      chat_id: chatId,
-      text: html.slice(0, 4000),
-      parse_mode: "HTML",
-      link_preview_options: { is_disabled: true },
-      ...(replyTo ? { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } } : {}),
-    }),
-  }).catch(() => undefined);
-}
+const esc = escapeHtml;
+const send = sendTelegram;
 
 const HELP = [
   "<b>TxWhy</b>: failed Solana transaction in, working transaction out.",
@@ -44,6 +33,8 @@ const HELP = [
   "I reply with the exact step that failed, why, how to fix it, and when it can be fixed by rebuilding, a repaired unsigned transaction that already passed simulation.",
   "",
   "No failed transaction handy? Send /demo and watch me break a real swap and repair it.",
+  "",
+  "<b>Watch a wallet</b>: <code>/watch &lt;address&gt;</code> and I message you the moment a transaction from it fails, with the cause and the fix. <code>/watching</code> lists them, <code>/unwatch &lt;address&gt;</code> stops (and deletes it). Up to 3 addresses.",
   "In groups use <code>/why &lt;signature or link&gt;</code>.",
   "I never see or ask for keys. You sign the result yourself.",
   "",
@@ -160,6 +151,43 @@ const looksLikeTransaction = (s: string) => s.length > 180 && /^[A-Za-z0-9+/=\s]
 
 // Per-instance flood guard: 10 requests a minute per chat.
 const recent = new Map<number, number[]>();
+interface WatchAnswer {
+  ok: boolean;
+  error?: string;
+  addresses?: string[];
+}
+
+function validAddress(text: string): string | null {
+  const candidate = text.trim().split(/\s+/)[0] ?? "";
+  try {
+    return new PublicKey(candidate).toBase58();
+  } catch {
+    return null;
+  }
+}
+
+const shortAddr = (a: string) => `${a.slice(0, 4)}…${a.slice(-4)}`;
+
+async function answerWatch(name: string, chatId: number, body: string): Promise<string> {
+  if (name === "watching") {
+    const r = await workerCall<WatchAnswer>("/watch", { op: "list", chatId });
+    if (!r) return "The watcher is not available right now. Try again in a minute.";
+    if (!r.addresses?.length) return "You are not watching any address. Send <code>/watch &lt;address&gt;</code> to start.";
+    return ["Watching:", ...r.addresses.map((a) => `• <code>${a}</code>`), "", "I message you when a transaction from any of these fails."].join("\n");
+  }
+  const address = validAddress(body);
+  if (!address) return `Send the wallet address after the command, like <code>/${name} 5tzF…uAi9</code> (the full address).`;
+  const r = await workerCall<WatchAnswer>("/watch", { op: name === "watch" ? "add" : "remove", chatId, address });
+  if (!r) return "The watcher is not available right now. Try again in a minute.";
+  if (!r.ok) return esc(r.error ?? "That did not work.");
+  if (name === "unwatch") return `Stopped watching <code>${shortAddr(address)}</code> and deleted it. ${r.addresses?.length ? `Still watching ${r.addresses.length}.` : "Nothing left on the list."}`;
+  return [
+    `👀 Watching <code>${shortAddr(address)}</code>.`,
+    "From now on, when a transaction from it fails I send you the failing step, the cause and the fix, with a link to the full breakdown. Successes stay quiet. At most 5 alerts an hour per address.",
+    "<code>/unwatch " + address + "</code> stops it and deletes the address.",
+  ].join("\n");
+}
+
 function flooded(chatId: number): boolean {
   const now = Date.now();
   const times = (recent.get(chatId) ?? []).filter((t) => now - t < 60_000);
@@ -207,6 +235,14 @@ export async function POST(request: Request) {
   if (name === "demo") {
     if (flooded(chatId)) return new Response("ok");
     await send(chatId, await answerDemo(), message.message_id);
+    return new Response("ok");
+  }
+  if (name === "watch" || name === "unwatch" || name === "watching") {
+    if (!isPrivate) {
+      await send(chatId, "Wallet watching works in a private chat with me, so alerts reach only you.", message.message_id);
+      return new Response("ok");
+    }
+    await send(chatId, await answerWatch(name, chatId, body), message.message_id);
     return new Response("ok");
   }
   // In groups, only act on /why (or /repair). "/why" as a reply to a message uses that message's text.

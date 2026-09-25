@@ -78,3 +78,20 @@ export async function globalLimit(
     return { ok: true };
   }
 }
+
+/** Authenticated POST to the worker. Null when no worker is attached or it did not answer. */
+export async function workerCall<T>(path: string, body: unknown, timeoutMs = 4000): Promise<T | null> {
+  if (!WORKER_URL || !WORKER_SECRET) return null;
+  try {
+    const res = await fetch(`${WORKER_URL}${path}`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${WORKER_SECRET}`, "content-type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    return res.ok ? ((await res.json()) as T) : null;
+  } catch {
+    return null;
+  }
+}
