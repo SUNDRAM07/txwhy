@@ -237,7 +237,8 @@ async function sampleOnce(store: Store) {
 /** "Title: reason" with numbers and addresses blanked, so the same kind of failure lands on the same row of the ranked list. */
 function reasonKey(title: string | undefined, summary: string): string {
   const reason = summary.replace(/[1-9A-HJ-NP-Za-km-z]{32,}/g, "…").replace(/[1-9A-HJ-NP-Za-km-z]{4}…[1-9A-HJ-NP-Za-km-z]{4}/g, "…").replace(/-?\d[\d.,]*\s?%?/g, "N");
-  const t = (title ?? "").replace(/\([^)]*\)/g, "").trim();
+  // Every private-program error is the same story for us (no published error list), so they share one row.
+  const t = /from a private program/i.test(title ?? "") ? "Private program (unnamed)" : (title ?? "").replace(/\([^)]*\)/g, "").trim();
   return `${t ? `${t}: ` : ""}${reason}`.slice(0, 120);
 }
 
