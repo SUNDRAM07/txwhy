@@ -2,6 +2,7 @@
 //
 //   node examples/agent.mjs                      dry run: nothing is signed or sent
 //   $env:AGENT_PRIVATE_KEY = "<base58 key from Phantom>"; node examples/agent.mjs --send
+//   add --fail-on-chain to also send the broken swap for real (one failed tx, one fee): the way to test /watch alerts
 //   (or AGENT_KEYPAIR=./agent.json)               real run: swaps 0.001 SOL to USDC from that wallet
 //
 // The agent trades on a quote that has gone stale, which is the most common way an agent's swap
@@ -13,6 +14,8 @@ import bs58 from "bs58";
 import { sendWithRepair, TxWhyError } from "../dist/index.js";
 
 const SEND = process.argv.includes("--send");
+/** Also send the broken swap for real (skipping preflight) so it fails ON CHAIN: costs one network fee, useful to test /watch alerts. */
+const FAIL_ON_CHAIN = SEND && process.argv.includes("--fail-on-chain");
 const BASE = process.env.TXWHY_BASE ?? "https://txwhy.vercel.app";
 const JUPITER = "https://lite-api.jup.ag/swap/v1";
 const SOL = "So11111111111111111111111111111111111111112";
@@ -61,6 +64,17 @@ const plain = await connection.simulateTransaction(tx, { sigVerify: false });
 if (plain.value.err) {
   say("rpc", `${c.r}simulation failed: ${JSON.stringify(plain.value.err)}${c.x}`);
   say("agent", `${c.r}custom program error 0x1771. No idea what that means. Task abandoned.${c.x}`);
+  if (FAIL_ON_CHAIN) {
+    // What a naive agent without preflight does: send it anyway. It lands as a failed transaction and pays the fee.
+    const doomed = VersionedTransaction.deserialize(tx.serialize());
+    doomed.sign([keypair]);
+    const sig = await connection.sendRawTransaction(doomed.serialize(), { skipPreflight: true, maxRetries: 3 });
+    say("agent", `sent it anyway (no preflight): https://solscan.io/tx/${sig}`);
+    say("agent", "waiting for it to land as a failure...");
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    const conf = await connection.confirmTransaction({ signature: sig, blockhash, lastValidBlockHeight }, "confirmed").catch((e) => ({ value: { err: String(e) } }));
+    say("rpc", conf.value.err ? `${c.r}landed as failed: ${JSON.stringify(conf.value.err).slice(0, 120)}${c.x}` : "it went through after all (market moved back)");
+  }
 } else {
   say("rpc", "simulation passed (the market moved back in our favour, run it again)");
 }
