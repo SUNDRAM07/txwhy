@@ -25,4 +25,6 @@ Same fee payer, same signers, every non-ComputeBudget instruction byte for byte 
 - Telegram: https://t.me/txwhy_bot
 
 ## Data
+- JSON, free to use (CC BY 4.0): GET https://txwhy.vercel.app/api/v1/index returns the live failure index: failure rate per program, named causes, who raised them, and TxWhy's measured repair rate on real failures.
+- Bare error codes: https://txwhy.vercel.app/errors/code/0x1771 lists what a code means in every program. Note 0x1771 is Jupiter's slippage error AND Lighthouse's AssertionFailed (a wallet guard); TxWhy tells them apart from the transaction.
 Live failure index of Solana's busiest programs: https://txwhy.vercel.app/failures - Public usage: https://txwhy.vercel.app/stats

@@ -4,21 +4,53 @@
     "title": "TxWhy",
     "version": "1.0.0",
     "description": "Failed Solana transaction in, working transaction out. Diagnose and rebuild failing Solana transactions with a simulation proof and an offline-verifiable diff.",
-    "license": { "name": "MIT" }
+    "license": {
+      "name": "MIT"
+    }
   },
-  "servers": [{ "url": "https://txwhy.vercel.app" }],
+  "servers": [
+    {
+      "url": "https://txwhy.vercel.app"
+    }
+  ],
   "paths": {
     "/api/v1/repair": {
       "post": {
         "summary": "Repair or diagnose a Solana transaction",
         "description": "Pass either the base64 of a transaction (signed or unsigned; legacy, v0 or v1) or the signature of one that already failed. Free, 30 requests per minute per IP.",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RepairRequest" } } } },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepairRequest"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "Repair result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RepairResult" } } } },
-          "400": { "description": "Bad input" },
-          "413": { "description": "Body over 8 KB" },
-          "429": { "description": "Rate limited; retry after the Retry-After header" },
-          "502": { "description": "Upstream RPC error; retryable" }
+          "200": {
+            "description": "Repair result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad input"
+          },
+          "413": {
+            "description": "Body over 8 KB"
+          },
+          "429": {
+            "description": "Rate limited; retry after the Retry-After header"
+          },
+          "502": {
+            "description": "Upstream RPC error; retryable"
+          }
         }
       }
     },
@@ -26,18 +58,72 @@
       "post": {
         "summary": "Same repair, paid per call over x402 (no rate limit)",
         "description": "$0.001 in USDC on Solana mainnet per repair, settled only after a successful answer. Without payment the response is 402 with a PAYMENT-REQUIRED header describing the payment.",
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RepairRequest" } } } },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepairRequest"
+              }
+            }
+          }
+        },
         "responses": {
-          "200": { "description": "Repair result", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RepairResult" } } } },
-          "402": { "description": "Payment required (x402)" }
+          "200": {
+            "description": "Repair result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepairResult"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "Payment required (x402)"
+          }
         }
       }
     },
     "/api/v1/example": {
       "get": {
         "summary": "A deliberately broken demo transaction",
-        "parameters": [{ "name": "kind", "in": "query", "schema": { "type": "string", "enum": ["compute", "blockhash", "slippage", "pump", "raydium", "v1"] } }],
-        "responses": { "200": { "description": "{ kind, description, transaction }" } }
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "compute",
+                "blockhash",
+                "slippage",
+                "pump",
+                "raydium",
+                "v1"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ kind, description, transaction }"
+          }
+        }
+      }
+    },
+    "/api/v1/index": {
+      "get": {
+        "summary": "The live Solana failure index as JSON",
+        "description": "Sampled transactions on six of Solana's busiest programs: failure rates, named causes, the programs that raised them, and TxWhy's measured repair rate on those real failures. A running sample, not a census. CC BY 4.0. 60 requests per minute per IP.",
+        "responses": {
+          "200": {
+            "description": "{ updatedAt, since, transactionsSeen, failed, failureRate, classified, byProgram[], topCauses[], topCulprits[], repair{attempted, verdicts, segments, unrepairable[]}, about }"
+          },
+          "503": {
+            "description": "Index temporarily unavailable; retryable"
+          }
+        }
       }
     }
   },
@@ -46,51 +132,168 @@
       "RepairRequest": {
         "type": "object",
         "properties": {
-          "transaction": { "type": "string", "description": "Base64 serialized transaction, signed or unsigned" },
-          "signature": { "type": "string", "description": "Transaction signature or explorer URL of a landed transaction" }
+          "transaction": {
+            "type": "string",
+            "description": "Base64 serialized transaction, signed or unsigned"
+          },
+          "signature": {
+            "type": "string",
+            "description": "Transaction signature or explorer URL of a landed transaction"
+          }
         }
       },
       "DecodedError": {
         "type": "object",
-        "properties": { "title": { "type": "string" }, "code": { "type": "string" }, "cause": { "type": "string" }, "fix": { "type": "string" } }
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "cause": {
+            "type": "string"
+          },
+          "fix": {
+            "type": "string"
+          }
+        }
       },
       "RepairChange": {
         "type": "object",
         "properties": {
-          "type": { "type": "string", "enum": ["blockhash", "compute_unit_limit", "priority_fee", "swap_quote", "loaded_accounts_data_limit"] },
-          "before": { "type": "string" },
-          "after": { "type": "string" },
-          "reason": { "type": "string" }
+          "type": {
+            "type": "string",
+            "enum": [
+              "blockhash",
+              "compute_unit_limit",
+              "priority_fee",
+              "swap_quote",
+              "loaded_accounts_data_limit"
+            ]
+          },
+          "before": {
+            "type": "string"
+          },
+          "after": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
         }
       },
       "Verification": {
         "type": "object",
         "properties": {
-          "ok": { "type": "boolean" },
-          "violations": { "type": "array", "items": { "type": "string" } },
-          "kept": { "type": "integer" },
-          "changes": { "type": "array", "items": { "type": "object", "properties": { "kind": { "type": "string" }, "program": { "type": "string" }, "detail": { "type": "string" } } } }
+          "ok": {
+            "type": "boolean"
+          },
+          "violations": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "kept": {
+            "type": "integer"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "program": {
+                  "type": "string"
+                },
+                "detail": {
+                  "type": "string"
+                }
+              }
+            }
+          }
         }
       },
       "RepairResult": {
         "type": "object",
         "properties": {
-          "status": { "type": "string", "enum": ["repaired", "valid", "needs_requote", "not_repairable"] },
-          "summary": { "type": "string" },
-          "cause": { "oneOf": [{ "$ref": "#/components/schemas/DecodedError" }, { "type": "null" }] },
-          "changes": { "type": "array", "items": { "$ref": "#/components/schemas/RepairChange" } },
-          "repairedTransaction": { "type": ["string", "null"], "description": "Base64, unsigned. Sign with your own key and send within about 60 seconds." },
+          "status": {
+            "type": "string",
+            "enum": [
+              "repaired",
+              "valid",
+              "needs_requote",
+              "not_repairable"
+            ]
+          },
+          "summary": {
+            "type": "string"
+          },
+          "cause": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DecodedError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RepairChange"
+            }
+          },
+          "repairedTransaction": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Base64, unsigned. Sign with your own key and send within about 60 seconds."
+          },
           "simulation": {
             "type": "object",
             "properties": {
-              "passed": { "type": "boolean" },
-              "unitsConsumed": { "type": ["integer", "null"] },
-              "error": { "oneOf": [{ "$ref": "#/components/schemas/DecodedError" }, { "type": "null" }] },
-              "logsTail": { "type": "array", "items": { "type": "string" } }
+              "passed": {
+                "type": "boolean"
+              },
+              "unitsConsumed": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "error": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/DecodedError"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "logsTail": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             }
           },
-          "verification": { "$ref": "#/components/schemas/Verification" },
-          "notes": { "type": "array", "items": { "type": "string" } }
+          "verification": {
+            "$ref": "#/components/schemas/Verification"
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
         }
       }
     }

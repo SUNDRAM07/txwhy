@@ -115,6 +115,8 @@ Message [@txwhy_bot](https://t.me/txwhy_bot) a signature, an explorer link, or a
 
 Paying agents can also find the endpoint on their own: it is listed in the [x402 Bazaar](https://facilitator.payai.network/discovery/resources), the facilitator's public catalog of paid services.
 
+The failure index is also a free JSON API for anyone's research or dashboards: `GET https://txwhy.vercel.app/api/v1/index` (CC BY 4.0).
+
 ## You never have to trust us
 
 A service that hands you a transaction to sign could hand you anything. So the rule for what a repair may change is code you can run yourself, with no network access: same fee payer, same set of signers, every non-ComputeBudget instruction byte for byte in the same order, and at most one Jupiter swap replaced by one for the same wallet, same source and receiving token accounts, same output token, same amount and same slippage tolerance. It lives in [src/lib/verify.ts](src/lib/verify.ts), ships in the npm package as `verifyRepair` / `@txwhy/sdk/verify`, and the server runs it on its own output and refuses to return anything that fails it. `scripts/test-verify.ts` attacks it fifteen ways (extra transfer, redirected fee, new signer, widened slippage, proceeds redirected, layout switch); all are refused. Direct Pump.fun, PumpSwap and Raydium AMM v4 swaps may only have their limit moved, never more than 25% against the user; `scripts/test-verify.ts` covers eight more cases for those.
