@@ -1,4 +1,5 @@
 import PROGRAM_ERRORS from "./data/program-errors.json";
+import { LIGHTHOUSE, lighthouseCause } from "./lighthouse";
 import { ANCHOR_ERRORS, SYSTEM_ERRORS, TOKEN_ERRORS, enrichCause, suggestFixForName } from "./errors";
 import type { DecodedError } from "./types";
 
@@ -111,6 +112,16 @@ function build(): CatalogProgram[] {
 }
 
 const CATALOG = build();
+for (const program of CATALOG) {
+  if (program.address !== LIGHTHOUSE) continue;
+  program.blurb =
+    "Lighthouse is the open-source assertion program wallets and trading apps append to a transaction as a safety guard. When a guard trips, the whole transaction fails with one of these codes; 6001 (0x1771) is by far the most common and is often mistaken for Jupiter's slippage error, which shares the number.";
+  for (const error of program.errors) {
+    const full = lighthouseCause(error.code);
+    error.cause = full.cause.replace(/^A guard instruction is/, "The failing instruction is");
+    error.fix = full.fix;
+  }
+}
 const BY_SLUG = new Map(CATALOG.map((p) => [p.slug, p]));
 
 export const listPrograms = (): CatalogProgram[] => CATALOG;
@@ -134,6 +145,33 @@ export function sameCodeElsewhere(code: number, exceptSlug: string): { program: 
     if (error) out.push({ program, error });
   }
   return out;
+}
+
+/** Programs whose failures people actually meet come first on a bare-code page. */
+const MOST_HIT = [
+  "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4",
+  "L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95",
+  "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA",
+  "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P",
+  "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8",
+  "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc",
+  "LBUZKhRxPF3XUpBCjp4YzTKgLccjZhTSDM9YuVaPwxo",
+  "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+  "11111111111111111111111111111111",
+];
+
+/** Every program that uses a code, most-hit programs first. For "custom program error: 0x1771" with no program known. */
+export function programsForCode(code: number): { program: CatalogProgram; error: CatalogError }[] {
+  const rank = (p: CatalogProgram) => {
+    const i = p.address ? MOST_HIT.indexOf(p.address) : -1;
+    return i < 0 ? MOST_HIT.length : i;
+  };
+  return sameCodeElsewhere(code, "").sort((a, b) => rank(a.program) - rank(b.program) || a.program.name.localeCompare(b.program.name));
+}
+
+/** Every distinct code in the catalog. */
+export function listCodes(): number[] {
+  return [...new Set(CATALOG.flatMap((p) => p.errors.map((e) => e.code)))].sort((a, b) => a - b);
 }
 
 export const catalogSize = () => CATALOG.reduce((sum, p) => sum + p.errors.length, 0);

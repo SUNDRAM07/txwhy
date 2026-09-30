@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { listPrograms } from "@/lib/catalog";
+import { listCodes, listPrograms } from "@/lib/catalog";
 
 const BASE = "https://txwhy.vercel.app";
 
@@ -13,5 +13,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const errors = listPrograms().flatMap((p) =>
     p.errors.map((e) => ({ url: `${BASE}/errors/${p.slug}/${e.code}`, changeFrequency: "monthly" as const, priority: 0.5 })),
   );
-  return [...pages, ...programs, ...errors];
+  const codes = listCodes().map((c) => ({ url: `${BASE}/errors/code/0x${c.toString(16)}`, changeFrequency: "monthly" as const, priority: 0.6 }));
+  return [...pages, ...programs, ...codes, ...errors];
 }

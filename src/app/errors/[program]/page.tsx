@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { SiteHeader } from "@/components/SiteHeader";
 import { getProgram, listPrograms } from "@/lib/catalog";
 
@@ -18,7 +18,11 @@ export async function generateMetadata({ params }: { params: Promise<{ program: 
 }
 
 export default async function ProgramErrorsPage({ params }: { params: Promise<{ program: string }> }) {
-  const program = getProgram((await params).program);
+  const slug = (await params).program;
+  // People land here with the bare code from an error message: /errors/0x1771 or /errors/6001.
+  if (/^0x[0-9a-f]+$/i.test(slug)) permanentRedirect(`/errors/code/${slug.toLowerCase()}`);
+  if (/^\d+$/.test(slug)) permanentRedirect(`/errors/code/0x${Number(slug).toString(16)}`);
+  const program = getProgram(slug);
   if (!program) notFound();
 
   return (
