@@ -117,6 +117,10 @@ Paying agents can also find the endpoint on their own: it is listed in the [x402
 
 The failure index is also a free JSON API for anyone's research or dashboards: `GET https://txwhy.vercel.app/api/v1/index` (CC BY 4.0).
 
+## What it explains when it cannot rebuild
+
+Not every failure can be fixed by rebuilding, but every one gets the exact failing instruction, the program that raised it, the decoded error and what to do. One class worth naming: **wallet guards**. Wallets and trading apps append a Lighthouse assertion to abort a transaction when state changed since preview, and its error shares the number 0x1771 with Jupiter's slippage error, so explorers call it slippage. TxWhy decodes the guard instruction itself: "instruction #5 required the number at byte 61 of account F8w1…yAp5 to be at most 10,756,344", nothing was swapped, build a fresh transaction. Bare codes have their own pages too: [/errors/code/0x1771](https://txwhy.vercel.app/errors/code/0x1771) lists what a code means in every program.
+
 ## You never have to trust us
 
 A service that hands you a transaction to sign could hand you anything. So the rule for what a repair may change is code you can run yourself, with no network access: same fee payer, same set of signers, every non-ComputeBudget instruction byte for byte in the same order, and at most one Jupiter swap replaced by one for the same wallet, same source and receiving token accounts, same output token, same amount and same slippage tolerance. It lives in [src/lib/verify.ts](src/lib/verify.ts), ships in the npm package as `verifyRepair` / `@txwhy/sdk/verify`, and the server runs it on its own output and refuses to return anything that fails it. `scripts/test-verify.ts` attacks it fifteen ways (extra transfer, redirected fee, new signer, widened slippage, proceeds redirected, layout switch); all are refused. Direct Pump.fun, PumpSwap and Raydium AMM v4 swaps may only have their limit moved, never more than 25% against the user; `scripts/test-verify.ts` covers eight more cases for those.
