@@ -430,7 +430,28 @@ async function readRepairStats(store: Store) {
     movedTooFar: (await store.ztop("i:repair:detail:moved_too_far", 6)).map((r) => ({ title: r.member, count: r.score })),
     engineErrors: (await store.ztop("i:repair:detail:engine_error", 6)).map((r) => ({ title: r.member, count: r.score })),
     last: last ? JSON.parse(last) : null,
+    segments: await repairSegments(store, attempted, verdicts),
   };
+}
+
+/**
+ * The raw rebuilt rate is dominated by automated traders whose transactions were meant to fail when the
+ * opportunity was gone (private programs, circular arbitrage). Splitting them out gives the number that
+ * matters: of the failures a person or an app would care about, how many did we rebuild.
+ */
+async function repairSegments(store: Store, attempted: number, verdicts: Record<string, number>) {
+  const sum = (rows: { member: string; score: number }[], re: RegExp) => rows.filter((r) => re.test(r.member)).reduce((n, r) => n + r.score, 0);
+  const unfixable = await store.ztop("i:repair:detail:not_repairable", 2000);
+  const moved = await store.ztop("i:repair:detail:moved_too_far", 2000);
+  const BOT = /^Private program \(unnamed\)|circular arbitrage/;
+  const GUARD = /^Lighthouse guard/;
+  const bots = sum(unfixable, BOT) + sum(moved, BOT);
+  const guards = sum(unfixable, GUARD) + sum(moved, GUARD);
+  const rebuilt = verdicts.repaired ?? 0;
+  const movedTooFar = Math.max(0, (verdicts.moved_too_far ?? 0) - sum(moved, BOT) - sum(moved, GUARD));
+  const people = Math.max(0, attempted - bots);
+  const deadEnds = Math.max(0, people - rebuilt - movedTooFar - guards - (verdicts.engine_error ?? 0) - (verdicts.valid ?? 0));
+  return { bots, people, rebuilt, movedTooFar, guards, deadEnds, rebuiltShareOfPeople: people ? rebuilt / people : 0 };
 }
 
 // ---------------------------------------------------------------- http

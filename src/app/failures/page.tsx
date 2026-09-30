@@ -108,19 +108,46 @@ export default async function FailuresPage() {
                 records only the verdict. Landed failures are the hard case: the price has moved and the blockhash has
                 expired by the time we see them, so this is a floor, not a ceiling, for what pre-send repair achieves.
               </p>
-              <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-                {[
-                  ["Attempted", n(index.repair.attempted)],
-                  ["Rebuilt and verified", pct(index.repair.repairedRate)],
-                  ["Moved too far", n(index.repair.verdicts.moved_too_far ?? 0)],
-                  ["Average time", `${(index.repair.averageMs / 1000).toFixed(1)} s`],
-                ].map(([k, v]) => (
-                  <div key={k} className="rounded-xl bg-neutral-50 p-3 dark:bg-neutral-900">
-                    <dt className="text-xs text-neutral-500">{k}</dt>
-                    <dd className="mt-1 text-xl font-semibold tabular-nums">{v}</dd>
-                  </div>
-                ))}
-              </dl>
+              {index.repair.segments && index.repair.segments.people > 0 ? (
+                <>
+                  <p className="mt-4 text-sm leading-relaxed">
+                    Of {n(index.repair.attempted)} real failures pushed through the engine,{" "}
+                    <strong>{pct(index.repair.segments.bots / index.repair.attempted)}</strong> were automated traders that
+                    were meant to fail once the opportunity was gone (private bot programs and circular arbitrage). Nobody
+                    can or should repair those. The rest, {n(index.repair.segments.people)}, are the failures a person or
+                    an app would care about:
+                  </p>
+                  <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {[
+                      ["Rebuilt and verified", pct(index.repair.segments.rebuilt / index.repair.segments.people), `${n(index.repair.segments.rebuilt)} transactions`],
+                      ["Price moved too far", pct(index.repair.segments.movedTooFar / index.repair.segments.people), "stale by the time it landed"],
+                      ["Wallet guard tripped", pct(index.repair.segments.guards / index.repair.segments.people), "needs a fresh transaction"],
+                      ["No rebuild can fix", pct(index.repair.segments.deadEnds / index.repair.segments.people), "no funds, overflow, used nonce"],
+                    ].map(([k, v, note]) => (
+                      <div key={k} className="rounded-xl bg-neutral-50 p-3 dark:bg-neutral-900">
+                        <dt className="text-xs text-neutral-500">{k}</dt>
+                        <dd className="mt-1 text-xl font-semibold tabular-nums">{v}</dd>
+                        <dd className="mt-0.5 text-[11px] leading-tight text-neutral-500">{note}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <p className="mt-2 text-xs text-neutral-500">Average time per attempt: {(index.repair.averageMs / 1000).toFixed(1)} s.</p>
+                </>
+              ) : (
+                <dl className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {[
+                    ["Attempted", n(index.repair.attempted)],
+                    ["Rebuilt and verified", pct(index.repair.repairedRate)],
+                    ["Moved too far", n(index.repair.verdicts.moved_too_far ?? 0)],
+                    ["Average time", `${(index.repair.averageMs / 1000).toFixed(1)} s`],
+                  ].map(([k, v]) => (
+                    <div key={k} className="rounded-xl bg-neutral-50 p-3 dark:bg-neutral-900">
+                      <dt className="text-xs text-neutral-500">{k}</dt>
+                      <dd className="mt-1 text-xl font-semibold tabular-nums">{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+              )}
               <div className="mt-5 grid gap-6 sm:grid-cols-2">
                 <div>
                   <h3 className="text-sm font-semibold">Rebuilt, by program</h3>
