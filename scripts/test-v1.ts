@@ -2,6 +2,7 @@
 import { PublicKey, SystemProgram, TransactionInstruction } from "@solana/web3.js";
 import { repair } from "../src/lib/repair";
 import { buildV1, decodeV1, toWeb3 } from "../src/lib/v1";
+import { buildStalePumpSwapBuy, buildStaleRaydiumSwap } from "../src/lib/pump-demo";
 
 const payer = new PublicKey("5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9"); // public exchange wallet: nobody can sign these
 const MEMO = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
@@ -66,6 +67,25 @@ async function main() {
     if (r.repairedTransaction) {
       const out = decodeV1(r.repairedTransaction);
       check("  output is v1, verified: instructions kept except the swap", out.bytes <= 4096 && (r.verification?.kept ?? 0) >= ixs.length - 1, `${out.bytes} bytes | kept ${r.verification?.kept}`);
+    }
+  }
+
+  // 4b. Direct DEX swaps on a stale price, carried in v1. A third of PumpSwap traffic was already v1 two weeks after activation.
+  for (const [name, build] of [["PumpSwap", buildStalePumpSwapBuy], ["Raydium AMM v4", buildStaleRaydiumSwap]] as const) {
+    try {
+      const { instructions } = await build(payer);
+      const tx = buildV1(payer, blockhash, instructions, { computeUnitLimit: 400_000, loadedAccountsDataSizeLimit: 32 * 1024 * 1024 });
+      let r = await repair({ transaction: tx });
+      // The programs' SDKs read pool state through the public RPC here; one retry covers a rate-limited read.
+      if (r.status !== "repaired") {
+        await new Promise((res) => setTimeout(res, 6000));
+        r = await repair({ transaction: tx });
+      }
+      const moved = r.verification?.changes.some((c) => c.kind === "swap_limit_moved") ?? false;
+      check(`v1 direct ${name} swap on a stale price`, r.status === "repaired" && r.simulation.passed && r.verification?.ok === true && moved, `${r.status} | ${r.changes.map((c) => c.type).join(",")} | verified=${r.verification?.ok} | ${r.verification?.changes.map((c) => c.kind).join(",")} | ${r.summary.slice(0, 90)}`);
+      if (r.repairedTransaction) check(`  ${name} output is still v1`, decodeV1(r.repairedTransaction).bytes <= 4096);
+    } catch (e) {
+      check(`v1 direct ${name} swap on a stale price`, false, e instanceof Error ? e.message : String(e));
     }
   }
 
