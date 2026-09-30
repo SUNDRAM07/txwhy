@@ -1,4 +1,5 @@
 import { decodeTransactionError } from "./errors";
+import { base58ToBytes, lighthouseDetail } from "./lighthouse";
 import { fetchIdlErrors } from "./idl";
 import { programName } from "./programs";
 import type { Trace, TraceNode } from "./types";
@@ -226,7 +227,11 @@ export async function getTrace(signature: string): Promise<Trace | null> {
     success: err == null,
     feeLamports: result.meta.fee,
     failedOuterIndex,
-    error: decodeTransactionError(err, failedProgramId, logs, idlErrors),
+    error:
+      lighthouseDetail(err, (i) => {
+        const ix = result.transaction.message.instructions[i] as unknown as { programId?: string; accounts?: string[]; data?: string } | undefined;
+        return ix?.programId && typeof ix.data === "string" ? { programId: ix.programId, accounts: ix.accounts ?? [], data: base58ToBytes(ix.data) } : undefined;
+      }) ?? decodeTransactionError(err, failedProgramId, logs, idlErrors),
     logs,
     tree: buildTree(result, failedOuterIndex, failedPrograms, logs),
   };

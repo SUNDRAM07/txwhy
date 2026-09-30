@@ -19,6 +19,7 @@ export const KNOWN_PROGRAMS: Record<string, string> = {
   Ed25519SigVerify111111111111111111111111111: "Ed25519 Signature Verify",
   KeccakSecp256k11111111111111111111111111111: "Secp256k1 Signature Verify",
   "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P": "Pump.fun",
+  L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95: "Lighthouse (assertion guard)",
 };
 
 /** Exchange programs Jupiter routes through, from Jupiter's own program-id-to-label list. */

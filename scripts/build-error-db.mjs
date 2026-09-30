@@ -18,5 +18,8 @@ for (const key of Object.keys(m)) {
   };
   total += errors.length;
 }
+// Programs the upstream dataset does not carry, maintained here by hand (source: the program's own repository).
+const EXTRA_PROGRAMS = {"L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95": {"name": "Lighthouse", "errors": {"6000": ["InvalidInstructionData", "Invalid instruction"], "6001": ["AssertionFailed", "A state guard placed by the wallet or app did not hold at execution"], "6002": ["NotEnoughAccounts", "NotEnoughAccounts"], "6003": ["BumpNotFound", "BumpNotFound"], "6004": ["AccountBorrowFailed", "AccountBorrowFailed"], "6005": ["RangeOutOfBounds", "RangeOutOfBounds"], "6006": ["IndexOutOfBounds", "IndexOutOfBounds"], "6007": ["FailedToDeserialize", "FailedToDeserialize"], "6008": ["FailedToSerialize", "FailedToSerialize"], "6009": ["AccountOwnerMismatch", "AccountOwnerMismatch"], "6010": ["AccountKeyMismatch", "AccountKeyMismatch"], "6011": ["AccountNotInitialized", "AccountNotInitialized"], "6012": ["AccountOwnerValidationFailed", "AccountOwnerValidationFailed"], "6013": ["AccountFundedValidationFailed", "AccountFundedValidationFailed"], "6014": ["AccountDiscriminatorValidationFailed", "AccountDiscriminatorValidationFailed"], "6015": ["AccountValidationFailed", "AccountValidationFailed"], "6016": ["CrossProgramInvokeViolation", "CrossProgramInvokeViolation"]}}};
+Object.assign(out, EXTRA_PROGRAMS);
 writeFileSync(new URL("../src/lib/data/program-errors.json", import.meta.url), JSON.stringify(out));
 console.log(`${Object.keys(out).length} programs, ${total} errors`);

@@ -148,6 +148,7 @@ node scripts/test-real.mjs        # real failed transactions pulled from mainnet
 node scripts/test-slippage.mjs    # real slippage failures
 node scripts/measure-naming.mjs   # how many real failures get a named cause
 npx tsx scripts/test-verify.ts    # 29 verifier cases, most of them attacks; no network
+npx tsx scripts/test-lighthouse.ts # 16 cases: Lighthouse guard instructions from real transactions decoded into plain words; no network
 npx tsx scripts/test-pump.ts      # real Pump.fun / PumpSwap slippage failures: repaired, capped, or explained
 npx tsx scripts/test-v1.ts        # 8 version-1 cases: header repairs, expired blockhash, stale swap, a real landed v1
 cd sdk && node test.mjs           # the npm package end to end against production

@@ -1,6 +1,7 @@
 import PROGRAM_ERRORS from "./data/program-errors.json";
 import type { IdlErrorEntry } from "./idl";
 import { isNamedProgram, programName } from "./programs";
+import { LIGHTHOUSE, lighthouseCause } from "./lighthouse";
 import type { DecodedError } from "./types";
 
 /**
@@ -445,6 +446,8 @@ function decodeCustom(
   logs: string[],
   idlErrors: Map<number, IdlErrorEntry> | null,
 ): DecodedError {
+  // Lighthouse guards share Jupiter's 6001 and are routinely mistaken for slippage; name them first.
+  if (failedProgramId === LIGHTHOUSE) return lighthouseCause(code);
   // Layer 2a — the program's own on-chain IDL names the error precisely.
   const idlHit = idlErrors?.get(code);
   // Layer 2b — the log parser catches Anchor's runtime explanation when present.

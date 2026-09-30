@@ -9,6 +9,7 @@ import {
 } from "@solana/web3.js";
 import { decodeTransactionError } from "./errors";
 import { fetchIdlErrors } from "./idl";
+import { lighthouseDetail } from "./lighthouse";
 import { requoteSwap } from "./requote";
 import { RpcError, rpc } from "./rpc";
 import { getTrace } from "./trace";
@@ -91,6 +92,14 @@ async function decodeSimError(err: unknown, logs: string[]): Promise<DecodedErro
   const programId = innermostFailedProgram(logs);
   const idlErrors = programId ? await fetchIdlErrors(programId) : null;
   return decodeTransactionError(err, programId, logs, idlErrors);
+}
+
+/** A Lighthouse guard that trips in simulation is explained from the instruction it sits in. */
+function guardDetail(err: unknown, instructions: TransactionInstruction[]): DecodedError | null {
+  return lighthouseDetail(err, (i) => {
+    const ix = instructions[i];
+    return ix ? { programId: ix.programId.toBase58(), accounts: ix.keys.map((k) => k.pubkey.toBase58()), data: ix.data } : undefined;
+  });
 }
 
 const SYSTEM_PROGRAM_ID = "11111111111111111111111111111111";
@@ -514,7 +523,7 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
   ]);
   const firstProbeSim = probeResult ?? submittedSim;
   if (!probeResult) notes.push("This transaction is at the 1,232-byte size limit, so no compute-budget instruction could be added to measure its real usage. Its own settings were kept.");
-  let cause = onchain?.error ?? (await decodeSimError(submittedSim.err, submittedSim.logs ?? []));
+  let cause = onchain?.error ?? guardDetail(submittedSim.err, decompiled.instructions) ?? (await decodeSimError(submittedSim.err, submittedSim.logs ?? []));
   if (landed) {
     changes.push({
       type: "blockhash",
@@ -887,7 +896,7 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
   const asSubmitted = build({});
   const probe = build({ config: probeConfig });
   const [submittedSim, probeSim0] = await Promise.all([simulateV1(asSubmitted.base64, asSubmitted.bytes), simulateV1(probe.base64, probe.bytes)]);
-  let cause = onchain?.error ?? (await decodeSimError(submittedSim.err, submittedSim.logs ?? [])) ?? expiredCause;
+  let cause = onchain?.error ?? guardDetail(submittedSim.err, decoded.instructions) ?? (await decodeSimError(submittedSim.err, submittedSim.logs ?? [])) ?? expiredCause;
   let probeSim = probeSim0;
   let instructions = decoded.instructions;
   let requoted = false;
