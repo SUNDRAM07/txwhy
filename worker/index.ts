@@ -472,6 +472,18 @@ async function readBody(req: IncomingMessage): Promise<unknown> {
   return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
 }
 
+// Event-loop lag: how late a 1 s timer fires. Large values mean something synchronous is hogging the thread.
+let lag = 0;
+let maxLag = 0;
+{
+  let expected = Date.now() + 1000;
+  setInterval(() => {
+    lag = Math.max(0, Date.now() - expected);
+    maxLag = Math.max(maxLag, lag);
+    expected = Date.now() + 1000;
+  }, 1000);
+}
+
 async function main() {
   const store = process.env.REDIS_URL ? await redisStore(process.env.REDIS_URL) : memoryStore();
   console.log(`storage: ${process.env.REDIS_URL ? "redis" : "memory"} | rpc: ${new URL(RPC_URL).host}`);
@@ -480,7 +492,10 @@ async function main() {
   createServer(async (req, res) => {
     try {
       const path = (req.url ?? "/").split("?")[0];
-      if (req.method === "GET" && path === "/health") return json(res, 200, { ok: true });
+      if (req.method === "GET" && path === "/health") {
+        const m = process.memoryUsage();
+        return json(res, 200, { ok: true, uptimeS: Math.round(process.uptime()), rssMB: Math.round(m.rss / 1048576), heapUsedMB: Math.round(m.heapUsed / 1048576), heapTotalMB: Math.round(m.heapTotal / 1048576), external: Math.round(m.external / 1048576), eventLoopLagMs: lag, maxLagMs: maxLag });
+      }
       if (req.method === "GET" && path === "/stats") return json(res, 200, await readStats(store));
       if (req.method === "GET" && path === "/index") return json(res, 200, await readIndex(store));
       if (req.method === "POST" && path === "/watch") {
