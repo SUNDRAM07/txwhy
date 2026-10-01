@@ -485,6 +485,7 @@ let maxLag = 0;
     // Watchdog: all state lives in Redis, so a restart costs nothing, while a stalled process costs every alert and index pass.
     const rssMB = process.memoryUsage().rss / 1048576;
     laggy = lag > 3000 ? laggy + 1 : 0;
+    if (Math.round(process.uptime()) % 600 === 0) console.log(`mem: rss ${Math.round(rssMB)} MB, heap ${Math.round(process.memoryUsage().heapUsed / 1048576)} MB, max lag ${maxLag} ms, uptime ${Math.round(process.uptime() / 60)} min`);
     if (rssMB > 420 || laggy >= 5) {
       console.error(`watchdog: restarting (rss ${Math.round(rssMB)} MB, lag ${lag} ms, max lag ${maxLag} ms, uptime ${Math.round(process.uptime())} s)`);
       setTimeout(() => process.exit(1), 200);
