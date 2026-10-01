@@ -139,7 +139,34 @@ const label = (shape: { limit: "max_in" | "min_out" }) => (shape.limit === "max_
 const fmt = (v: bigint, unit: string) => (unit === "SOL" ? lamports(v) : `${v.toString()} ${unit}`);
 
 /** Replace only the limit of the one direct swap in `instructions`. Returns the same list with that instruction rebuilt. */
-export async function requoteDirect(instructions: TransactionInstruction[]): Promise<DirectRequoteOutcome> {
+export interface RequoteHints {
+  /** Logs of the failing simulation of the transaction as submitted. */
+  logs?: string[];
+}
+
+/**
+ * The price the program itself computed, read from its own failed check. Anchor's require_gte!/require_gt!
+ * log "Left: a" and "Right: b"; for a slippage check one side is the limit the transaction carried and the
+ * other is the amount the program actually computed at current state. That amount is exact and immune to
+ * fee-schedule changes the SDK has not caught up with, so it is preferred over SDK math when available.
+ */
+function limitFromLogs(shape: NonNullable<ReturnType<typeof readDirectSwapShape>>, logs: string[] | undefined): bigint | null {
+  if (!logs?.length) return null;
+  let left: bigint | null = null;
+  let right: bigint | null = null;
+  for (const line of logs) {
+    const l = line.match(/^Program log: Left: (\d+)$/);
+    const r = line.match(/^Program log: Right: (\d+)$/);
+    if (l) left = BigInt(l[1]);
+    if (r) right = BigInt(r[1]);
+  }
+  if (left == null || right == null) return null;
+  if (left === shape.limitValue && right !== shape.limitValue) return right;
+  if (right === shape.limitValue && left !== shape.limitValue) return left;
+  return null;
+}
+
+export async function requoteDirect(instructions: TransactionInstruction[], hints: RequoteHints = {}): Promise<DirectRequoteOutcome> {
   const hit = findDirectSwap(instructions);
   if (!hit) {
     const direct = instructions.filter((ix) => readDirectSwapShape(ix)).length;
@@ -148,8 +175,17 @@ export async function requoteDirect(instructions: TransactionInstruction[]): Pro
   const { index, shape } = hit;
   const ix = instructions[index];
   let fresh: { limit: bigint; unit: string; expected: bigint };
+  let pricedBy = "the program's own published math";
   try {
-    fresh = await freshLimit(ix, shape);
+    const actual = limitFromLogs(shape, hints.logs);
+    if (actual != null) {
+      const quoteMint = ix.programId.toBase58() === PUMP_SWAP ? ix.keys[4]?.pubkey.toBase58() : SOL_MINT;
+      const unit = shape.fixed === "quote_in" ? "tokens" : quoteMint === SOL_MINT ? "SOL" : "quote";
+      fresh = { limit: withTolerance(actual, shape.limit === "max_in" ? "up" : "down"), expected: actual, unit };
+      pricedBy = "the program's own check in the failing simulation";
+    } else {
+      fresh = await freshLimit(ix, shape);
+    }
   } catch (e) {
     return { ok: false, reason: `Could not price the ${shape.program} swap from the pool's current state (${e instanceof Error ? e.message : "unknown error"}).` };
   }
@@ -179,7 +215,7 @@ export async function requoteDirect(instructions: TransactionInstruction[]): Pro
     before: `${label(shape)} ${fmt(shape.limitValue, fresh.unit)}`,
     after: `${label(shape)} ${fmt(fresh.limit, fresh.unit)} (now ${fmt(fresh.expected, fresh.unit)} at the current price, ${DIRECT_TOLERANCE_BPS / 100}% tolerance)`,
     notes: [
-      `${shape.program} ${shape.name}: the amount (${shape.amount.toString()}) and every account are unchanged; only the ${shape.limit === "max_in" ? "maximum cost" : "minimum received"} moved to the current price plus a ${DIRECT_TOLERANCE_BPS / 100}% tolerance, computed with the program's own published math.`,
+      `${shape.program} ${shape.name}: the amount (${shape.amount.toString()}) and every account are unchanged; only the ${shape.limit === "max_in" ? "maximum cost" : "minimum received"} moved to the current price plus a ${DIRECT_TOLERANCE_BPS / 100}% tolerance, computed with ${pricedBy}.`,
       `A limit is never moved more than ${DIRECT_LIMIT_CAP_BPS / 100}% against you.`,
     ],
   };

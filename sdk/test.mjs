@@ -22,7 +22,7 @@ async function getExample(kind) {
   throw new Error(`example(${kind}) unavailable`);
 }
 
-for (const kind of ["compute", "blockhash", "slippage"]) {
+for (const kind of ["compute", "blockhash", "slippage", "pump", "raydium"]) {
   const example = await getExample(kind);
   const tx = VersionedTransaction.deserialize(Buffer.from(example.transaction, "base64"));
   const started = Date.now();

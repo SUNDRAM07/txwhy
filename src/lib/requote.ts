@@ -259,11 +259,11 @@ export async function requoteJupiter(instructions: TransactionInstruction[]): Pr
  * Re-quote whichever swap the transaction carries: a Jupiter route gets a fresh quote and
  * route; a direct Pump.fun or PumpSwap swap gets only its limit moved to the current price.
  */
-export async function requoteSwap(instructions: TransactionInstruction[]): Promise<RequoteOutcome & { program?: string; fits?: boolean }> {
+export async function requoteSwap(instructions: TransactionInstruction[], hints: { logs?: string[] } = {}): Promise<RequoteOutcome & { program?: string; fits?: boolean }> {
   const hasJupiter = instructions.some((ix) => ix.programId.toBase58() === JUPITER_V6);
   if (hasJupiter) return requoteJupiter(instructions);
   if (findDirectSwap(instructions)) {
-    const direct = await requoteDirect(instructions);
+    const direct = await requoteDirect(instructions, hints);
     if (!direct.ok) return { ok: false, reason: direct.reason, final: direct.final, fits: direct.fits };
     return {
       ok: true,

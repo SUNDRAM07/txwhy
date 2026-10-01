@@ -596,7 +596,7 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
     const wantsRequote = verdict.status === "needs_requote" || failedOnSlippage;
     let notSlippage = false;
     if (wantsRequote) {
-      const requote = await requoteSwap(budget.rest);
+      const requote = await requoteSwap(budget.rest, { logs: submittedSim.logs ?? [] });
       if (requote.ok) {
         try {
           const extra = await loadTablesByAddress(requote.lookupTables.filter((a) => !tables.some((t) => t.key.toBase58() === a)));
@@ -915,7 +915,7 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
     const wantsRequote = verdict.status === "needs_requote" || failedOnSlippage;
     let notSlippage = false;
     if (wantsRequote) {
-      const requote = await requoteSwap(decoded.instructions);
+      const requote = await requoteSwap(decoded.instructions, { logs: submittedSim.logs ?? [] });
       if (requote.ok) {
         const inline = inlineAddressCount(decoded.payerKey, requote.instructions);
         if (inline > 64) {
