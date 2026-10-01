@@ -494,7 +494,7 @@ function decodeCustom(
       title: `Error ${code} from a private program (${short})`,
       code: `Custom(${code}) — ${hex}`,
       cause: `Program ${failedProgramId} raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors know what ${code} means.`,
-      fix: "If this is your program, publish its IDL on chain (anchor idl init) so every tool can decode it. If it is someone else's, the failure is inside their logic and cannot be fixed from outside.",
+      fix: "If you were using a trading app or bot, this is their program and the message belongs to them: retry from the app, and if it keeps happening, send them this transaction. If it is your own program, publish its IDL on chain (anchor idl init) so every tool can decode its errors.",
     };
   }
   return {
@@ -509,6 +509,14 @@ function decodeCustom(
 export function enrichCause(name: string, msg: string | undefined): string {
   const n = name.toLowerCase();
   const thin = !msg || msg.replace(/[^a-z]/gi, "").toLowerCase() === name.replace(/[^a-z]/gi, "").toLowerCase() || msg.split(" ").length <= 4;
+  const slippage = n.includes("slippage") || n.includes("toolittle") || n.includes("toomuch") || n.includes("belowmin") || n.includes("amountoutbelow") || n.includes("exceededslippage");
+  // Slippage messages from programs are one terse line ("instruction exceeds desired slippage limit"); say what actually happened.
+  if (slippage) {
+    return "The swap would have paid out less than the minimum this transaction allowed (or cost more than its maximum). The price moved between the moment the quote was taken and the moment the transaction executed, by more than the slippage tolerance set in the swap.";
+  }
+  if (n === "invalidsqrtpricelimitdirection") {
+    return "The client passed a sqrt_price_limit on the wrong side of the current price for this swap's direction. Orca rejects the swap before touching the pool. This is a bug in how the transaction was built, not a market move.";
+  }
   if (!thin) return msg as string;
   if (n.includes("slippage") || n.includes("toolittle") || n.includes("belowmin") || n.includes("amountoutbelow")) {
     return "The swap would have paid out less than the minimum this transaction allowed. The price moved between the moment the quote was taken and the moment the transaction executed, by more than the slippage tolerance set in the swap.";
@@ -528,11 +536,12 @@ export function enrichCause(name: string, msg: string | undefined): string {
 /** Heuristic fixes for common IDL error names when the KB has no entry. */
 export function suggestFixForName(name: string): string | undefined {
   const n = name.toLowerCase();
-  if (n.includes("slippage")) return "Increase your slippage tolerance or reduce the trade size, then retry — the price moved between quote and execution.";
+  if (n === "invalidsqrtpricelimitdirection") return "Rebuild the swap with the program's SDK, which computes sqrt_price_limit for the direction (or pass 0 for no limit). Retrying the same transaction cannot succeed.";
+  if (n.includes("slippage") || n.includes("toolittle") || n.includes("toomuch") || n.includes("belowmin") || n.includes("amountoutbelow")) return "Get a fresh quote and resend with the same tolerance; the price has moved on. Widen the tolerance only if it keeps failing on a fast-moving token, and know that a wide tolerance is what sandwich bots feed on.";
   if (n.includes("expired") || n.includes("stale")) return "Refresh the quote/price data and rebuild the transaction — the inputs went stale.";
   if (n.includes("insufficient")) return "Top up the relevant balance (check both SOL for fees and the token being spent).";
   if (n.includes("paused") || n.includes("frozen") || n.includes("disabled")) return "The protocol has this feature paused — wait or check the project's status channels.";
-  if (n.includes("exceed") || n.includes("cap") || n.includes("limit")) return "Reduce the amount — a protocol limit or cap applies.";
+  if (n.includes("exceed") || n.includes("cap") || n.includes("maxamount") || n.endsWith("limit")) return "Reduce the amount; a protocol limit or cap applies.";
   return undefined;
 }
 

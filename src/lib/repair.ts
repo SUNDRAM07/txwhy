@@ -587,7 +587,7 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
     );
     if (landed && onchain?.error && probeCause && onchain.error.title !== probeCause.title) {
       notes.push(
-        `Replayed against current state, the original instructions now stop at "${probeCause.title}". That is expected for an old transaction: its route and quote are stale.`,
+        `Re-run today, this transaction fails earlier than it did on chain ("${probeCause.title}") because the accounts and prices it referenced have since changed. That is normal for a transaction that already landed; the on-chain cause above is the one that counts.`,
       );
     }
     // Slippage: the amounts are inside the instruction, so rebuild the swap from a fresh quote.
@@ -844,7 +844,7 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
   const landed = onchain != null;
   const notes: string[] = [];
   const changes: RepairChange[] = [];
-  notes.push("Version 1 transaction (SIMD-0385): compute settings are carried in the header, so the repair edits the header instead of adding instructions.");
+  const v1Note = "Version 1 transaction (SIMD-0385): compute settings are carried in the header, so the repair edits the header instead of adding instructions.";
 
   // 1. Lifetime: a fresh blockhash, or for a durable nonce the account's current value.
   let lifetime: { blockhash?: string; nonce?: { value: string; account: string; authority: string } } = {};
@@ -909,7 +909,7 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
     const probeCause = (await decodeSimError(probeSim.err, probeSim.logs ?? [])) ?? cause;
     const verdict = classifyUnrepairable(probeCause ?? { title: "Unknown failure", cause: "", fix: "" }, probeSim.logs ?? []);
     if (landed && onchain?.error && probeCause && onchain.error.title !== probeCause.title) {
-      notes.push(`Replayed against current state, the original instructions now stop at "${probeCause.title}". That is expected for an old transaction: its route and quote are stale.`);
+      notes.push(`Re-run today, this transaction fails earlier than it did on chain ("${probeCause.title}") because the accounts and prices it referenced have since changed. That is normal for a transaction that already landed; the on-chain cause above is the one that counts.`);
     }
     const failedOnSlippage = onchain?.error != null && SLIPPAGE_PATTERN.test(`${onchain.error.title} ${onchain.error.code ?? ""}`);
     const wantsRequote = verdict.status === "needs_requote" || failedOnSlippage;
@@ -1029,6 +1029,7 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
   if (!verification.ok) notes.unshift(`Internal verification refused this rebuild: ${verification.violations.join(" ")}`);
   const simulated = finalSim.err == null;
   const passed = simulated && verification.ok;
+  if (passed && changes.some((c) => c.type === "compute_unit_limit" || c.type === "priority_fee" || c.type === "loaded_accounts_data_limit")) notes.unshift(v1Note);
   if (!changes.some((c) => c.type === "blockhash") && "blockhash" in decoded.lifetime) {
     notes.push("A fresh blockhash is always applied, so sign and send within about 60 seconds.");
   }
