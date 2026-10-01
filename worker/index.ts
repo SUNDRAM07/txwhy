@@ -477,10 +477,18 @@ let lag = 0;
 let maxLag = 0;
 {
   let expected = Date.now() + 1000;
+  let laggy = 0;
   setInterval(() => {
     lag = Math.max(0, Date.now() - expected);
     maxLag = Math.max(maxLag, lag);
     expected = Date.now() + 1000;
+    // Watchdog: all state lives in Redis, so a restart costs nothing, while a stalled process costs every alert and index pass.
+    const rssMB = process.memoryUsage().rss / 1048576;
+    laggy = lag > 3000 ? laggy + 1 : 0;
+    if (rssMB > 420 || laggy >= 5) {
+      console.error(`watchdog: restarting (rss ${Math.round(rssMB)} MB, lag ${lag} ms, max lag ${maxLag} ms, uptime ${Math.round(process.uptime())} s)`);
+      setTimeout(() => process.exit(1), 200);
+    }
   }, 1000);
 }
 
