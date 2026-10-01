@@ -31,6 +31,7 @@ while (Date.now() - started < MINUTES * 60_000) {
     status = res.status;
     const j = await res.json().catch(() => null);
     verdict = j?.status ?? j?.error ?? "?";
+    if (verdict !== "repaired" && verdict !== "valid") rows.push({ at: Date.now() - started, kind, status, verdict: `why: ${(j?.summary ?? "").slice(0, 110)}`, ms: 0, note: true });
   } catch (e) { status = -1; verdict = e.name; }
   rows.push({ at: Date.now() - started, kind, status, verdict, ms: Date.now() - t });
   i++;
@@ -38,7 +39,8 @@ while (Date.now() - started < MINUTES * 60_000) {
 }
 
 const byMinute = {};
-for (const r of rows) { const m = Math.floor(r.at / 60_000); (byMinute[m] ??= []).push(r); }
+for (const r of rows.filter((r) => !r.note)) { const m = Math.floor(r.at / 60_000); (byMinute[m] ??= []).push(r); }
+const whys = {}; for (const r of rows.filter((r) => r.note)) whys[`${r.kind} ${r.verdict}`] = (whys[`${r.kind} ${r.verdict}`] ?? 0) + 1;
 const pct = (xs, p) => { const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
 console.log("min  n   p50    p90    max   non-200  verdicts");
 for (const [m, rs] of Object.entries(byMinute)) {
@@ -47,8 +49,9 @@ for (const [m, rs] of Object.entries(byMinute)) {
   const v = {}; for (const r of rs) v[r.verdict] = (v[r.verdict] ?? 0) + 1;
   console.log(`${String(m).padStart(3)} ${String(rs.length).padStart(3)} ${String(pct(ms, 0.5)).padStart(6)} ${String(pct(ms, 0.9)).padStart(6)} ${String(Math.max(...ms)).padStart(6)}   ${String(bad).padStart(3)}     ${JSON.stringify(v)}`);
 }
-const bad = rows.filter((r) => r.status !== 200 && r.status !== 429);
-const slow = rows.filter((r) => r.ms > 26_000);
+for (const [k, v] of Object.entries(whys).sort((a, b) => b[1] - a[1])) console.log(`  ${v}x ${k}`);
+const bad = rows.filter((r) => !r.note && r.status !== 200 && r.status !== 429);
+const slow = rows.filter((r) => !r.note && r.ms > 26_000);
 console.log(`\n${rows.length} requests; ${bad.length} non-200 (excluding 429), ${slow.length} over the 26 s deadline`);
 bad.slice(0, 10).forEach((r) => console.log("  bad:", r));
 writeFileSync(new URL("./soak-results.json", import.meta.url), JSON.stringify(rows));

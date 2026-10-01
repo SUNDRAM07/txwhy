@@ -160,9 +160,26 @@ function limitFromLogs(shape: NonNullable<ReturnType<typeof readDirectSwapShape>
     if (l) left = BigInt(l[1]);
     if (r) right = BigInt(r[1]);
   }
-  if (left == null || right == null) return null;
-  if (left === shape.limitValue && right !== shape.limitValue) return right;
-  if (right === shape.limitValue && left !== shape.limitValue) return left;
+  if (left != null && right != null) {
+    if (left === shape.limitValue && right !== shape.limitValue) return right;
+    if (right === shape.limitValue && left !== shape.limitValue) return left;
+  }
+  // Raydium AMM v4 logs the whole swap computation as base64 ("ray_log"): for swap_base_in the last field is
+  // the output it computed; for swap_base_out it is the input it would deduct. Both are exact at current state.
+  if (shape.program === "Raydium AMM v4") {
+    const line = [...logs].reverse().find((l) => l.includes("ray_log: "));
+    const b64 = line?.split("ray_log: ")[1]?.trim();
+    if (b64) {
+      try {
+        const buf = Buffer.from(b64, "base64");
+        const u64 = (at: number) => buf.readBigUInt64LE(at);
+        if (buf.length >= 57 && buf[0] === 3 && shape.limit === "min_out" && u64(9) === shape.limitValue) return u64(49); // out_amount
+        if (buf.length >= 57 && buf[0] === 4 && shape.limit === "max_in" && u64(1) === shape.limitValue) return u64(49); // deduct_in
+      } catch {
+        /* fall through to SDK math */
+      }
+    }
+  }
   return null;
 }
 

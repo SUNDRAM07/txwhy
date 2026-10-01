@@ -50,13 +50,19 @@ const FIXES: { failure: string; action: string; fixed: boolean }[] = [
   },
   {
     failure: "Slippage on a direct Pump.fun, PumpSwap or Raydium swap",
-    action: "These instructions carry no tolerance, only a limit. The amount and every account stay as written; only the limit moves to the current price using the programs' own math, with a stated 1% tolerance and never more than 25% against you.",
+    action: "These instructions carry no tolerance, only a limit. The amount and every account stay as written; only the limit moves to the price the program itself computed in the failing simulation, with a stated 1% tolerance and never more than 25% against you.",
     fixed: true,
   },
   {
-    failure: "Version 1 transactions (the new format)",
+    failure: "Version 1 transactions (half of Jupiter traffic two weeks after activation)",
     action: "SIMD-0385 went live on mainnet on Sep 15, 2026 and moved compute settings into the transaction header. TxWhy reads and rebuilds v1 natively: the same repairs, applied to the header, re-encoded with @solana/kit.",
     fixed: true,
+  },
+  {
+    failure: "Your wallet's safety guard tripped",
+    action:
+      "Wallets and trading apps append a Lighthouse assertion that aborts the transaction if state changed since preview. Its error shares the number 0x1771 with Jupiter's slippage error, so explorers call it slippage. TxWhy decodes the guard itself: which account, which value, what it required, and that nothing was swapped.",
+    fixed: false,
   },
   {
     failure: "Not enough SOL",
