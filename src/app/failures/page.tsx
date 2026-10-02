@@ -14,14 +14,17 @@ export const metadata: Metadata = {
 const pct = (v: number) => `${(v * 100).toFixed(v < 0.1 ? 1 : 0)}%`;
 const n = (v: number) => v.toLocaleString("en-US");
 
-function Bars({ rows, suffix }: { rows: { label: string; value: number; note?: string }[]; suffix?: string }) {
+function Bars({ rows, suffix }: { rows: { label: string; value: number; note?: string; sub?: string }[]; suffix?: string }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
   return (
     <ul className="mt-3 space-y-2">
       {rows.map((r) => (
-        <li key={r.label} className="text-sm">
+        <li key={r.label + (r.sub ?? "")} className="text-sm">
           <div className="flex justify-between gap-4">
-            <span className="truncate">{r.label}</span>
+            <span className="min-w-0">
+              <span className="block truncate">{r.label}</span>
+              {r.sub && <span className="block truncate text-xs text-neutral-500">{r.sub}</span>}
+            </span>
             <span className="shrink-0 tabular-nums text-neutral-500">
               {r.note ?? n(r.value)}
               {suffix}
@@ -160,7 +163,7 @@ export default async function FailuresPage() {
                 <div>
                   <h3 className="text-sm font-semibold">Why the rest could not be</h3>
                   <p className="mt-1 text-xs text-neutral-500">Ranked by how often real senders hit it. This list decides what gets built next.</p>
-                  <Bars rows={index.repair.unrepairable.map((c) => ({ label: c.title, value: c.count }))} />
+                  <Bars rows={index.repair.unrepairable.map((c) => { const i = c.title.indexOf(": "); return i > 0 ? { label: c.title.slice(0, i), sub: c.title.slice(i + 2), value: c.count } : { label: c.title, value: c.count }; })} />
                 </div>
               </div>
               {index.repair.engineErrors.length > 0 && (

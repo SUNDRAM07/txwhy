@@ -1,5 +1,5 @@
 import { decodeTransactionError } from "./errors";
-import { base58ToBytes, lighthouseDetail } from "./lighthouse";
+import { LIGHTHOUSE, base58ToBytes, describeLighthouseAssertion, lighthouseDetail } from "./lighthouse";
 import { fetchIdlErrors } from "./idl";
 import { programName } from "./programs";
 import type { Trace, TraceNode } from "./types";
@@ -11,6 +11,9 @@ interface ParsedInstruction {
   program?: string;
   parsed?: { type?: string } | string;
   stackHeight?: number | null;
+  /** Present for programs the RPC cannot parse: raw account list and base58 data. */
+  accounts?: string[];
+  data?: string;
 }
 
 interface RpcTransaction {
@@ -67,7 +70,11 @@ function toNode(ix: ParsedInstruction, index: string, depth: number, failed: boo
     index,
     programId: ix.programId,
     programName: programName(ix.programId, ix.program),
-    instructionName: instructionName(ix),
+    // A guard instruction is worth spelling out in the tree: it is the app's own stated condition.
+    instructionName:
+      ix.programId === LIGHTHOUSE && typeof ix.data === "string"
+        ? (() => { const req = describeLighthouseAssertion(base58ToBytes(ix.data), ix.accounts ?? []); return req ? `requires ${req}` : "memory write"; })()
+        : instructionName(ix),
     failed,
     depth,
     children: [],
