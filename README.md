@@ -117,6 +117,10 @@ Paying agents can also find the endpoint on their own: it is listed in the [x402
 
 The failure index is also a free JSON API for anyone's research or dashboards: `GET https://txwhy.vercel.app/api/v1/index` (CC BY 4.0).
 
+## Explain what you already have
+
+A wallet or app that just watched a simulation fail already holds the answer's raw material: the `err` object and the logs. `POST /api/v1/explain` turns those into the same plain-words cause and fix, with wallet guards decoded when the failing instruction's bytes are included, and never sees the transaction. In the SDK: `explainError({ error, logs, instruction })`.
+
 ## In the explorer, where people actually land
 
 [extension/](extension/) is a browser extension (Manifest V3, about 120 lines, no permissions beyond talking to txwhy.vercel.app). On any failed transaction page on Solscan, Solana Explorer, SolanaFM or Orb it shows the cause in plain words, what to do, and whether TxWhy can rebuild it, right where the explorer only shows `custom program error: 0x1771`. Load it unpacked from `chrome://extensions` until it is on the Web Store.

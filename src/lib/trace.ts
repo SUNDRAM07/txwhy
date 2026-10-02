@@ -44,7 +44,7 @@ export function extractSignature(input: string): string | null {
  * Programs that logged a "failed" line. The FIRST such line is the innermost
  * failure — CPI failures propagate outward, so the deepest program logs first.
  */
-function failureInfoFromLogs(logs: string[]): {
+export function failureInfoFromLogs(logs: string[]): {
   failedPrograms: Set<string>;
   innermostFailedProgram: string | null;
 } {

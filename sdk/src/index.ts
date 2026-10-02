@@ -11,7 +11,8 @@ import { verifyInstructions, type Verification } from "../../src/lib/verify";
 export { verifyInstructions } from "../../src/lib/verify";
 export type { InstructionChange, Verification } from "../../src/lib/verify";
 
-export { TxWhyError, paymentProblem } from "./core";
+export { TxWhyError, explainError, paymentProblem } from "./core";
+export type { Explanation } from "./core";
 export type { RepairChange, RepairResult, RepairStatus, TxWhyOptions } from "./core";
 import { fromBase64, requestRepair, toBase64, TxWhyError, type RepairResult, type TxWhyOptions } from "./core";
 

@@ -85,3 +85,31 @@ export async function requestRepair(body: { transaction: string } | { signature:
   if (!res.ok || !json || json.error) throw new TxWhyError(json?.error ?? `TxWhy answered ${res.status}.`);
   return json;
 }
+
+export interface Explanation {
+  cause: { title: string; code?: string; cause: string; fix: string } | null;
+  failingProgram: { address: string; name: string; isWalletGuard: boolean } | null;
+  failingInstruction: number | null;
+  repairable: boolean;
+  next: string;
+}
+
+/**
+ * Explain a failure you already have in hand, without sending the transaction: pass the `err` from
+ * simulateTransaction / sendTransaction and the program logs. Optionally the failing instruction
+ * (program id, accounts, base58 data) so wallet guards (Lighthouse) are decoded precisely.
+ */
+export async function explainError(
+  input: { error: unknown; logs?: string[]; instruction?: { programId: string; accounts: string[]; data: string } },
+  options: TxWhyOptions = {},
+): Promise<Explanation> {
+  const endpoint = (options.endpoint ?? DEFAULT_ENDPOINT).replace(/\/api\/v1\/repair$/, "/api/v1/explain");
+  const res = await (options.fetch ?? fetch)(endpoint, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-txwhy-client": options.client ?? "sdk" },
+    body: JSON.stringify(input),
+  });
+  const json = (await res.json().catch(() => null)) as (Explanation & { error?: string }) | null;
+  if (!res.ok || !json || json.error) throw new TxWhyError(json?.error ?? `TxWhy answered ${res.status}.`);
+  return json;
+}

@@ -125,6 +125,62 @@
           }
         }
       }
+    },
+    "/api/v1/explain": {
+      "post": {
+        "summary": "Explain a failure you already have, without the transaction",
+        "description": "Pass the err from simulateTransaction/sendTransaction and the program logs; get the same plain-words cause and fix TxWhy shows on its pages. Include the failing instruction (programId, accounts, base58 data) to have wallet guards (Lighthouse) decoded. Free, 60 requests per minute per IP.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "error"
+                ],
+                "properties": {
+                  "error": {
+                    "description": "The err value (e.g. {\"InstructionError\":[2,{\"Custom\":6001}]})"
+                  },
+                  "logs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "instruction": {
+                    "type": "object",
+                    "properties": {
+                      "programId": {
+                        "type": "string"
+                      },
+                      "accounts": {
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "data": {
+                        "type": "string",
+                        "description": "base58"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "{ cause{title,code,cause,fix}, failingProgram{address,name,isWalletGuard}, failingInstruction, repairable, next }"
+          },
+          "400": {
+            "description": "Bad input"
+          }
+        }
+      }
     }
   },
   "components": {

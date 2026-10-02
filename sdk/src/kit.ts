@@ -23,7 +23,8 @@ import {
 import { verifyInstructions, type Verification } from "../../src/lib/verify";
 import { fromBase64, requestRepair, TxWhyError, type RepairResult, type TxWhyOptions } from "./core";
 
-export { TxWhyError } from "./core";
+export { TxWhyError, explainError } from "./core";
+export type { Explanation } from "./core";
 export type { RepairChange, RepairResult, RepairStatus, TxWhyOptions } from "./core";
 export type { InstructionChange, Verification } from "../../src/lib/verify";
 
