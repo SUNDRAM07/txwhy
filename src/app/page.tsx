@@ -296,6 +296,26 @@ export default function Home() {
         </section>
       )}
 
+      <section id="explorer" className="border-t border-neutral-200 py-12 dark:border-neutral-800">
+        <h2 className="text-xl font-bold tracking-tight">In the explorer, where you actually land</h2>
+        <p className="mt-3 leading-relaxed text-neutral-600 dark:text-neutral-400">
+          When a transaction fails, the first thing anyone opens is the explorer page, and the explorer stops at{" "}
+          <code className="rounded bg-neutral-100 px-1.5 py-0.5 text-sm dark:bg-neutral-900">custom program error: 0x1771</code>. The TxWhy
+          browser extension adds the missing paragraph on Solscan, Solana Explorer, SolanaFM and Orb: the failing
+          instruction, the cause in plain words, what to do, and whether a rebuilt version passes right now. It reads only
+          the signature from the URL and talks only to this site.
+        </p>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/extension-explorer.png" alt="The TxWhy panel on a failed transaction in Solana Explorer, explaining a tripped Lighthouse guard" className="mt-4 w-full rounded-xl border border-neutral-200 dark:border-neutral-800" loading="lazy" />
+        <p className="mt-3 text-sm text-neutral-500">
+          Free and open source, in{" "}
+          <a href="https://github.com/SUNDRAM07/txwhy/tree/main/extension" className="text-emerald-600 hover:underline dark:text-emerald-400">
+            extension/
+          </a>{" "}
+          in the repo. Load it unpacked from chrome://extensions until it is on the Web Store.
+        </p>
+      </section>
+
       <section id="proof" className="border-t border-neutral-200 py-12 dark:border-neutral-800">
         <h2 className="text-xl font-bold tracking-tight">Proof, on chain</h2>
         <p className="mt-3 leading-relaxed text-neutral-600 dark:text-neutral-400">
