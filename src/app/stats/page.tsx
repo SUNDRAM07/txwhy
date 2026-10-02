@@ -23,6 +23,7 @@ const CHANNEL_LABEL: Record<string, string> = {
   telegram: "Telegram bot",
   sdk: "npm package",
   cli: "Command line",
+  extension: "Browser extension",
   x402: "Paid (x402)",
 };
 

@@ -382,7 +382,12 @@ function sanitizeCause(reason: string): DecodedError {
 
 export async function repair(input: RepairInput): Promise<RepairResult> {
   try {
-    return await repairUnguarded(input);
+    const result = await repairUnguarded(input);
+    // A tripped wallet guard is never "needs a fresh quote": the app has to build a new transaction with new guards.
+    if (result.status !== "repaired" && result.status !== "valid" && result.cause?.title.startsWith("Lighthouse guard")) {
+      return { ...result, status: "not_repairable", summary: "A safety guard set by the wallet or app that built this transaction aborted it. Nothing was swapped. Only that app can build a fresh transaction with new guards.", repairedTransaction: null };
+    }
+    return result;
   } catch (e) {
     const reason = e instanceof RpcError ? e.message.match(SANITIZE_PATTERN)?.[1] : undefined;
     if (!reason) throw e;

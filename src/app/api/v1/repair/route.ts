@@ -63,7 +63,7 @@ export async function POST(request: Request) {
       after(() =>
         track({
           kind: "repair",
-          channel: client === "web" || client === "sdk" || client === "cli" ? client : "api",
+          channel: client === "web" || client === "sdk" || client === "cli" || client === "extension" ? client : "api",
           status: result.status,
           errorTitle: result.cause?.title,
           caller,

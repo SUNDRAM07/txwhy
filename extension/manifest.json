@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "TxWhy for Solana explorers",
+  "version": "0.1.0",
+  "description": "On any failed transaction page on Solscan, Solana Explorer, SolanaFM or Orb, shows why it failed in plain words and whether TxWhy can rebuild it.",
+  "homepage_url": "https://txwhy.vercel.app",
+  "permissions": [],
+  "host_permissions": ["https://txwhy.vercel.app/*"],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://solscan.io/tx/*",
+        "https://explorer.solana.com/tx/*",
+        "https://solana.fm/tx/*",
+        "https://orb.helius.dev/tx/*",
+        "https://xray.helius.dev/tx/*"
+      ],
+      "js": ["content.js"],
+      "css": ["panel.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" }
+}

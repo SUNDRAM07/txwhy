@@ -117,6 +117,12 @@ Paying agents can also find the endpoint on their own: it is listed in the [x402
 
 The failure index is also a free JSON API for anyone's research or dashboards: `GET https://txwhy.vercel.app/api/v1/index` (CC BY 4.0).
 
+## In the explorer, where people actually land
+
+[extension/](extension/) is a browser extension (Manifest V3, about 120 lines, no permissions beyond talking to txwhy.vercel.app). On any failed transaction page on Solscan, Solana Explorer, SolanaFM or Orb it shows the cause in plain words, what to do, and whether TxWhy can rebuild it, right where the explorer only shows `custom program error: 0x1771`. Load it unpacked from `chrome://extensions` until it is on the Web Store.
+
+![TxWhy panel on Solana Explorer](public/extension-explorer.png)
+
 ## What it explains when it cannot rebuild
 
 Not every failure can be fixed by rebuilding, but every one gets the exact failing instruction, the program that raised it, the decoded error and what to do. One class worth naming: **wallet guards**. Wallets and trading apps append a Lighthouse assertion to abort a transaction when state changed since preview, and its error shares the number 0x1771 with Jupiter's slippage error, so explorers call it slippage. TxWhy decodes the guard instruction itself: "instruction #5 required the number at byte 61 of account F8w1…yAp5 to be at most 10,756,344", nothing was swapped, build a fresh transaction. Bare codes have their own pages too: [/errors/code/0x1771](https://txwhy.vercel.app/errors/code/0x1771) lists what a code means in every program.
