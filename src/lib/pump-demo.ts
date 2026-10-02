@@ -11,8 +11,10 @@ import { RPC_URL } from "./rpc";
 
 const PUMP_SWAP = new PublicKey("pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA");
 /** Known active SOL-quoted pools, tried in order; a fallback scan finds one from recent trades. */
-const CANDIDATE_POOLS = ["3wkj63fLFY93Ch7XPbfXffKbvuQzttsa9Zb6jJZqQs3c", "E6qed4HhJ3dJTS2pAwZyo8GPM74rEEfuCL4r5oZppLHU"];
-const MIN_QUOTE_RESERVE_LAMPORTS = 20 * 1e9; // a pool with at least 20 SOL, so 0.01 SOL barely moves it
+// Deep pools first: a thin memecoin pool can double in price during a demo and push a 10%-stale limit past the 25% cap
+// (the first demo pool drained from 4,950 SOL to 5 SOL within a week). Checked Oct 2, 2026: 7h81…Zqjc holds ~2,700 SOL.
+const CANDIDATE_POOLS = ["7h81xxwCG67iwXRs1E5gDbwgM7zEmmCX3y9nuMYMZqjc", "3wkj63fLFY93Ch7XPbfXffKbvuQzttsa9Zb6jJZqQs3c", "E6qed4HhJ3dJTS2pAwZyo8GPM74rEEfuCL4r5oZppLHU"];
+const MIN_QUOTE_RESERVE_LAMPORTS = 200 * 1e9; // at least 200 SOL, so 0.01 SOL barely moves it and the price is calm
 const SPEND_LAMPORTS = 10_000_000; // 0.01 SOL
 
 let cachedPool: { key: PublicKey; until: number } | null = null;
