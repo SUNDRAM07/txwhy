@@ -106,6 +106,19 @@ const result = await repair({ signature: "5Nf…" });          // already failed
 // result.status: "repaired" | "valid" | "needs_requote" | "not_repairable"
 ```
 
+## Just the explanation
+
+Already holding the error from `simulateTransaction` or a failed send? Turn it into a sentence without sending the transaction anywhere:
+
+```ts
+import { explainError } from "@txwhy/sdk";
+
+const { cause, repairable, failingProgram } = await explainError({ error: simulation.value.err, logs: simulation.value.logs });
+// cause.title, cause.cause, cause.fix
+```
+
+Pass the failing `instruction` (program id, accounts, base58 data) as well and wallet guards (Lighthouse assertions, which look like Jupiter slippage errors) are decoded to the exact requirement that failed.
+
 ## Pay per repair, no account (x402)
 
 The free endpoint is rate limited. `POST /api/x402/repair` is the same repair with no limit, paid per call in USDC on Solana over [x402](https://x402.org): $0.001 a repair, settled only after a successful answer, the facilitator pays the network fee. Same `repair()` call, a paying `fetch`:

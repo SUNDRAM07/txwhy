@@ -1,7 +1,7 @@
 // End-to-end check of the built package against the live service. Nothing is ever sent:
 // the demo payer is a public exchange wallet and sendTransaction is stubbed.
 import { Connection, VersionedTransaction } from "@solana/web3.js";
-import { repair, sendWithRepair, verifyRepair, TxWhyError } from "./dist/index.js";
+import { repair, sendWithRepair, verifyRepair, explainError, TxWhyError } from "./dist/index.js";
 import { verifyInstructions } from "./dist/verify.js";
 
 const BASE = process.env.TXWHY_BASE ?? "https://txwhy.vercel.app";
@@ -69,6 +69,10 @@ try {
   check("kit verifyRepair accepts the honest v1 repair", honest.ok, honest.ok ? "" : `-> ${honest.violations[0]}`);
   const swapped = await kit.verifyRepair(rpc, v1.transaction, examples.slippage.transaction);
   check("kit verifyRepair refuses a different transaction", !swapped.ok, `-> ${swapped.violations[0]}`);
+}
+{
+  const e = await explainError({ error: { InstructionError: [2, { Custom: 6001 }] }, logs: ["Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 invoke [1]", "Program log: AnchorError occurred. Error Code: SlippageToleranceExceeded. Error Number: 6001. Error Message: Slippage tolerance exceeded.", "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x1771"] }, opts);
+  check("explainError names a Jupiter slippage failure", e.cause?.title === "SlippageToleranceExceeded" && e.repairable === true, `-> ${e.cause?.title}`);
 }
 console.log(`\n${pass}/${total} passed`);
 process.exit(pass === total ? 0 : 1);

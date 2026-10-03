@@ -1,6 +1,6 @@
 {
   "name": "@txwhy/sdk",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Failed Solana transaction in, working transaction out. Repair inside your send loop, and verify every repair offline.",
   "license": "MIT",
   "author": "Sundram Mahajan",
