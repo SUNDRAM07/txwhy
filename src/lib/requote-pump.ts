@@ -4,7 +4,7 @@ import BN from "bn.js";
 import { Raydium } from "@raydium-io/raydium-sdk-v2";
 import { Connection, PublicKey, type TransactionInstruction } from "@solana/web3.js";
 import { RPC_URL } from "./rpc";
-import { DIRECT_LIMIT_CAP_BPS, PUMP_FUN, PUMP_SWAP, RAYDIUM_V4, readDirectSwapShape } from "./swap-shape";
+import { DIRECT_LIMIT_CAP_BPS, PUMP_FUN, PUMP_SWAP, RAYDIUM_V4, readDirectSwapShape, readSystemTransfer } from "./swap-shape";
 
 /**
  * Slippage repair for direct Pump.fun (bonding curve), PumpSwap (AMM) and Raydium AMM v4 swaps.
@@ -177,6 +177,9 @@ async function limitFromProbe(
   const lifted = [...instructions];
   lifted[index] = new (ix.constructor as typeof TransactionInstruction)({ programId: ix.programId, keys: ix.keys, data });
   const result = await probe(lifted);
+  if (result.err != null && result.errorTitle === "PoolIsCompleted") {
+    throw new NotSlippageError("this launch pool has completed its bonding curve and migrated, so no swap against it can succeed any more; trade the token on the pool it migrated to");
+  }
   if (result.err != null) {
     throw new NotSlippageError(
       shape.limit === "max_in"
@@ -192,6 +195,58 @@ async function limitFromProbe(
 }
 
 class NotSlippageError extends Error {}
+
+type Shape = NonNullable<ReturnType<typeof readDirectSwapShape>>;
+const rebuild = (ix: TransactionInstruction, data: Buffer) => new (ix.constructor as typeof TransactionInstruction)({ programId: ix.programId, keys: ix.keys, data });
+const withLamports = (ix: TransactionInstruction, amount: bigint) => {
+  const data = Buffer.from(ix.data);
+  data.writeBigUInt64LE(amount, 4);
+  return rebuild(ix, data);
+};
+
+/** The one SOL transfer before the swap that funds the swap's own input token account (a wrap). */
+function findWrap(instructions: TransactionInstruction[], index: number, shape: Shape): { index: number; lamports: bigint } | null {
+  const input = shape.userIn == null ? undefined : instructions[index].keys[shape.userIn]?.pubkey.toBase58();
+  if (!input) return null;
+  const hits = instructions.slice(0, index).flatMap((ix, i) => {
+    const t = readSystemTransfer(ix);
+    return t && t.to === input ? [{ index: i, lamports: t.lamports }] : [];
+  });
+  return hits.length === 1 ? hits[0] : null;
+}
+
+/**
+ * Exact-output swap funded by a wrap of exactly its maximum: raise the wrap and the maximum together
+ * by the most the rules allow, simulate, and read what the swap really costs now.
+ */
+async function limitFromProbeWithWrap(
+  instructions: TransactionInstruction[],
+  index: number,
+  shape: Shape,
+  wrap: { index: number; lamports: bigint },
+  probe: NonNullable<RequoteHints["probe"]>,
+): Promise<{ limit: bigint; unit: string; expected: bigint }> {
+  const cap = BigInt(DIRECT_LIMIT_CAP_BPS);
+  const byLimit = (shape.limitValue * cap) / BigInt(10_000);
+  const byWrap = (wrap.lamports * cap) / BigInt(10_000);
+  const raise = byLimit < byWrap ? byLimit : byWrap;
+  const ix = instructions[index];
+  const input = ix.keys[shape.userIn as number].pubkey.toBase58();
+  const data = Buffer.from(ix.data);
+  data.writeBigUInt64LE(shape.limitValue + raise, shape.limitOffset);
+  const lifted = [...instructions];
+  lifted[index] = rebuild(ix, data);
+  lifted[wrap.index] = withLamports(instructions[wrap.index], wrap.lamports + raise);
+  const result = await probe(lifted);
+  if (result.err != null) {
+    throw new NotSlippageError(`with the wrapped SOL and the maximum both raised ${DIRECT_LIMIT_CAP_BPS / 100}%, the most a repair may move them, the transaction still fails (${result.errorTitle ?? "unknown error"})`);
+  }
+  const actual = result.transfers.filter((t) => t.source === input).reduce((sum, t) => sum + t.amount, BigInt(0));
+  if (actual === BigInt(0)) throw new Error("the simulation moved no tokens for the user");
+  const withRoom = withTolerance(actual, "up");
+  const ceiling = shape.limitValue + raise;
+  return { limit: withRoom < ceiling ? withRoom : ceiling, expected: actual, unit: "SOL" };
+}
 
 /**
  * The price the program itself computed, read from its own failed check. Anchor's require_gte!/require_gt!
@@ -242,6 +297,7 @@ export async function requoteDirect(instructions: TransactionInstruction[], hint
   const ix = instructions[index];
   let fresh: { limit: bigint; unit: string; expected: bigint };
   let pricedBy = "the program's own published math";
+  let wrap: { index: number; lamports: bigint } | null = null;
   try {
     const actual = limitFromLogs(shape, hints.logs);
     if (actual != null) {
@@ -250,8 +306,15 @@ export async function requoteDirect(instructions: TransactionInstruction[], hint
       fresh = { limit: withTolerance(actual, shape.limit === "max_in" ? "up" : "down"), expected: actual, unit };
       pricedBy = "the program's own check in the failing simulation";
     } else if (shape.userOut != null && hints.probe) {
-      fresh = await limitFromProbe(instructions, index, shape, hints.probe);
       pricedBy = "a simulation of this same transaction with the limit lifted";
+      try {
+        fresh = await limitFromProbe(instructions, index, shape, hints.probe);
+      } catch (e) {
+        const funding = e instanceof NotSlippageError && shape.limit === "max_in" ? findWrap(instructions, index, shape) : null;
+        if (!funding) throw e;
+        fresh = await limitFromProbeWithWrap(instructions, index, shape, funding, hints.probe);
+        wrap = funding;
+      }
     } else {
       fresh = await freshLimit(ix, shape);
     }
@@ -278,6 +341,14 @@ export async function requoteDirect(instructions: TransactionInstruction[], hint
   const rebuilt = new (ix.constructor as typeof TransactionInstruction)({ programId: ix.programId, keys: ix.keys, data });
   const out = [...instructions];
   out[index] = rebuilt;
+  const wrapNotes: string[] = [];
+  if (wrap && fresh.limit > shape.limitValue) {
+    const raised = wrap.lamports + (fresh.limit - shape.limitValue);
+    out[wrap.index] = withLamports(instructions[wrap.index], raised);
+    wrapNotes.push(
+      `This transaction wraps exactly its maximum cost in SOL before the swap, so the wrap was raised by the same amount as the maximum (${lamports(wrap.lamports)} -> ${lamports(raised)}). It goes to your own wrapped-SOL account, and whatever the swap does not use stays there.`,
+    );
+  }
   return {
     ok: true,
     program: shape.program,
@@ -286,6 +357,7 @@ export async function requoteDirect(instructions: TransactionInstruction[], hint
     after: `${label(shape)} ${fmt(fresh.limit, fresh.unit)} (now ${fmt(fresh.expected, fresh.unit)} at the current price, ${DIRECT_TOLERANCE_BPS / 100}% tolerance)`,
     notes: [
       `${shape.program} ${shape.name}: the amount (${shape.amount.toString()}) and every account are unchanged; only the ${shape.limit === "max_in" ? "maximum cost" : "minimum received"} moved to the current price plus a ${DIRECT_TOLERANCE_BPS / 100}% tolerance, computed with ${pricedBy}.`,
+      ...wrapNotes,
       `A limit is never moved more than ${DIRECT_LIMIT_CAP_BPS / 100}% against you.`,
     ],
   };

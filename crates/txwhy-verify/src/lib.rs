@@ -53,6 +53,7 @@ pub enum ChangeKind {
     SwapReplaced,
     TokenAccountSetup,
     SwapLimitMoved,
+    WrapRaised,
 }
 
 #[derive(Clone, Debug)]
@@ -183,6 +184,8 @@ struct DirectLayout {
     limit: Limit,
     tag_length: usize,
     limit_first: bool,
+    /// Account index of the user's input token account, where the layout names it.
+    user_in: Option<usize>,
 }
 
 /// Discriminators from the programs' on-chain IDLs (Sep 2026); mirrors `swap-shape.ts`.
@@ -222,7 +225,12 @@ fn direct_layout(program_id: &str, data: &[u8]) -> Option<DirectLayout> {
         },
         _ => return None,
     };
-    Some(DirectLayout { program, name, limit, tag_length, limit_first })
+    let user_in = match program_id {
+        METEORA_DBC => Some(3),
+        METEORA_DAMM_V2 => Some(2),
+        _ => None,
+    };
+    Some(DirectLayout { program, name, limit, tag_length, limit_first, user_in })
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -235,6 +243,8 @@ pub struct DirectSwapShape {
     pub limit_value: u64,
     pub accounts: Vec<String>,
     pub tail: Vec<u8>,
+    /// The user's input token account, where the layout names it.
+    pub user_in: Option<String>,
 }
 
 /// What a direct Pump.fun / PumpSwap / Raydium / Meteora swap asks for, read from the instruction alone.
@@ -258,7 +268,32 @@ pub fn read_direct_swap_shape(ix: &Instruction) -> Option<DirectSwapShape> {
             .map(|a| format!("{}:{}{}", a.pubkey, if a.is_signer { "s" } else { "" }, if a.is_writable { "w" } else { "" }))
             .collect(),
         tail: ix.data[t + 16..].to_vec(),
+        user_in: layout.user_in.and_then(|at| ix.accounts.get(at)).map(|a| a.pubkey.clone()),
     })
+}
+
+const SYSTEM_PROGRAM: &str = "11111111111111111111111111111111";
+
+/// A System Program transfer (tag 2): (from, to, lamports).
+pub fn read_system_transfer(ix: &Instruction) -> Option<(String, String, u64)> {
+    if ix.program_id != SYSTEM_PROGRAM || ix.accounts.len() < 2 || ix.data.len() != 12 {
+        return None;
+    }
+    if u32::from_le_bytes(ix.data[0..4].try_into().ok()?) != 2 {
+        return None;
+    }
+    Some((ix.accounts[0].pubkey.clone(), ix.accounts[1].pubkey.clone(), u64_le(&ix.data, 4)?))
+}
+
+/// An exact-output swap that wraps exactly its maximum cost in SOL cannot pay a higher price unless
+/// the wrap rises with the limit. The raise is allowed only when the maximum rose, the transfer grew
+/// by no more than the maximum did, and by no more than the cap relative to the original transfer.
+pub fn allowed_wrap_raise(wrap_before: u64, wrap_after: u64, limit_before: u64, limit_after: u64) -> bool {
+    if wrap_after <= wrap_before || limit_after <= limit_before {
+        return false;
+    }
+    let raise = (wrap_after - wrap_before) as u128;
+    raise <= (limit_after - limit_before) as u128 && raise <= wrap_before as u128 * DIRECT_LIMIT_CAP_BPS / 10_000
 }
 
 /// True when `after` is the same direct swap as `before` with only the limit moved, and moved no
@@ -361,12 +396,24 @@ pub fn verify_instructions(original_payer: &str, original: &[Instruction], repai
     let a: Vec<&Instruction> = original.iter().filter(|ix| !is_compute_budget(ix)).collect();
     let b: Vec<&Instruction> = repaired.iter().filter(|ix| !is_compute_budget(ix)).collect();
     let (mut i, mut j) = (0usize, 0usize);
+    // A SOL transfer that was raised and still has to be justified by the swap it funds: (to, before, after).
+    let mut pending_wrap: Option<(String, u64, u64)> = None;
     while i < a.len() && j < b.len() {
         if same_instruction(a[i], b[j]) {
             kept += 1;
             i += 1;
             j += 1;
             continue;
+        }
+        if pending_wrap.is_none() {
+            if let (Some((from_a, to_a, was)), Some((from_b, to_b, now))) = (read_system_transfer(a[i]), read_system_transfer(b[j])) {
+                if from_a == from_b && to_a == to_b && now > was {
+                    pending_wrap = Some((to_a, was, now));
+                    i += 1;
+                    j += 1;
+                    continue;
+                }
+            }
         }
         if a[i].program_id == JUPITER_V6 {
             // Allowed: [idempotent token-account creation]* followed by one equivalent Jupiter swap.
@@ -417,6 +464,18 @@ pub fn verify_instructions(original_payer: &str, original: &[Instruction], repai
             };
             match (verdict, was, now) {
                 (Ok(()), Some(w), Some(n)) => {
+                    if let Some((to, was, now)) = pending_wrap.take() {
+                        let justified = w.limit == Limit::MaxIn && w.user_in.as_deref() == Some(to.as_str()) && allowed_wrap_raise(was, now, w.limit_value, n.limit_value);
+                        if !justified {
+                            violations.push(format!("A SOL transfer to {to} was raised from {was} to {now} lamports, which the limit move of this swap does not justify."));
+                            break;
+                        }
+                        changes.push(Change {
+                            kind: ChangeKind::WrapRaised,
+                            program: "System Program".into(),
+                            detail: format!("SOL wrapped into the input account of the swap {was} -> {now} lamports, no more than the maximum cost rose"),
+                        });
+                    }
                     changes.push(Change {
                         kind: ChangeKind::SwapLimitMoved,
                         program: w.program.into(),
@@ -441,6 +500,11 @@ pub fn verify_instructions(original_payer: &str, original: &[Instruction], repai
         }
         violations.push(format!("Instruction {} (program {}) is not the same in the repaired transaction.", i + 1, a[i].program_id));
         break;
+    }
+    if violations.is_empty() {
+        if let Some((to, was, now)) = &pending_wrap {
+            violations.push(format!("A SOL transfer to {to} was raised from {was} to {now} lamports with no swap limit move to justify it."));
+        }
     }
     if violations.is_empty() {
         if i < a.len() {
@@ -520,7 +584,12 @@ mod tests {
         data.extend(amount.to_le_bytes());
         data.extend(limit.to_le_bytes());
         data.push(mode);
-        Instruction { program_id: program.into(), accounts: vec![acct(PROG, false, false), acct(OTHER, false, true), acct(PAYER, true, true)], data }
+        Instruction { program_id: program.into(), accounts: vec![acct(PROG, false, false), acct(OTHER, false, true), acct(SOURCE, false, true), acct(DEST, false, true), acct(PAYER, true, true)], data }
+    }
+    fn wrap(to: &str, lamports: u64) -> Instruction {
+        let mut data = 2u32.to_le_bytes().to_vec();
+        data.extend(lamports.to_le_bytes());
+        Instruction { program_id: "11111111111111111111111111111111".into(), accounts: vec![acct(PAYER, true, true), acct(to, false, true)], data }
     }
     fn hex_to_bytes(s: &str) -> Vec<u8> {
         (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect()
@@ -662,6 +731,30 @@ mod tests {
         assert!(!run(&[meteora_swap2(METEORA_DAMM_V2, 1_000, 10_000, 0)], &[meteora_swap2(METEORA_DAMM_V2, 1_000, 10_000, 2)]).ok);
         assert!(read_direct_swap_shape(&meteora_swap2(METEORA_DBC, 1, 1, 3)).is_none());
         assert!(!run(&[meteora_swap2(METEORA_DBC, 1_000, 10_000, 0)], &[meteora_swap2(METEORA_DBC, 1_001, 10_000, 0)]).ok);
+    }
+
+    #[test]
+    fn wrap_may_rise_only_with_the_maximum_it_funds() {
+        // DAMM v2 lists the input token account at index 2 (SOURCE here).
+        let before = [wrap(SOURCE, 10_000), meteora_swap2(METEORA_DAMM_V2, 500, 10_000, 2)];
+        let v = run(&before, &[wrap(SOURCE, 11_000), meteora_swap2(METEORA_DAMM_V2, 500, 11_000, 2)]);
+        assert!(v.ok, "{:?}", v.violations);
+        assert_eq!(v.changes[0].kind, ChangeKind::WrapRaised);
+        // Raised more than the maximum rose.
+        assert!(!run(&before, &[wrap(SOURCE, 11_001), meteora_swap2(METEORA_DAMM_V2, 500, 11_000, 2)]).ok);
+        // Raised with no limit move at all.
+        assert!(!run(&before, &[wrap(SOURCE, 11_000), meteora_swap2(METEORA_DAMM_V2, 500, 10_000, 2)]).ok);
+        // Raised past the cap of the original transfer, even though the maximum rose as much.
+        let small = [wrap(SOURCE, 1_000), meteora_swap2(METEORA_DAMM_V2, 500, 10_000, 2)];
+        assert!(!run(&small, &[wrap(SOURCE, 1_251), meteora_swap2(METEORA_DAMM_V2, 500, 12_500, 2)]).ok);
+        // A transfer to any other account may never rise.
+        let other = [wrap(OTHER, 10_000), meteora_swap2(METEORA_DAMM_V2, 500, 10_000, 2)];
+        assert!(!run(&other, &[wrap(OTHER, 11_000), meteora_swap2(METEORA_DAMM_V2, 500, 11_000, 2)]).ok);
+        // An exact-in swap has a minimum, not a maximum: nothing justifies sending more SOL.
+        let exact_in = [wrap(SOURCE, 10_000), meteora_swap2(METEORA_DAMM_V2, 500, 10_000, 0)];
+        assert!(!run(&exact_in, &[wrap(SOURCE, 11_000), meteora_swap2(METEORA_DAMM_V2, 500, 9_000, 0)]).ok);
+        // The recipient may not change.
+        assert!(!run(&before, &[wrap(OTHER, 11_000), meteora_swap2(METEORA_DAMM_V2, 500, 11_000, 2)]).ok);
     }
 
     #[test]

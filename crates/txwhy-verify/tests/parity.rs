@@ -37,6 +37,7 @@ fn kind_name(k: &ChangeKind) -> &'static str {
         ChangeKind::SwapReplaced => "swap_replaced",
         ChangeKind::TokenAccountSetup => "token_account_setup",
         ChangeKind::SwapLimitMoved => "swap_limit_moved",
+        ChangeKind::WrapRaised => "wrap_raised",
     }
 }
 

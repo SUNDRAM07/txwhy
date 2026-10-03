@@ -139,6 +139,27 @@ for (const [name, before, after, expectOk] of meteoraCases) {
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}
       -> ${v.ok ? `accepted (${v.kept} kept, ${v.changes.map((c) => c.kind).join(",")})` : `refused: ${v.violations[0]}`}`);
 }
-const total = cases.length + directCases.length + meteoraCases.length;
+
+/** Wrap raise: only into the input account of an exact-out swap whose maximum rose at least as much. */
+const wrapTo = (to: PublicKey, lamports: number) => SystemProgram.transfer({ fromPubkey: payer, toPubkey: to, lamports });
+// meteoraSwap2 keys: [dest, other, SOL, USDC, payer]; DAMM v2 reads the input token account at index 2 (SOL here).
+const outSwap = (limitValue: number, mode = 2) => meteoraSwap2({ program: DAMM, mode, limitValue: BigInt(limitValue) });
+const wrapCases: [string, TransactionInstruction[], TransactionInstruction[], boolean][] = [
+  ["wrap raised together with the maximum it funds", [wrapTo(SOL, 100_000), outSwap(100_000)], [wrapTo(SOL, 110_000), outSwap(110_000)], true],
+  ["ATTACK: wrap raised more than the maximum rose", [wrapTo(SOL, 100_000), outSwap(100_000)], [wrapTo(SOL, 110_001), outSwap(110_000)], false],
+  ["ATTACK: wrap raised with no limit move", [wrapTo(SOL, 100_000), outSwap(100_000)], [wrapTo(SOL, 110_000), outSwap(100_000)], false],
+  ["ATTACK: small wrap raised past 25% of itself", [wrapTo(SOL, 10_000), outSwap(100_000)], [wrapTo(SOL, 12_501), outSwap(125_000)], false],
+  ["ATTACK: raised transfer goes to an account the swap does not spend from", [wrapTo(other, 100_000), outSwap(100_000)], [wrapTo(other, 110_000), outSwap(110_000)], false],
+  ["ATTACK: raised transfer redirected to a stranger", [wrapTo(SOL, 100_000), outSwap(100_000)], [wrapTo(thief, 110_000), outSwap(110_000)], false],
+  ["ATTACK: more SOL sent into an exact-in swap", [wrapTo(SOL, 100_000), outSwap(100_000, 0)], [wrapTo(SOL, 110_000), outSwap(90_000, 0)], false],
+  ["ATTACK: transfer raised with no swap at all", [wrapTo(SOL, 100_000), memo], [wrapTo(SOL, 110_000), memo], false],
+];
+for (const [name, before, after, expectOk] of wrapCases) {
+  const v = verifyInstructions({ payer, instructions: before }, { payer, instructions: after });
+  const ok = v.ok === expectOk;
+  if (ok) pass++;
+  console.log(`${ok ? "PASS" : "FAIL"}  ${name}\n      -> ${v.ok ? `accepted (${v.changes.map((c) => c.kind).join(",")})` : `refused: ${v.violations[0]}`}`);
+}
+const total = cases.length + directCases.length + meteoraCases.length + wrapCases.length;
 console.log(`\n${pass}/${total} passed`);
 process.exit(pass === total ? 0 : 1);

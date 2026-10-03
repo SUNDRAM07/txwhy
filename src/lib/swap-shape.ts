@@ -179,6 +179,28 @@ export function readDirectSwapShape(ix: TransactionInstruction) {
   };
 }
 
+const SYSTEM_PROGRAM = "11111111111111111111111111111111";
+
+/** A System Program transfer (tag 2): who pays, who receives, how many lamports. */
+export function readSystemTransfer(ix: TransactionInstruction): { from: string; to: string; lamports: bigint } | null {
+  if (ix.programId.toBase58() !== SYSTEM_PROGRAM || ix.keys.length < 2) return null;
+  const data = Buffer.from(ix.data);
+  if (data.length !== 12 || data.readUInt32LE(0) !== 2) return null;
+  return { from: ix.keys[0].pubkey.toBase58(), to: ix.keys[1].pubkey.toBase58(), lamports: data.readBigUInt64LE(4) };
+}
+
+/**
+ * An exact-output swap that wraps exactly its maximum cost in SOL cannot pay a higher price unless
+ * the wrap rises with the limit. That one transfer may be raised when all of this holds: it goes to
+ * the same swap's own input token account, the swap's maximum cost was raised, the transfer grows by
+ * no more than the maximum did, and by no more than the cap relative to the original transfer.
+ */
+export function isAllowedWrapRaise(wrapBefore: bigint, wrapAfter: bigint, limitBefore: bigint, limitAfter: bigint): boolean {
+  const raise = wrapAfter - wrapBefore;
+  if (raise <= BigInt(0) || limitAfter <= limitBefore) return false;
+  return raise <= limitAfter - limitBefore && raise <= (wrapBefore * BigInt(DIRECT_LIMIT_CAP_BPS)) / BigInt(10_000);
+}
+
 /**
  * True when `after` is the same direct swap as `before` with only the limit moved, and moved no
  * further against the user than the cap allows.

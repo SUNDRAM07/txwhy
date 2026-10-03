@@ -50,7 +50,7 @@ const FIXES: { failure: string; action: string; fixed: boolean }[] = [
   },
   {
     failure: "Slippage on a direct Pump.fun, PumpSwap, Raydium or Meteora swap",
-    action: "These instructions carry no tolerance, only a limit. The amount and every account stay as written; only the limit moves to the price the program itself computed in the failing simulation, with a stated 1% tolerance and never more than 25% against you.",
+    action: "These instructions carry no tolerance, only a limit. The amount and every account stay as written; only the limit moves to the price the program itself computed, read from its failed check or from a simulation of the same transaction with the limit lifted, with a stated 1% tolerance and never more than 25% against you.",
     fixed: true,
   },
   {

@@ -1,5 +1,5 @@
 import type { PublicKey, TransactionInstruction } from "@solana/web3.js";
-import { DIRECT_LAYOUTS, isAllowedDirectLimitChange, readDirectSwapShape, readSwapShape } from "./swap-shape";
+import { DIRECT_LAYOUTS, isAllowedDirectLimitChange, readDirectSwapShape, readSwapShape, isAllowedWrapRaise, readSystemTransfer } from "./swap-shape";
 
 /**
  * Verify a repair without trusting the service that made it.
@@ -25,7 +25,7 @@ const ATA_PROGRAM = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
 const JUPITER_V6 = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
 
 export interface InstructionChange {
-  kind: "kept" | "compute_budget" | "swap_replaced" | "token_account_setup" | "swap_limit_moved";
+  kind: "kept" | "compute_budget" | "swap_replaced" | "token_account_setup" | "swap_limit_moved" | "wrap_raised";
   program: string;
   detail: string;
 }
@@ -97,9 +97,20 @@ export function verifyInstructions(
   const b = repaired.instructions.filter((ix) => !isComputeBudget(ix));
   let i = 0;
   let j = 0;
+  /** A SOL transfer that was raised and still has to be justified by the swap it funds. */
+  let pendingWrap: { to: string; before: bigint; after: bigint } | null = null;
   while (i < a.length && j < b.length) {
     if (sameInstruction(a[i], b[j])) {
       kept++;
+      i++;
+      j++;
+      continue;
+    }
+    const wasTransfer = readSystemTransfer(a[i]);
+    const nowTransfer = readSystemTransfer(b[j]);
+    if (!pendingWrap && wasTransfer && nowTransfer && wasTransfer.from === nowTransfer.from && wasTransfer.to === nowTransfer.to && nowTransfer.lamports > wasTransfer.lamports) {
+      // Tentatively allowed: accepted only if the direct swap that follows spends from this account and its maximum rose at least as much.
+      pendingWrap = { to: wasTransfer.to, before: wasTransfer.lamports, after: nowTransfer.lamports };
       i++;
       j++;
       continue;
@@ -149,6 +160,15 @@ export function verifyInstructions(
         violations.push(`The replacement ${was?.program ?? "swap"} instruction changes ${verdict.reason ?? "the swap"}.`);
         break;
       }
+      if (pendingWrap) {
+        const input = was.userIn != null ? a[i].keys[was.userIn]?.pubkey.toBase58() : undefined;
+        if (was.limit !== "max_in" || input !== pendingWrap.to || !isAllowedWrapRaise(pendingWrap.before, pendingWrap.after, was.limitValue, now.limitValue)) {
+          violations.push(`A SOL transfer to ${pendingWrap.to} was raised from ${pendingWrap.before} to ${pendingWrap.after} lamports, which the limit move of this swap does not justify.`);
+          break;
+        }
+        changes.push({ kind: "wrap_raised", program: "System Program", detail: `SOL wrapped into the input account of the swap ${pendingWrap.before} -> ${pendingWrap.after} lamports, no more than the maximum cost rose` });
+        pendingWrap = null;
+      }
       changes.push({
         kind: "swap_limit_moved",
         program: was.program,
@@ -160,6 +180,9 @@ export function verifyInstructions(
     }
     violations.push(`Instruction ${i + 1} (program ${id(a[i].programId)}) is not the same in the repaired transaction.`);
     break;
+  }
+  if (violations.length === 0 && pendingWrap) {
+    violations.push(`A SOL transfer to ${pendingWrap.to} was raised from ${pendingWrap.before} to ${pendingWrap.after} lamports with no swap limit move to justify it.`);
   }
   if (violations.length === 0) {
     if (i < a.length) violations.push(`${a.length - i} original instruction(s) are missing from the repaired transaction.`);
