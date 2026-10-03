@@ -281,7 +281,7 @@ export async function requoteSwap(instructions: TransactionInstruction[], hints:
     return { ok: false, reason: `This transaction chains ${directSwaps} direct swaps, so the output of one feeds the next. Moving one limit would leave the next swap short, and TxWhy changes at most one swap limit per repair. Rebuild the whole sequence from fresh quotes.` };
   }
   const pumpUnknown = instructions.some((ix) => !readDirectSwapShape(ix) && ix.programId.toBase58() in DIRECT_LAYOUTS);
-  return { ok: false, reason: pumpUnknown ? "The direct swap here uses an instruction TxWhy does not recognise." : "No swap found that TxWhy can re-quote at the top level (Jupiter v6, Pump.fun, PumpSwap, Raydium AMM v4, Meteora DBC and Meteora DAMM v2). A swap executed inside another program by CPI cannot have its limit moved from outside." };
+  return { ok: false, reason: pumpUnknown ? "The direct swap here uses an instruction TxWhy does not recognise." : "No swap found that TxWhy can re-quote at the top level (Jupiter v6, Pump.fun, PumpSwap, Raydium AMM v4, Raydium LaunchLab, Meteora DBC and Meteora DAMM v2). A swap executed inside another program by CPI cannot have its limit moved from outside." };
 }
 const DIRECT_TOLERANCE_BPS_HINT = 100;
 

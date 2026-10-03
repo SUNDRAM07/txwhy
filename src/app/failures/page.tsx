@@ -50,7 +50,7 @@ export default async function FailuresPage() {
 
       <h1 className="mt-8 text-2xl font-bold tracking-tight">Solana failure index</h1>
       <p className="mt-2 text-sm leading-relaxed text-neutral-500">
-        A worker samples recent transactions on eight of Solana&apos;s busiest programs around the clock, and classifies
+        A worker samples recent transactions on nine of Solana&apos;s busiest programs around the clock, and classifies
         a slice of the failures with the same engine that powers TxWhy. This is a running sample, not a census.
       </p>
 

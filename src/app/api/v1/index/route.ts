@@ -2,7 +2,7 @@ import { rateLimit, tooManyRequests } from "@/lib/ratelimit";
 import { readFailureIndex } from "@/lib/stats";
 
 /**
- * The live Solana failure index as JSON, free to use: sampled transactions on eight of the busiest programs,
+ * The live Solana failure index as JSON, free to use: sampled transactions on nine of the busiest programs,
  * failure rates, named causes, who raised them, and TxWhy's own measured hit rate on those real failures.
  * A running sample, not a census. No addresses or transactions are stored or returned.
  */
@@ -28,7 +28,7 @@ export async function GET(request: Request) {
     {
       ...index,
       about: {
-        what: "Running sample of failed Solana transactions on eight of the busiest programs, classified by the TxWhy decoder.",
+        what: "Running sample of failed Solana transactions on nine of the busiest programs, classified by the TxWhy decoder.",
         method: "Every 90 seconds the worker reads recent signatures per program, counts failures, classifies a slice, and pushes a sample through the TxWhy repair engine, recording only the verdict.",
         caveats: "A sample, not a census. 'repair' measures already-landed failures, the hard case: a floor for pre-send repair.",
         license: "CC BY 4.0. Cite as: TxWhy Solana failure index, https://txwhy.vercel.app/failures",

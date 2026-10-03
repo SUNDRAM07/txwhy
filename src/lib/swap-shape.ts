@@ -89,9 +89,10 @@ export const PUMP_SWAP = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
 export const RAYDIUM_V4 = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
 export const METEORA_DBC = "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN";
 export const METEORA_DAMM_V2 = "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG";
+export const RAYDIUM_LAUNCHLAB = "LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj";
 
 export interface DirectLayout {
-  program: "Pump.fun" | "PumpSwap" | "Raydium AMM v4" | "Meteora DBC" | "Meteora DAMM v2";
+  program: "Pump.fun" | "PumpSwap" | "Raydium AMM v4" | "Meteora DBC" | "Meteora DAMM v2" | "Raydium LaunchLab";
   name: string;
   /** Length of the instruction tag in bytes (8 for Anchor discriminators, 1 for Raydium's u8). Both u64 args follow it. */
   tagLength?: number;
@@ -139,6 +140,13 @@ export const DIRECT_LAYOUTS: Record<string, Record<string, DirectLayout>> = {
   [METEORA_DBC]: {
     f8c69e91e17587c8: { program: "Meteora DBC", name: "swap", fixed: "tokens_in", limit: "min_out", userIn: 3, userOut: 4 },
     "414b3f4ceb5b5b88": { program: "Meteora DBC", name: "swap2", fixed: "tokens_in", limit: "min_out", modeByte: true, userIn: 3, userOut: 4 },
+  },
+  // Raydium LaunchLab (launch pools). Args: amount, limit, share_fee_rate. Accounts: 5 user base token, 6 user quote token.
+  [RAYDIUM_LAUNCHLAB]: {
+    faea0d7bd59c13ec: { program: "Raydium LaunchLab", name: "buy_exact_in", fixed: "quote_in", limit: "min_out", userIn: 6, userOut: 5 },
+    "9527de9bd37c981a": { program: "Raydium LaunchLab", name: "sell_exact_in", fixed: "tokens_in", limit: "min_out", userIn: 5, userOut: 6 },
+    "18d3742869039938": { program: "Raydium LaunchLab", name: "buy_exact_out", fixed: "tokens_out", limit: "max_in", userIn: 6, userOut: 5 },
+    "5fc8472208090ba6": { program: "Raydium LaunchLab", name: "sell_exact_out", fixed: "tokens_out", limit: "max_in", userIn: 5, userOut: 6 },
   },
   // Meteora DAMM v2 (cp-amm). Accounts: 2 input token account, 3 output token account, 8 payer.
   [METEORA_DAMM_V2]: {

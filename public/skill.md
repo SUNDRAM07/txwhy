@@ -33,7 +33,7 @@ Add `{"mcpServers": {"txwhy": {"url": "https://txwhy.vercel.app/api/mcp"}}}`. To
 
 ## Rules to rely on
 
-- A repair only ever changes: compute budget, blockhash, one Jupiter swap replaced by an equivalent one (same wallet, accounts, output token, amount, tolerance), or one Pump.fun/PumpSwap/Raydium AMM v4/Meteora DBC/Meteora DAMM v2 limit moved at most 25% against the user (plus, for a Meteora exact-output swap that wraps exactly its maximum in SOL, that wrap raised by no more than the maximum rose). Everything else is byte for byte identical. Verify it yourself with `verifyRepair` from `@txwhy/sdk` (no network needed).
+- A repair only ever changes: compute budget, blockhash, one Jupiter swap replaced by an equivalent one (same wallet, accounts, output token, amount, tolerance), or one Pump.fun/PumpSwap/Raydium AMM v4/Raydium LaunchLab/Meteora DBC/Meteora DAMM v2 limit moved at most 25% against the user (plus, for a Meteora exact-output swap that wraps exactly its maximum in SOL, that wrap raised by no more than the maximum rose). Everything else is byte for byte identical. Verify it yourself with `verifyRepair` from `@txwhy/sdk` (no network needed).
 - `needs_requote` means the price moved past a tolerance TxWhy could not honour; get a fresh quote yourself.
 - `not_repairable` carries the exact cause and fix (for example insufficient SOL with the shortfall, a private program's own error, a circular arbitrage that cannot succeed).
 - Version 1 transactions: use `sendWithRepair` from `@txwhy/sdk/kit` (takes a kit `Transaction` or base64; signs with your kit signer). web3.js 1.x cannot serialize v1.

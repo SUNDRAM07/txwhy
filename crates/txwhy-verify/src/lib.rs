@@ -26,6 +26,7 @@ pub const PUMP_SWAP: &str = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
 pub const RAYDIUM_V4: &str = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
 pub const METEORA_DBC: &str = "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN";
 pub const METEORA_DAMM_V2: &str = "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG";
+pub const RAYDIUM_LAUNCHLAB: &str = "LanMV9sAd7wArD4vJFi2qDdfnVhFxYSUg6eADduJ3uj";
 
 /// A repaired limit may never be worse for the user than this many basis points of the original.
 pub const DIRECT_LIMIT_CAP_BPS: u128 = 2_500;
@@ -196,6 +197,7 @@ fn direct_layout(program_id: &str, data: &[u8]) -> Option<DirectLayout> {
         RAYDIUM_V4 => (1, "Raydium AMM v4"),
         METEORA_DBC => (8, "Meteora DBC"),
         METEORA_DAMM_V2 => (8, "Meteora DAMM v2"),
+        RAYDIUM_LAUNCHLAB => (8, "Raydium LaunchLab"),
         _ => return None,
     };
     if data.len() < tag_length {
@@ -216,6 +218,10 @@ fn direct_layout(program_id: &str, data: &[u8]) -> Option<DirectLayout> {
         (RAYDIUM_V4, "0b") => ("swap_base_out", Limit::MaxIn, false),
         (RAYDIUM_V4, "10") => ("swap_base_in", Limit::MinOut, false),
         (RAYDIUM_V4, "11") => ("swap_base_out", Limit::MaxIn, true),
+        (RAYDIUM_LAUNCHLAB, "faea0d7bd59c13ec") => ("buy_exact_in", Limit::MinOut, false),
+        (RAYDIUM_LAUNCHLAB, "9527de9bd37c981a") => ("sell_exact_in", Limit::MinOut, false),
+        (RAYDIUM_LAUNCHLAB, "18d3742869039938") => ("buy_exact_out", Limit::MaxIn, false),
+        (RAYDIUM_LAUNCHLAB, "5fc8472208090ba6") => ("sell_exact_out", Limit::MaxIn, false),
         (METEORA_DBC | METEORA_DAMM_V2, "f8c69e91e17587c8") => ("swap", Limit::MinOut, false),
         // swap2 carries a mode byte after the two u64 args: 0 exact in, 1 partial fill, 2 exact out.
         (METEORA_DBC | METEORA_DAMM_V2, "414b3f4ceb5b5b88") => match data.get(tag_length + 16) {
@@ -225,9 +231,11 @@ fn direct_layout(program_id: &str, data: &[u8]) -> Option<DirectLayout> {
         },
         _ => return None,
     };
-    let user_in = match program_id {
-        METEORA_DBC => Some(3),
-        METEORA_DAMM_V2 => Some(2),
+    let user_in = match (program_id, name) {
+        (METEORA_DBC, _) => Some(3),
+        (METEORA_DAMM_V2, _) => Some(2),
+        (RAYDIUM_LAUNCHLAB, "buy_exact_in" | "buy_exact_out") => Some(6),
+        (RAYDIUM_LAUNCHLAB, _) => Some(5),
         _ => None,
     };
     Some(DirectLayout { program, name, limit, tag_length, limit_first, user_in })
@@ -731,6 +739,23 @@ mod tests {
         assert!(!run(&[meteora_swap2(METEORA_DAMM_V2, 1_000, 10_000, 0)], &[meteora_swap2(METEORA_DAMM_V2, 1_000, 10_000, 2)]).ok);
         assert!(read_direct_swap_shape(&meteora_swap2(METEORA_DBC, 1, 1, 3)).is_none());
         assert!(!run(&[meteora_swap2(METEORA_DBC, 1_000, 10_000, 0)], &[meteora_swap2(METEORA_DBC, 1_001, 10_000, 0)]).ok);
+    }
+
+    #[test]
+    fn launchlab_limits() {
+        let ix = |tag: &str, amount: u64, limit: u64| {
+            let mut data = hex_to_bytes(tag);
+            data.extend(amount.to_le_bytes());
+            data.extend(limit.to_le_bytes());
+            data.extend(0u64.to_le_bytes()); // share_fee_rate
+            Instruction { program_id: RAYDIUM_LAUNCHLAB.into(), accounts: vec![acct(PAYER, true, true), acct(OTHER, false, true)], data }
+        };
+        assert!(run(&[ix("9527de9bd37c981a", 1_000, 10_000)], &[ix("9527de9bd37c981a", 1_000, 7_500)]).ok);
+        assert!(!run(&[ix("9527de9bd37c981a", 1_000, 10_000)], &[ix("9527de9bd37c981a", 1_000, 7_499)]).ok);
+        assert!(run(&[ix("18d3742869039938", 1_000, 10_000)], &[ix("18d3742869039938", 1_000, 12_500)]).ok);
+        assert!(!run(&[ix("18d3742869039938", 1_000, 10_000)], &[ix("18d3742869039938", 1_000, 12_501)]).ok);
+        // A sell may not be turned into a buy.
+        assert!(!run(&[ix("9527de9bd37c981a", 1_000, 10_000)], &[ix("faea0d7bd59c13ec", 1_000, 10_000)]).ok);
     }
 
     #[test]

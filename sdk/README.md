@@ -40,7 +40,7 @@ await sendWithRepair(connection, tx, (t) => { t.sign([keypair]); return t; });
 | Priority fee too low to land | Raised to the 75th percentile for those accounts, capped at 0.001 SOL total |
 | Loaded account data limit exceeded | Limit lifted |
 | Jupiter swap failed on slippage | Only the swap instruction is replaced with a current quote for the same tokens, amount and tolerance. Your tolerance is never widened |
-| Direct Pump.fun, PumpSwap, Raydium AMM v4, Meteora DBC or Meteora DAMM v2 swap failed on slippage | Only the limit moves to the current price, never more than 25% against you. Amount, accounts and flags stay identical |
+| Direct Pump.fun, PumpSwap, Raydium AMM v4, Meteora DBC, Meteora DAMM v2 or Raydium LaunchLab swap failed on slippage | Only the limit moves to the current price, never more than 25% against you. Amount, accounts and flags stay identical |
 
 Anything else comes back as a diagnosis: the failing instruction, the program that raised the error, the decoded error name and what to do about it. `sendWithRepair` then throws a `TxWhyError` whose `.result.cause` carries that diagnosis.
 
