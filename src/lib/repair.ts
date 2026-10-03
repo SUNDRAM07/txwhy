@@ -11,6 +11,7 @@ import { decodeTransactionError } from "./errors";
 import { fetchIdlErrors } from "./idl";
 import { lighthouseDetail } from "./lighthouse";
 import { requoteSwap } from "./requote";
+import type { ProbeResult } from "./requote-pump";
 import { RpcError, rpc } from "./rpc";
 import { getTrace } from "./trace";
 import { V1_MAX_BYTES, decodeV1, inlineAddressCount, rebuildV1 } from "./v1";
@@ -77,6 +78,34 @@ interface SimValue {
   err: unknown;
   logs: string[] | null;
   unitsConsumed?: number;
+}
+
+interface ParsedInner {
+  instructions?: { program?: string; parsed?: { type?: string; info?: { source?: string; destination?: string; mint?: string; amount?: string; tokenAmount?: { amount?: string } } } }[];
+}
+
+/**
+ * Simulate with inner instructions and keep the SPL token transfers: what the transaction would
+ * actually move. Used to price a direct swap from the chain itself with its limit lifted.
+ */
+async function probeTransfers(base64: string): Promise<ProbeResult> {
+  const { value } = await rpc<{ value: SimValue & { innerInstructions?: ParsedInner[] | null } }>("simulateTransaction", [
+    base64,
+    { encoding: "base64", sigVerify: false, replaceRecentBlockhash: true, commitment: "confirmed", innerInstructions: true },
+  ]);
+  const transfers: ProbeResult["transfers"] = [];
+  for (const group of value.innerInstructions ?? []) {
+    for (const ix of group.instructions ?? []) {
+      const info = ix.parsed?.info;
+      const type = ix.parsed?.type;
+      if (!info || (type !== "transfer" && type !== "transferChecked") || !ix.program?.startsWith("spl-token")) continue;
+      const amount = info.amount ?? info.tokenAmount?.amount;
+      if (!info.source || !info.destination || !amount) continue;
+      transfers.push({ source: info.source, destination: info.destination, amount: BigInt(amount), mint: info.mint });
+    }
+  }
+  const errorTitle = value.err == null ? undefined : ((await decodeSimError(value.err, value.logs ?? []))?.title ?? "unknown error");
+  return { err: value.err, errorTitle, transfers };
 }
 
 function innermostFailedProgram(logs: string[]): string | null {
@@ -601,7 +630,15 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
     const wantsRequote = verdict.status === "needs_requote" || failedOnSlippage;
     let notSlippage = false;
     if (wantsRequote) {
-      const requote = await requoteSwap(budget.rest, { logs: submittedSim.logs ?? [] });
+      const requote = await requoteSwap(budget.rest, {
+        logs: submittedSim.logs ?? [],
+        probe: (lifted) =>
+          probeTransfers(
+            Buffer.from(
+              assertFits(build(decompiled.payerKey, latest.blockhash, withBudget([ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept], lifted), tables, legacy)).serialize(),
+            ).toString("base64"),
+          ),
+      });
       if (requote.ok) {
         try {
           const extra = await loadTablesByAddress(requote.lookupTables.filter((a) => !tables.some((t) => t.key.toBase58() === a)));
@@ -920,7 +957,14 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
     const wantsRequote = verdict.status === "needs_requote" || failedOnSlippage;
     let notSlippage = false;
     if (wantsRequote) {
-      const requote = await requoteSwap(decoded.instructions, { logs: submittedSim.logs ?? [] });
+      const requote = await requoteSwap(decoded.instructions, {
+        logs: submittedSim.logs ?? [],
+        probe: (lifted) => {
+          const candidate = build({ config: probeConfig, instructions: lifted });
+          if (candidate.bytes > V1_MAX_BYTES) throw new TooLargeError(candidate.bytes);
+          return probeTransfers(candidate.base64);
+        },
+      });
       if (requote.ok) {
         const inline = inlineAddressCount(decoded.payerKey, requote.instructions);
         if (inline > 64) {

@@ -6,7 +6,7 @@ TxWhy takes a failing Solana transaction and returns a rebuilt one that simulate
 
 - ComputeBudget instructions may be added, removed or changed.
 - One Jupiter v6 swap may be replaced by an equivalent one: same wallet, same source and receiving token accounts, same output mint, same amount, same slippage tolerance. Idempotent token-account creation may precede it.
-- One Pump.fun, PumpSwap or Raydium AMM v4 swap may have only its limit moved, never more than 25% against the user. Amount, accounts and flags stay identical.
+- One Pump.fun, PumpSwap, Raydium AMM v4, Meteora DBC or Meteora DAMM v2 swap may have only its limit moved, never more than 25% against the user. Amount, accounts and flags stay identical.
 
 Everything else must be byte for byte identical and in the same order: fee payer, signer set, every other instruction.
 

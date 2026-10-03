@@ -24,6 +24,8 @@ pub const JUPITER_V6: &str = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4";
 pub const PUMP_FUN: &str = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 pub const PUMP_SWAP: &str = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
 pub const RAYDIUM_V4: &str = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
+pub const METEORA_DBC: &str = "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN";
+pub const METEORA_DAMM_V2: &str = "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG";
 
 /// A repaired limit may never be worse for the user than this many basis points of the original.
 pub const DIRECT_LIMIT_CAP_BPS: u128 = 2_500;
@@ -189,6 +191,8 @@ fn direct_layout(program_id: &str, data: &[u8]) -> Option<DirectLayout> {
         PUMP_FUN => (8, "Pump.fun"),
         PUMP_SWAP => (8, "PumpSwap"),
         RAYDIUM_V4 => (1, "Raydium AMM v4"),
+        METEORA_DBC => (8, "Meteora DBC"),
+        METEORA_DAMM_V2 => (8, "Meteora DAMM v2"),
         _ => return None,
     };
     if data.len() < tag_length {
@@ -209,6 +213,13 @@ fn direct_layout(program_id: &str, data: &[u8]) -> Option<DirectLayout> {
         (RAYDIUM_V4, "0b") => ("swap_base_out", Limit::MaxIn, false),
         (RAYDIUM_V4, "10") => ("swap_base_in", Limit::MinOut, false),
         (RAYDIUM_V4, "11") => ("swap_base_out", Limit::MaxIn, true),
+        (METEORA_DBC | METEORA_DAMM_V2, "f8c69e91e17587c8") => ("swap", Limit::MinOut, false),
+        // swap2 carries a mode byte after the two u64 args: 0 exact in, 1 partial fill, 2 exact out.
+        (METEORA_DBC | METEORA_DAMM_V2, "414b3f4ceb5b5b88") => match data.get(tag_length + 16) {
+            Some(0) | Some(1) => ("swap2", Limit::MinOut, false),
+            Some(2) => ("swap2 (exact out)", Limit::MaxIn, false),
+            _ => return None,
+        },
         _ => return None,
     };
     Some(DirectLayout { program, name, limit, tag_length, limit_first })
@@ -226,7 +237,7 @@ pub struct DirectSwapShape {
     pub tail: Vec<u8>,
 }
 
-/// What a direct Pump.fun / PumpSwap / Raydium swap asks for, read from the instruction alone.
+/// What a direct Pump.fun / PumpSwap / Raydium / Meteora swap asks for, read from the instruction alone.
 pub fn read_direct_swap_shape(ix: &Instruction) -> Option<DirectSwapShape> {
     let layout = direct_layout(&ix.program_id, &ix.data)?;
     let t = layout.tag_length;
@@ -504,6 +515,13 @@ mod tests {
         data.extend(amount_out.to_le_bytes());
         Instruction { program_id: RAYDIUM_V4.into(), accounts: vec![acct(PROG, false, false), acct(OTHER, false, true), acct(PAYER, true, true)], data }
     }
+    fn meteora_swap2(program: &str, amount: u64, limit: u64, mode: u8) -> Instruction {
+        let mut data = hex_to_bytes("414b3f4ceb5b5b88");
+        data.extend(amount.to_le_bytes());
+        data.extend(limit.to_le_bytes());
+        data.push(mode);
+        Instruction { program_id: program.into(), accounts: vec![acct(PROG, false, false), acct(OTHER, false, true), acct(PAYER, true, true)], data }
+    }
     fn hex_to_bytes(s: &str) -> Vec<u8> {
         (0..s.len()).step_by(2).map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap()).collect()
     }
@@ -628,6 +646,22 @@ mod tests {
         assert!(v.changes[0].detail.contains("swap_base_out"));
         assert!(!run(&[raydium_base_out(5_000, 100_000)], &[raydium_base_out(5_000, 125_001)]).ok);
         assert!(!run(&[raydium_base_out(5_000, 100_000)], &[raydium_base_out(5_001, 100_000)]).ok);
+    }
+
+    #[test]
+    fn meteora_swap2_modes() {
+        // Exact in: the limit is a minimum and may drop at most 25%.
+        let v = run(&[meteora_swap2(METEORA_DBC, 1_000, 10_000, 0)], &[meteora_swap2(METEORA_DBC, 1_000, 7_500, 0)]);
+        assert!(v.ok, "{:?}", v.violations);
+        assert_eq!(v.changes[0].kind, ChangeKind::SwapLimitMoved);
+        assert!(!run(&[meteora_swap2(METEORA_DBC, 1_000, 10_000, 0)], &[meteora_swap2(METEORA_DBC, 1_000, 7_499, 0)]).ok);
+        // Exact out: the limit is a maximum and may rise at most 25%.
+        assert!(run(&[meteora_swap2(METEORA_DAMM_V2, 1_000, 10_000, 2)], &[meteora_swap2(METEORA_DAMM_V2, 1_000, 12_500, 2)]).ok);
+        assert!(!run(&[meteora_swap2(METEORA_DAMM_V2, 1_000, 10_000, 2)], &[meteora_swap2(METEORA_DAMM_V2, 1_000, 12_501, 2)]).ok);
+        // The mode byte may never change, and an unknown mode is not a swap this table knows.
+        assert!(!run(&[meteora_swap2(METEORA_DAMM_V2, 1_000, 10_000, 0)], &[meteora_swap2(METEORA_DAMM_V2, 1_000, 10_000, 2)]).ok);
+        assert!(read_direct_swap_shape(&meteora_swap2(METEORA_DBC, 1, 1, 3)).is_none());
+        assert!(!run(&[meteora_swap2(METEORA_DBC, 1_000, 10_000, 0)], &[meteora_swap2(METEORA_DBC, 1_001, 10_000, 0)]).ok);
     }
 
     #[test]

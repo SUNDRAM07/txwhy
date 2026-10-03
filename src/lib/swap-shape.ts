@@ -87,9 +87,11 @@ export function readSwapShape(ix: TransactionInstruction) {
 export const PUMP_FUN = "6EF8rrecthR5Dkzon8Nwu78hRvfCKubJ14M5uBEwF6P";
 export const PUMP_SWAP = "pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA";
 export const RAYDIUM_V4 = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
+export const METEORA_DBC = "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN";
+export const METEORA_DAMM_V2 = "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG";
 
 export interface DirectLayout {
-  program: "Pump.fun" | "PumpSwap" | "Raydium AMM v4";
+  program: "Pump.fun" | "PumpSwap" | "Raydium AMM v4" | "Meteora DBC" | "Meteora DAMM v2";
   name: string;
   /** Length of the instruction tag in bytes (8 for Anchor discriminators, 1 for Raydium's u8). Both u64 args follow it. */
   tagLength?: number;
@@ -99,6 +101,15 @@ export interface DirectLayout {
   fixed: "tokens_out" | "quote_in" | "tokens_in";
   /** What the limit argument is: a maximum the user pays, or a minimum the user receives. */
   limit: "max_in" | "min_out";
+  /**
+   * Meteora swap2 carries a swap-mode byte right after the two u64 args: 0 exact in, 1 partial fill
+   * (both amount_in, minimum_out) and 2 exact out (amount_out, maximum_in). When set, that byte decides
+   * what the two args mean, and any other value is not a swap this table knows.
+   */
+  modeByte?: boolean;
+  /** Account indexes of the user's input and output token accounts, for programs priced by a lifted-limit simulation. */
+  userIn?: number;
+  userOut?: number;
 }
 
 /** Discriminators from the programs' on-chain IDLs (Sep 2026). Both args are u64 at bytes 8 and 16. */
@@ -124,6 +135,16 @@ export const DIRECT_LAYOUTS: Record<string, Record<string, DirectLayout>> = {
     "10": { program: "Raydium AMM v4", name: "swap_base_in", fixed: "tokens_in", limit: "min_out", tagLength: 1 },
     "11": { program: "Raydium AMM v4", name: "swap_base_out", fixed: "tokens_out", limit: "max_in", tagLength: 1, limitFirst: true },
   },
+  // Meteora Dynamic Bonding Curve (launch pools). Accounts: 3 input token account, 4 output token account, 9 payer.
+  [METEORA_DBC]: {
+    f8c69e91e17587c8: { program: "Meteora DBC", name: "swap", fixed: "tokens_in", limit: "min_out", userIn: 3, userOut: 4 },
+    "414b3f4ceb5b5b88": { program: "Meteora DBC", name: "swap2", fixed: "tokens_in", limit: "min_out", modeByte: true, userIn: 3, userOut: 4 },
+  },
+  // Meteora DAMM v2 (cp-amm). Accounts: 2 input token account, 3 output token account, 8 payer.
+  [METEORA_DAMM_V2]: {
+    f8c69e91e17587c8: { program: "Meteora DAMM v2", name: "swap", fixed: "tokens_in", limit: "min_out", userIn: 2, userOut: 3 },
+    "414b3f4ceb5b5b88": { program: "Meteora DAMM v2", name: "swap2", fixed: "tokens_in", limit: "min_out", modeByte: true, userIn: 2, userOut: 3 },
+  },
 };
 
 /** A repaired limit may never be worse for the user than this factor of the original. */
@@ -136,8 +157,13 @@ export function readDirectSwapShape(ix: TransactionInstruction) {
   const tagLength = Object.values(layouts)[0]?.tagLength ?? 8;
   if (data.length < tagLength + 16) return null;
   const discriminator = data.subarray(0, tagLength).toString("hex");
-  const layout = layouts[discriminator];
+  let layout = layouts[discriminator];
   if (!layout) return null;
+  if (layout.modeByte) {
+    const mode = data[tagLength + 16];
+    if (mode === 2) layout = { ...layout, name: `${layout.name} (exact out)`, fixed: "tokens_out", limit: "max_in" };
+    else if (mode !== 0 && mode !== 1) return null;
+  }
   const amountOffset = layout.limitFirst ? tagLength + 8 : tagLength;
   const limitOffset = layout.limitFirst ? tagLength : tagLength + 8;
   return {

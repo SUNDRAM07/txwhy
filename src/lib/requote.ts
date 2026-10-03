@@ -1,8 +1,8 @@
 import { PublicKey, TransactionInstruction } from "@solana/web3.js";
 import { rpc } from "./rpc";
 import { JUPITER_V6, LAYOUTS, readAmounts, readSwapShape, type Mode } from "./swap-shape";
-import { findDirectSwap, requoteDirect } from "./requote-pump";
-import { PUMP_FUN, PUMP_SWAP, RAYDIUM_V4, readDirectSwapShape } from "./swap-shape";
+import { findDirectSwap, requoteDirect, type RequoteHints } from "./requote-pump";
+import { DIRECT_LAYOUTS, readDirectSwapShape } from "./swap-shape";
 
 export { readSwapShape };
 
@@ -259,7 +259,7 @@ export async function requoteJupiter(instructions: TransactionInstruction[]): Pr
  * Re-quote whichever swap the transaction carries: a Jupiter route gets a fresh quote and
  * route; a direct Pump.fun or PumpSwap swap gets only its limit moved to the current price.
  */
-export async function requoteSwap(instructions: TransactionInstruction[], hints: { logs?: string[] } = {}): Promise<RequoteOutcome & { program?: string; fits?: boolean }> {
+export async function requoteSwap(instructions: TransactionInstruction[], hints: RequoteHints = {}): Promise<RequoteOutcome & { program?: string; fits?: boolean }> {
   const hasJupiter = instructions.some((ix) => ix.programId.toBase58() === JUPITER_V6);
   if (hasJupiter) return requoteJupiter(instructions);
   if (findDirectSwap(instructions)) {
@@ -280,8 +280,8 @@ export async function requoteSwap(instructions: TransactionInstruction[], hints:
   if (directSwaps > 1) {
     return { ok: false, reason: `This transaction chains ${directSwaps} direct swaps, so the output of one feeds the next. Moving one limit would leave the next swap short, and TxWhy changes at most one swap limit per repair. Rebuild the whole sequence from fresh quotes.` };
   }
-  const pumpUnknown = instructions.some((ix) => !readDirectSwapShape(ix) && [PUMP_FUN, PUMP_SWAP, RAYDIUM_V4].includes(ix.programId.toBase58()));
-  return { ok: false, reason: pumpUnknown ? "The Pump swap here uses an instruction TxWhy does not recognise." : "No swap found that TxWhy can re-quote at the top level (Jupiter v6, Pump.fun, PumpSwap and Raydium AMM v4). A swap executed inside another program by CPI cannot have its limit moved from outside." };
+  const pumpUnknown = instructions.some((ix) => !readDirectSwapShape(ix) && ix.programId.toBase58() in DIRECT_LAYOUTS);
+  return { ok: false, reason: pumpUnknown ? "The direct swap here uses an instruction TxWhy does not recognise." : "No swap found that TxWhy can re-quote at the top level (Jupiter v6, Pump.fun, PumpSwap, Raydium AMM v4, Meteora DBC and Meteora DAMM v2). A swap executed inside another program by CPI cannot have its limit moved from outside." };
 }
 const DIRECT_TOLERANCE_BPS_HINT = 100;
 

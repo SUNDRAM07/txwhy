@@ -49,7 +49,7 @@ const FIXES: { failure: string; action: string; fixed: boolean }[] = [
     fixed: true,
   },
   {
-    failure: "Slippage on a direct Pump.fun, PumpSwap or Raydium swap",
+    failure: "Slippage on a direct Pump.fun, PumpSwap, Raydium or Meteora swap",
     action: "These instructions carry no tolerance, only a limit. The amount and every account stay as written; only the limit moves to the price the program itself computed in the failing simulation, with a stated 1% tolerance and never more than 25% against you.",
     fixed: true,
   },

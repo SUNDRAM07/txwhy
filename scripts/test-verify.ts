@@ -109,6 +109,36 @@ for (const [name, repaired, expectOk] of directCases) {
   if (ok) pass++;
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}\n      -> ${v.ok ? `accepted (${v.kept} kept, ${v.changes.map((c) => c.kind).join(",")})` : `refused: ${v.violations[0]}`}`);
 }
-const total = cases.length + directCases.length;
+
+/** Meteora swap2 (DBC and DAMM v2): amount_0, amount_1, then a mode byte that decides which of them is the limit. */
+function meteoraSwap2(opts: { program?: string; amount?: bigint; limitValue?: bigint; mode?: number; user?: PublicKey }) {
+  const data = Buffer.alloc(8 + 8 + 8 + 1);
+  Buffer.from("414b3f4ceb5b5b88", "hex").copy(data, 0);
+  data.writeBigUInt64LE(opts.amount ?? BigInt(1_000_000), 8);
+  data.writeBigUInt64LE(opts.limitValue ?? BigInt(100_000), 16);
+  data[24] = opts.mode ?? 0;
+  const k = (pubkey: PublicKey, isSigner = false) => ({ pubkey, isSigner, isWritable: true });
+  return new TransactionInstruction({ programId: new PublicKey(opts.program ?? "dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN"), keys: [k(dest), k(other), k(SOL), k(USDC), k(opts.user ?? payer, true)], data });
+}
+const DAMM = "cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG";
+const meteoraCases: [string, TransactionInstruction, TransactionInstruction, boolean][] = [
+  ["meteora DBC exact in: minimum lowered 20%", meteoraSwap2({}), meteoraSwap2({ limitValue: BigInt(80_000) }), true],
+  ["meteora DBC exact in: minimum lowered exactly to the 25% cap", meteoraSwap2({}), meteoraSwap2({ limitValue: BigInt(75_000) }), true],
+  ["ATTACK: meteora DBC minimum lowered 26%", meteoraSwap2({}), meteoraSwap2({ limitValue: BigInt(74_000) }), false],
+  ["meteora DAMM v2 exact out: maximum raised 25%", meteoraSwap2({ program: DAMM, mode: 2 }), meteoraSwap2({ program: DAMM, mode: 2, limitValue: BigInt(125_000) }), true],
+  ["ATTACK: meteora DAMM v2 exact out maximum raised 26%", meteoraSwap2({ program: DAMM, mode: 2 }), meteoraSwap2({ program: DAMM, mode: 2, limitValue: BigInt(126_000) }), false],
+  ["ATTACK: meteora swap mode flipped from exact in to exact out", meteoraSwap2({}), meteoraSwap2({ mode: 2 }), false],
+  ["ATTACK: meteora amount changed", meteoraSwap2({}), meteoraSwap2({ amount: BigInt(2_000_000), limitValue: BigInt(80_000) }), false],
+  ["ATTACK: meteora swap for a different wallet", meteoraSwap2({}), meteoraSwap2({ user: thief, limitValue: BigInt(80_000) }), false],
+  ["ATTACK: meteora unknown mode byte with the limit zeroed", meteoraSwap2({ mode: 3 }), meteoraSwap2({ mode: 3, limitValue: BigInt(0) }), false],
+];
+for (const [name, before, after, expectOk] of meteoraCases) {
+  const v = verifyInstructions({ payer, instructions: [limit(100), before, memo] }, { payer, instructions: [limit(180_000), after, memo] });
+  const ok = v.ok === expectOk;
+  if (ok) pass++;
+  console.log(`${ok ? "PASS" : "FAIL"}  ${name}
+      -> ${v.ok ? `accepted (${v.kept} kept, ${v.changes.map((c) => c.kind).join(",")})` : `refused: ${v.violations[0]}`}`);
+}
+const total = cases.length + directCases.length + meteoraCases.length;
 console.log(`\n${pass}/${total} passed`);
 process.exit(pass === total ? 0 : 1);

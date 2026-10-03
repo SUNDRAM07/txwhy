@@ -142,7 +142,56 @@ const fmt = (v: bigint, unit: string) => (unit === "SOL" ? lamports(v) : `${v.to
 export interface RequoteHints {
   /** Logs of the failing simulation of the transaction as submitted. */
   logs?: string[];
+  /** Simulates the whole transaction with these instructions in place of the originals and reports the token transfers it made. */
+  probe?: (instructions: TransactionInstruction[]) => Promise<ProbeResult>;
 }
+
+export interface ProbeResult {
+  err: unknown;
+  /** One line naming the failure, when there was one. */
+  errorTitle?: string;
+  /** Every SPL token transfer the simulation executed by CPI. */
+  transfers: { source: string; destination: string; amount: bigint; mint?: string }[];
+}
+
+const U64_MAX = (BigInt(1) << BigInt(64)) - BigInt(1);
+
+/**
+ * Price a swap by asking the chain: simulate the same transaction with only this swap's limit lifted
+ * (minimum 0, or maximum u64::MAX) and read what the program actually moved in or out of the user's
+ * token account. No SDK math, so it cannot drift from the program's fee schedule. Used for programs
+ * whose slippage check logs no numbers (Meteora).
+ */
+async function limitFromProbe(
+  instructions: TransactionInstruction[],
+  index: number,
+  shape: NonNullable<ReturnType<typeof readDirectSwapShape>>,
+  probe: NonNullable<RequoteHints["probe"]>,
+): Promise<{ limit: bigint; unit: string; expected: bigint }> {
+  const ix = instructions[index];
+  const account = shape.limit === "min_out" ? shape.userOut : shape.userIn;
+  const watched = account == null ? undefined : ix.keys[account]?.pubkey.toBase58();
+  if (!watched) throw new Error("the swap does not list the user's token account where expected");
+  const data = Buffer.from(ix.data);
+  data.writeBigUInt64LE(shape.limit === "min_out" ? BigInt(0) : U64_MAX, shape.limitOffset);
+  const lifted = [...instructions];
+  lifted[index] = new (ix.constructor as typeof TransactionInstruction)({ programId: ix.programId, keys: ix.keys, data });
+  const result = await probe(lifted);
+  if (result.err != null) {
+    throw new NotSlippageError(
+      shape.limit === "max_in"
+        ? `with the maximum lifted the transaction still fails (${result.errorTitle ?? "unknown error"}); an exact-output swap that wraps or holds only its original maximum cannot pay a higher price`
+        : `with the minimum lifted the transaction still fails (${result.errorTitle ?? "unknown error"}), so slippage is not the only problem`,
+    );
+  }
+  const moved = result.transfers.filter((t) => (shape.limit === "min_out" ? t.destination === watched : t.source === watched));
+  const actual = moved.reduce((sum, t) => sum + t.amount, BigInt(0));
+  if (actual === BigInt(0)) throw new Error("the simulation moved no tokens for the user");
+  const unit = moved[0]?.mint === SOL_MINT ? "SOL" : "tokens";
+  return { limit: withTolerance(actual, shape.limit === "max_in" ? "up" : "down"), expected: actual, unit };
+}
+
+class NotSlippageError extends Error {}
 
 /**
  * The price the program itself computed, read from its own failed check. Anchor's require_gte!/require_gt!
@@ -187,7 +236,7 @@ export async function requoteDirect(instructions: TransactionInstruction[], hint
   const hit = findDirectSwap(instructions);
   if (!hit) {
     const direct = instructions.filter((ix) => readDirectSwapShape(ix)).length;
-    return { ok: false, reason: direct > 1 ? "This transaction carries more than one Pump swap; TxWhy moves limits only when there is exactly one." : "The Pump swap is not a top-level instruction here: it runs inside another program by CPI, and TxWhy cannot move a limit that program computes." };
+    return { ok: false, reason: direct > 1 ? "This transaction carries more than one direct swap; TxWhy moves limits only when there is exactly one." : "The swap is not a top-level instruction here: it runs inside another program by CPI, and TxWhy cannot move a limit that program computes." };
   }
   const { index, shape } = hit;
   const ix = instructions[index];
@@ -200,10 +249,14 @@ export async function requoteDirect(instructions: TransactionInstruction[], hint
       const unit = shape.fixed === "quote_in" ? "tokens" : quoteMint === SOL_MINT ? "SOL" : "quote";
       fresh = { limit: withTolerance(actual, shape.limit === "max_in" ? "up" : "down"), expected: actual, unit };
       pricedBy = "the program's own check in the failing simulation";
+    } else if (shape.userOut != null && hints.probe) {
+      fresh = await limitFromProbe(instructions, index, shape, hints.probe);
+      pricedBy = "a simulation of this same transaction with the limit lifted";
     } else {
       fresh = await freshLimit(ix, shape);
     }
   } catch (e) {
+    if (e instanceof NotSlippageError) return { ok: false, reason: `The ${shape.program} ${shape.name} cannot be repaired by moving its limit: ${e.message}.` };
     return { ok: false, reason: `Could not price the ${shape.program} swap from the pool's current state (${e instanceof Error ? e.message : "unknown error"}).` };
   }
   const cap = BigInt(DIRECT_LIMIT_CAP_BPS);

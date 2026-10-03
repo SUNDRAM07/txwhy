@@ -1,6 +1,6 @@
 [package]
 name = "txwhy-verify"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Offline verifier for TxWhy transaction repairs: proves a rebuilt Solana transaction only differs from the original in the ways a repair is allowed to."
 license = "MIT"
