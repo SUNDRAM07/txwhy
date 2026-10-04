@@ -14,6 +14,24 @@ export const metadata: Metadata = {
 const pct = (v: number) => `${(v * 100).toFixed(v < 0.1 ? 1 : 0)}%`;
 const n = (v: number) => v.toLocaleString("en-US");
 
+const WHY_LABELS: Record<string, [string, string]> = {
+  rebuilt_swap: ["Rebuilt: swap limit or quote moved", "returned as a working transaction, verified"],
+  rebuilt_budget_or_blockhash: ["Rebuilt: budget or blockhash only", "returned as a working transaction, verified"],
+  private_program: ["Private program failed", "a bot's own unpublished program; nothing to decode or rebuild"],
+  arbitrage: ["Circular arbitrage", "built to fail when the price gap closes"],
+  routed_by_private_program: ["Swap routed through a private program", "the limit lives inside a router TxWhy cannot rewrite; mostly sniper bots"],
+  beyond_cap: ["Price moved more than 25%", "TxWhy refuses to move a limit that far"],
+  more_than_slippage: ["Slippage was not the only problem", "still fails with the limit moved"],
+  state_changed_since: ["Wallet or pool changed since it landed", "an artifact of replaying after the fact; does not apply before sending"],
+  pool_graduated: ["Launch pool already graduated", "the token trades elsewhere now"],
+  chained_swaps: ["Two swaps chained together", "moving one limit leaves the next short"],
+  wallet_guard: ["Wallet guard tripped", "needs a fresh transaction from the app"],
+  no_funds: ["Not enough funds", "no rebuild adds money"],
+  not_slippage_now: ["Fits its own limit now", "the price came back; something else fails"],
+  needs_requote_other: ["Needs a fresh quote", "no supported swap to re-quote"],
+  other: ["Other", "overflow, used nonce, bad instruction data and similar"],
+};
+
 function Bars({ rows, suffix }: { rows: { label: string; value: number; note?: string; sub?: string }[]; suffix?: string }) {
   const max = Math.max(1, ...rows.map((r) => r.value));
   return (
@@ -150,6 +168,19 @@ export default async function FailuresPage() {
                     </div>
                   ))}
                 </dl>
+              )}
+              {index.repair.why && Object.values(index.repair.why).reduce((a, b) => a + b, 0) >= 50 && (
+                <div className="mt-6">
+                  <h3 className="text-sm font-semibold">Exactly what happened to each one</h3>
+                  <p className="mt-1 text-xs text-neutral-500">
+                    The engine&apos;s own reason for every attempt since Oct 4, 2026 ({n(Object.values(index.repair.why).reduce((a, b) => a + b, 0))} so far). Nothing is rounded into a friendlier bucket.
+                  </p>
+                  <Bars
+                    rows={Object.entries(index.repair.why)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([key, value]) => ({ label: WHY_LABELS[key]?.[0] ?? key, sub: WHY_LABELS[key]?.[1], value }))}
+                  />
+                </div>
               )}
               <div className="mt-5 grid gap-6 sm:grid-cols-2">
                 <div>

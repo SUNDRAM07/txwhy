@@ -163,13 +163,28 @@ function assertFits(tx: VersionedTransaction): VersionedTransaction {
   return tx;
 }
 
-async function simulate(tx: VersionedTransaction): Promise<SimValue> {
-  const encoded = Buffer.from(assertFits(tx).serialize()).toString("base64");
-  const { value } = await rpc<{ value: SimValue }>("simulateTransaction", [
-    encoded,
-    { encoding: "base64", sigVerify: false, replaceRecentBlockhash: false, commitment: "confirmed" },
-  ]);
+const isBlockhashNotFound = (err: unknown) => err === "BlockhashNotFound";
+
+/**
+ * Simulate a transaction whose blockhash this engine just fetched. Behind a load balancer the node
+ * that answers the simulation can be a slot behind the node that issued the blockhash and reject it
+ * as unknown. That is never a property of the transaction, so it is retried once and then simulated
+ * with the node's own latest blockhash rather than reported as an expired transaction.
+ */
+async function simulateBase64(encoded: string): Promise<SimValue> {
+  const run = async (replaceRecentBlockhash: boolean) =>
+    (await rpc<{ value: SimValue }>("simulateTransaction", [encoded, { encoding: "base64", sigVerify: false, replaceRecentBlockhash, commitment: "confirmed" }])).value;
+  let value = await run(false);
+  if (isBlockhashNotFound(value.err)) {
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    value = await run(false);
+  }
+  if (isBlockhashNotFound(value.err)) value = await run(true);
   return value;
+}
+
+async function simulate(tx: VersionedTransaction): Promise<SimValue> {
+  return simulateBase64(Buffer.from(assertFits(tx).serialize()).toString("base64"));
 }
 
 async function loadLookupTables(tx: VersionedTransaction): Promise<AddressLookupTableAccount[]> {
@@ -630,42 +645,49 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
     const wantsRequote = verdict.status === "needs_requote" || failedOnSlippage;
     let notSlippage = false;
     if (wantsRequote) {
-      const requote = await requoteSwap(budget.rest, {
-        logs: submittedSim.logs ?? [],
-        probe: (lifted) =>
-          probeTransfers(
-            Buffer.from(
-              assertFits(build(decompiled.payerKey, latest.blockhash, withBudget([ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept], lifted), tables, legacy)).serialize(),
-            ).toString("base64"),
-          ),
-      });
-      if (requote.ok) {
-        try {
-          const extra = await loadTablesByAddress(requote.lookupTables.filter((a) => !tables.some((t) => t.key.toBase58() === a)));
-          const mergedTables = [...tables, ...extra];
-          const needsV0 = legacy && mergedTables.length > 0;
-          const reprobe = build(
+      const runRequote = () =>
+        requoteSwap(budget.rest, {
+          logs: submittedSim.logs ?? [],
+          probe: (lifted) =>
+            probeTransfers(
+              Buffer.from(
+                assertFits(build(decompiled.payerKey, latest.blockhash, withBudget([ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept], lifted), tables, legacy)).serialize(),
+              ).toString("base64"),
+            ),
+        });
+      /** Put a re-quoted swap into the transaction and simulate it at the maximum budget. */
+      const trySplice = async (quoted: { instructions: TransactionInstruction[]; lookupTables: string[] }) => {
+        const extra = await loadTablesByAddress(quoted.lookupTables.filter((a) => !tables.some((t) => t.key.toBase58() === a)));
+        const mergedTables = [...tables, ...extra];
+        const needsV0 = legacy && mergedTables.length > 0;
+        const candidate = () =>
+          build(
             decompiled.payerKey,
             latest.blockhash,
-            withBudget([ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept], requote.instructions),
+            withBudget([ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept], quoted.instructions),
             mergedTables,
             legacy && !needsV0,
           );
-          let reprobeSim = await simulate(reprobe);
-          if (
-            hitLoadedDataLimit(reprobeSim.err) &&
-            liftLoadedDataLimit("The fresh route loads different accounts than the limit the original transaction declared.")
-          ) {
-            reprobeSim = await simulate(
-              build(
-                decompiled.payerKey,
-                latest.blockhash,
-                withBudget([ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept], requote.instructions),
-                mergedTables,
-                legacy && !needsV0,
-              ),
-            );
+        let sim = await simulate(candidate());
+        if (hitLoadedDataLimit(sim.err) && liftLoadedDataLimit("The fresh route loads different accounts than the limit the original transaction declared.")) {
+          sim = await simulate(candidate());
+        }
+        return { sim, mergedTables, needsV0 };
+      };
+      let requote = await runRequote();
+      if (requote.ok) {
+        try {
+          let spliced = await trySplice(requote);
+          // A Jupiter quote can go stale in the moment between quoting and simulating on a fast token.
+          // One more quote is cheap; a second miss is reported as it is.
+          if (spliced.sim.err != null && !requote.program && SLIPPAGE_PATTERN.test((spliced.sim.logs ?? []).join(" "))) {
+            const second = await runRequote();
+            if (second.ok) {
+              requote = second;
+              spliced = await trySplice(second);
+            }
           }
+          const { sim: reprobeSim, mergedTables, needsV0 } = spliced;
           if (reprobeSim.err == null) {
             // Adopt the spliced instructions and carry on through sizing, fee and final proof.
             budget.rest = requote.instructions;
@@ -926,8 +948,7 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
 
   const simulateV1 = async (b64: string, bytes: number): Promise<SimValue> => {
     if (bytes > V1_MAX_BYTES) throw new TooLargeError(bytes);
-    const { value } = await rpc<{ value: SimValue }>("simulateTransaction", [b64, { encoding: "base64", sigVerify: false, replaceRecentBlockhash: false, commitment: "confirmed" }]);
-    return value;
+    return simulateBase64(b64);
   };
   const build = (opts: Parameters<typeof rebuildV1>[1]) => rebuildV1(decoded, { ...lifetime, ...opts });
 

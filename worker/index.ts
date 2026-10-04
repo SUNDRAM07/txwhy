@@ -262,11 +262,34 @@ function reasonKey(title: string | undefined, summary: string): string {
   return `${t ? `${t}: ` : ""}${reason}`.slice(0, 120);
 }
 
+/**
+ * One precise reason a landed failure was not rebuilt, read from the engine's own notes. The ranked
+ * title list says WHAT failed; this says WHY the engine left it alone, which is what decides the next
+ * thing to build and keeps the published numbers honest about bots and routers.
+ */
+export function whyNot(result: { status: string; summary: string; cause: { title: string } | null; notes: string[] }): string {
+  const text = `${result.cause?.title ?? ""} ${result.summary} ${result.notes.join(" ")}`;
+  if (/circular arbitrage/i.test(text)) return "arbitrage";
+  if (/Lighthouse guard|safety guard set by the wallet/i.test(text)) return "wallet_guard";
+  if (/chains \d+ direct swaps/.test(text)) return "chained_swaps";
+  if (/completed its bonding curve/.test(text)) return "pool_graduated";
+  if (/moved more than \d+% against this trade/.test(text)) return "beyond_cap";
+  if (/No swap found that TxWhy can re-quote|not a top-level instruction|inside another program by CPI/.test(text)) return "routed_by_private_program";
+  if (/spliced in but the transaction still fails|lifted the transaction still fails|both raised \d+%/.test(text)) return "more_than_slippage";
+  if (/fits its own limit/.test(text)) return "not_slippage_now";
+  if (/Re-run today, this transaction fails earlier/.test(text)) return "state_changed_since";
+  if (/from a private program/i.test(result.cause?.title ?? "")) return "private_program";
+  if (/insufficient|holds .* lamports and needs|Shortfall/i.test(text)) return "no_funds";
+  if (result.status === "needs_requote") return "needs_requote_other";
+  return "other";
+}
+
 /** Runs one landed failure through the repair engine and records only the verdict. Nothing about the transaction is stored. */
 async function attemptRepair(store: Store, program: string, signature: string) {
   const started = Date.now();
   let verdict: string;
   let detail: string | null = null;
+  let why: string | null = null;
   try {
     const result = await repair({ signature });
     if (result.status === "repaired" && result.verification?.ok && result.simulation.passed) verdict = "repaired";
@@ -274,7 +297,12 @@ async function attemptRepair(store: Store, program: string, signature: string) {
     else if (result.status === "valid") verdict = "valid";
     else if (result.status === "needs_requote") verdict = "moved_too_far";
     else verdict = "not_repairable";
-    if (verdict === "not_repairable" || verdict === "moved_too_far") detail = reasonKey(result.cause?.title, result.summary);
+    if (verdict === "not_repairable" || verdict === "moved_too_far") {
+      detail = reasonKey(result.cause?.title, result.summary);
+      why = whyNot(result);
+    } else if (verdict === "repaired") {
+      why = result.changes.some((c) => c.type === "swap_quote") ? "rebuilt_swap" : "rebuilt_budget_or_blockhash";
+    }
   } catch (e) {
     if (e instanceof RepairInputError) {
       verdict = "not_repairable";
@@ -290,6 +318,10 @@ async function attemptRepair(store: Store, program: string, signature: string) {
   await store.hincr("i:repair:verdicts", verdict);
   await store.hincr(`i:repair:by_program:${verdict}`, program);
   if (detail) await store.zincr(`i:repair:detail:${verdict}`, detail);
+  if (why) {
+    await store.hincr("i:repair:why", why);
+    await store.hincr(`i:repair:why:${program}`, why);
+  }
   await store.setStr("i:repair:last", JSON.stringify({ at: new Date().toISOString(), program, verdict, detail, ms }));
 }
 
@@ -434,6 +466,9 @@ async function readRepairStats(store: Store) {
     engineErrors: (await store.ztop("i:repair:detail:engine_error", 6)).map((r) => ({ title: r.member, count: r.score })),
     last: last ? JSON.parse(last) : null,
     segments: await repairSegments(store, attempted, verdicts),
+    /** Precise reasons, counted since this breakdown was added (Oct 4, 2026). */
+    why: await store.hgetall("i:repair:why"),
+    whyByProgram: Object.fromEntries(await Promise.all(Object.values(WATCHED).map(async (name) => [name, await store.hgetall(`i:repair:why:${name}`)] as const))),
   };
 }
 

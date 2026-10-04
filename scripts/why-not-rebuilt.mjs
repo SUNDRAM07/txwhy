@@ -29,7 +29,7 @@ for (const s of wanted) {
     } catch { await sleep(3000); }
   }
   if (!res) { tally["network error"] = (tally["network error"] ?? 0) + 1; continue; }
-  const reason = (r.status === "repaired" ? "REPAIRED" : `${r.status ?? res.status}: ${(r.notes?.[0] ?? r.summary ?? r.error ?? "").replace(/-?\d[\d.,]*\s?%?/g, "N").replace(/[1-9A-HJ-NP-Za-km-z]{32,}/g, "…").slice(0, 150)}`);
+  const reason = (r.status === "repaired" ? "REPAIRED" : `${r.status ?? res.status}: ${((r.notes ?? []).find((n) => /cannot be repaired|Could not price|moved more than|still fails|No swap found|chains \d|fits its own|not a top-level|does not recognise|holds|Re-run today/.test(n)) ?? r.notes?.[0] ?? r.summary ?? r.error ?? "").replace(/-?\d[\d.,]*\s?%?/g, "N").replace(/[1-9A-HJ-NP-Za-km-z]{32,}/g, "…").slice(0, 230)}`);
   tally[reason] = (tally[reason] ?? 0) + 1;
   examples[reason] ??= s.signature;
   await sleep(2300); // stay under the public 30/min limit

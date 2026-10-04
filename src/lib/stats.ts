@@ -184,6 +184,9 @@ export interface FailureIndex {
     last: { at: string; program: string; verdict: string; detail: string | null; ms: number } | null;
     /** Attempts split into automated traders meant to fail and failures a person would care about. Absent on older workers. */
     segments?: { bots: number; people: number; rebuilt: number; movedTooFar: number; guards: number; deadEnds: number; rebuiltShareOfPeople: number };
+    /** Precise reason per attempt, counted since Oct 4, 2026. */
+    why?: Record<string, number>;
+    whyByProgram?: Record<string, Record<string, number>>;
   };
 }
 
