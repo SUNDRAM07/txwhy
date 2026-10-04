@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { extractSignature } from "@/lib/trace";
+import { LiveProof } from "@/components/LiveProof";
 import usedBy from "@/lib/data/used-by.json";
 
 /** Projects with TxWhy in their send loop. Edit src/lib/data/used-by.json; the section hides while empty. */
@@ -207,6 +208,7 @@ export default function Home() {
             Not sent yet? Repair it before you send, or watch a live demo →
           </Link>
         </p>
+        <LiveProof />
       </section>
 
       <section className="border-t border-neutral-200 py-12 dark:border-neutral-800">
