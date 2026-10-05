@@ -38,7 +38,7 @@ And what it refuses to fake:
 
 | Failure | What TxWhy says instead |
 |---|---|
-| Not enough SOL | The exact shortfall in lamports and SOL |
+| Not enough SOL, or not enough tokens to sell | The exact shortfall: what the account holds, what the swap needs, in SOL or in the token's units |
 | A program rejected it | The named error, cause and fix from 1,874 bundled errors across 37 programs, plus any IDL the program published on chain |
 | A private program rejected it | Which program raised the code, and that only its authors can decode it |
 | Circular arbitrage that missed its gap | That it is built to fail this way and there is nothing to repair |

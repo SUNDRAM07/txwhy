@@ -12,6 +12,7 @@ import { fetchIdlErrors } from "./idl";
 import { lighthouseDetail } from "./lighthouse";
 import { requoteSwap } from "./requote";
 import type { ProbeResult } from "./requote-pump";
+import { readDirectSwapShape, readSwapShape } from "./swap-shape";
 import { RpcError, rpc } from "./rpc";
 import { getTrace } from "./trace";
 import { V1_MAX_BYTES, decodeV1, inlineAddressCount, rebuildV1 } from "./v1";
@@ -374,6 +375,56 @@ export interface RepairInput {
   transaction?: string;
 }
 
+const formatUnits = (raw: bigint, decimals: number) => {
+  const s = raw.toString().padStart(decimals + 1, "0");
+  const whole = s.slice(0, s.length - decimals);
+  const frac = decimals > 0 ? s.slice(-decimals).replace(/0+$/, "") : "";
+  return `${whole}${frac ? "." + frac : ""}`;
+};
+
+/**
+ * The token program's "insufficient funds" inside a swap, with numbers: what the swap spends and
+ * what the source token account actually holds right now. The usual story is a sell built from a
+ * stale balance (part of it already sold), so the exact figure is what the person needs.
+ */
+async function tokenShortfall(instructions: TransactionInstruction[], logs: string[]): Promise<{ cause: DecodedError; note: string } | null> {
+  if (!logs.some((l) => /Program log: Error: insufficient funds/i.test(l))) return null;
+  for (const ix of instructions) {
+    let account: string | undefined;
+    let amount: bigint | undefined;
+    let what = "";
+    const direct = readDirectSwapShape(ix);
+    if (direct && direct.userIn != null && (direct.fixed === "tokens_in" || direct.fixed === "quote_in")) {
+      account = ix.keys[direct.userIn]?.pubkey.toBase58();
+      amount = direct.amount;
+      what = `${direct.program} ${direct.name}`;
+    } else {
+      const jup = readSwapShape(ix);
+      if (jup && jup.mode === "ExactIn") {
+        account = jup.source;
+        amount = jup.amount;
+        what = "Jupiter swap";
+      }
+    }
+    if (!account || amount == null) continue;
+    const balance = await rpc<{ value: { amount: string; decimals: number } | null }>("getTokenAccountBalance", [account, { commitment: "confirmed" }]).catch(() => null);
+    if (!balance?.value) continue;
+    const have = BigInt(balance.value.amount);
+    if (have >= amount) continue;
+    const fmt = (v: bigint) => formatUnits(v, balance.value!.decimals);
+    return {
+      cause: {
+        title: "Not enough tokens to swap",
+        code: "Custom(1) — 0x1",
+        cause: `The ${what} spends ${fmt(amount)} from token account ${account}, which holds ${fmt(have)}. Usually the amount came from a balance that was already partly sold or transferred.`,
+        fix: `Rebuild the swap for at most ${fmt(have)}, or top the account up by ${fmt(amount - have)} first. TxWhy never changes the amount you chose, so there is no repair to return.`,
+      },
+      note: `Source token account ${account}: holds ${fmt(have)}, the swap needs ${fmt(amount)}. Shortfall: ${fmt(amount - have)}.`,
+    };
+  }
+  return null;
+}
+
 /**
  * The node can refuse a transaction before running a single instruction ("invalid transaction: ..."):
  * duplicate ComputeBudget instructions, malformed instruction data, a fee payer that is a program,
@@ -634,6 +685,14 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
       probeCause ?? { title: "Unknown failure", cause: "", fix: "" },
       probeSim.logs ?? [],
     );
+    if (verdict.status === "not_repairable" && probeCause?.title === "InsufficientFunds") {
+      const precise = await tokenShortfall(budget.rest, probeSim.logs ?? []);
+      if (precise) {
+        verdict.cause = precise.cause;
+        verdict.notes.push(precise.note);
+        if (onchain?.error?.title === "InsufficientFunds") onchain.error = precise.cause;
+      }
+    }
     if (landed && onchain?.error && probeCause && onchain.error.title !== probeCause.title) {
       notes.push(
         `Re-run today, this transaction fails earlier than it did on chain ("${probeCause.title}") because the accounts and prices it referenced have since changed. That is normal for a transaction that already landed; the on-chain cause above is the one that counts.`,
@@ -744,7 +803,7 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
       summary:
         wantsRequote && !notSlippage
           ? "This transaction fails on slippage and needs a fresh quote. A blockhash or fee change cannot fix it."
-          : "This transaction fails for a reason that cannot be fixed by rebuilding it.",
+          : (verdict.cause?.cause ?? "This transaction fails for a reason that cannot be fixed by rebuilding it."),
       cause: landed ? (onchain?.error ?? verdict.cause ?? probeCause) : (verdict.cause ?? probeCause),
       changes: [],
       repairedTransaction: null,
@@ -971,6 +1030,14 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
   if (probeSim.err != null) {
     const probeCause = (await decodeSimError(probeSim.err, probeSim.logs ?? [])) ?? cause;
     const verdict = classifyUnrepairable(probeCause ?? { title: "Unknown failure", cause: "", fix: "" }, probeSim.logs ?? []);
+    if (verdict.status === "not_repairable" && probeCause?.title === "InsufficientFunds") {
+      const precise = await tokenShortfall(decoded.instructions, probeSim.logs ?? []);
+      if (precise) {
+        verdict.cause = precise.cause;
+        verdict.notes.push(precise.note);
+        if (onchain?.error?.title === "InsufficientFunds") onchain.error = precise.cause;
+      }
+    }
     if (landed && onchain?.error && probeCause && onchain.error.title !== probeCause.title) {
       notes.push(`Re-run today, this transaction fails earlier than it did on chain ("${probeCause.title}") because the accounts and prices it referenced have since changed. That is normal for a transaction that already landed; the on-chain cause above is the one that counts.`);
     }
@@ -1021,7 +1088,7 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
       const slippageNow = wantsRequote && !notSlippage;
       return {
         status: finalVerdict ? "not_repairable" : slippageNow ? "needs_requote" : verdict.status === "needs_requote" ? "not_repairable" : verdict.status,
-        summary: finalVerdict ?? (slippageNow ? "This transaction fails on slippage and needs a fresh quote. A blockhash or fee change cannot fix it." : "This transaction fails for a reason that cannot be fixed by rebuilding it."),
+        summary: finalVerdict ?? (slippageNow ? "This transaction fails on slippage and needs a fresh quote. A blockhash or fee change cannot fix it." : (verdict.cause?.cause ?? "This transaction fails for a reason that cannot be fixed by rebuilding it.")),
         cause: finalVerdict && base ? { ...base, fix: "Nothing to fix. This transaction did what it was designed to do when the opportunity was gone." } : base,
         changes: [],
         repairedTransaction: null,

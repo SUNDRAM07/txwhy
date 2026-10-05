@@ -240,6 +240,9 @@ fn direct_layout(program_id: &str, data: &[u8]) -> Option<DirectLayout> {
         (METEORA_DAMM_V2, _) => Some(2),
         (RAYDIUM_LAUNCHLAB, "buy_exact_in" | "buy_exact_out") => Some(6),
         (RAYDIUM_LAUNCHLAB, _) => Some(5),
+        (PUMP_SWAP, "buy" | "buy_exact_quote_in") => Some(6),
+        (PUMP_SWAP, "sell") => Some(5),
+        (PUMP_FUN, "sell") => Some(5),
         _ => None,
     };
     Some(DirectLayout { program, name, limit, tag_length, limit_first, user_in })

@@ -195,6 +195,8 @@ async function limitFromProbe(
 }
 
 class NotSlippageError extends Error {}
+/** The price is past the cap: a final answer, not "try a fresh quote". */
+class BeyondCapError extends Error {}
 
 type Shape = NonNullable<ReturnType<typeof readDirectSwapShape>>;
 const rebuild = (ix: TransactionInstruction, data: Buffer) => new (ix.constructor as typeof TransactionInstruction)({ programId: ix.programId, keys: ix.keys, data });
@@ -238,6 +240,11 @@ async function limitFromProbeWithWrap(
   lifted[index] = rebuild(ix, data);
   lifted[wrap.index] = withLamports(instructions[wrap.index], wrap.lamports + raise);
   const result = await probe(lifted);
+  if (result.err != null && /slippage|ExceededSlippage|TooMuch|BelowMin|AboveMax/i.test(result.errorTitle ?? "")) {
+    throw new BeyondCapError(
+      `The price has moved more than ${DIRECT_LIMIT_CAP_BPS / 100}% against this trade since it was built: even with the wrapped SOL and the maximum both raised by that much, the swap still cannot be filled. TxWhy will not move a limit that far; decide the new price yourself.`,
+    );
+  }
   if (result.err != null) {
     throw new NotSlippageError(`with the wrapped SOL and the maximum both raised ${DIRECT_LIMIT_CAP_BPS / 100}%, the most a repair may move them, the transaction still fails (${result.errorTitle ?? "unknown error"})`);
   }
@@ -319,6 +326,7 @@ export async function requoteDirect(instructions: TransactionInstruction[], hint
       fresh = await freshLimit(ix, shape);
     }
   } catch (e) {
+    if (e instanceof BeyondCapError) return { ok: false, final: true, reason: e.message };
     if (e instanceof NotSlippageError) return { ok: false, reason: `The ${shape.program} ${shape.name} cannot be repaired by moving its limit: ${e.message}.` };
     return { ok: false, reason: `Could not price the ${shape.program} swap from the pool's current state (${e instanceof Error ? e.message : "unknown error"}).` };
   }

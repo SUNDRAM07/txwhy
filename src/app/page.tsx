@@ -66,8 +66,8 @@ const FIXES: { failure: string; action: string; fixed: boolean }[] = [
     fixed: false,
   },
   {
-    failure: "Not enough SOL",
-    action: "Not something a rebuild can fix. We give you the exact shortfall instead.",
+    failure: "Not enough SOL, or not enough tokens to sell",
+    action: "Not something a rebuild can fix. We give you the exact shortfall instead: what the account holds and what the swap needs.",
     fixed: false,
   },
   {
