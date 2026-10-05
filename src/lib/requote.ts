@@ -2,7 +2,7 @@ import { PublicKey, TransactionInstruction } from "@solana/web3.js";
 import { rpc } from "./rpc";
 import { JUPITER_V6, LAYOUTS, readAmounts, readSwapShape, type Mode } from "./swap-shape";
 import { findDirectSwap, requoteDirect, type RequoteHints } from "./requote-pump";
-import { DIRECT_LAYOUTS, readDirectSwapShape } from "./swap-shape";
+import { DIRECT_LAYOUTS, DIRECT_LIMIT_CAP_BPS, isAllowedQuoteMove, readDirectSwapShape } from "./swap-shape";
 
 export { readSwapShape };
 
@@ -51,6 +51,28 @@ export type RequoteOutcome =
       /** True when no rebuild could ever help (for example circular arbitrage), as opposed to "try a fresh quote yourself". */
       final?: boolean;
     };
+
+/** A fresh route is refused outright above this price impact; a person would not sign it and a bot should not. */
+export const MAX_PRICE_IMPACT_PCT = 3;
+
+/**
+ * Why a fresh quote must not be used, or null when it is acceptable. Two independent guards: the
+ * route's own price impact (thin liquidity), and how far the quote moved against the original one
+ * (the market ran away). The verifier enforces the second one again on the caller's side.
+ */
+function refuseBadQuote(intent: SwapIntent, quote: Quote): string | null {
+  const impact = quote.priceImpactPct != null ? Number(quote.priceImpactPct) * 100 : null;
+  if (impact != null && impact > MAX_PRICE_IMPACT_PCT) {
+    return `The only route available now has a ${impact.toFixed(2)}% price impact (${(quote.routePlan ?? []).map((s) => s.swapInfo?.label).filter(Boolean).join(" → ") || "thin liquidity"}). TxWhy refuses to return a swap with more than ${MAX_PRICE_IMPACT_PCT}% price impact; wait for liquidity or trade a smaller amount.`;
+  }
+  const exactIn = intent.mode === "ExactIn";
+  const newQuoted = BigInt(exactIn ? quote.outAmount : quote.inAmount);
+  if (!isAllowedQuoteMove(intent.mode, intent.quotedOther, newQuoted)) {
+    const moved = Number(((newQuoted - intent.quotedOther) * BigInt(10000)) / intent.quotedOther) / 100;
+    return `The price has moved ${Math.abs(moved).toFixed(1)}% against this trade since it was built (quoted ${exactIn ? "output" : "cost"} ${intent.quotedOther} then, ${newQuoted} now). TxWhy will not move a quote more than ${DIRECT_LIMIT_CAP_BPS / 100}%; decide the new price yourself.`;
+  }
+  return null;
+}
 
 async function mintOfTokenAccount(address: string): Promise<string | null> {
   const { value } = await rpc<{
@@ -193,6 +215,8 @@ export async function requoteJupiter(instructions: TransactionInstruction[]): Pr
       swapMode: intent.mode,
     });
     quote = await jupiter<Quote>(`/quote?${q}`);
+    const refused = refuseBadQuote(intent, quote);
+    if (refused) return { ok: false, intent, reason: refused, final: true };
     // wrapAndUnwrapSol is off on purpose: the original transaction already carries its own
     // wrap and unwrap steps, and we keep those untouched.
     built = await jupiter("/swap-instructions", {
@@ -234,8 +258,9 @@ export async function requoteJupiter(instructions: TransactionInstruction[]): Pr
     `You will now ${word} ${human(newLimit, otherDecimals, otherMint)}. Check that this is still a trade you want before signing.`,
   ];
   if (route) notes.push(`New route: ${route}.`);
-  if (quote.priceImpactPct && Number(quote.priceImpactPct) > 0.01) {
-    notes.push(`Price impact of the new route is ${(Number(quote.priceImpactPct) * 100).toFixed(2)}%.`);
+  if (quote.priceImpactPct != null) {
+    const impact = Number(quote.priceImpactPct) * 100;
+    notes.push(`Price impact of the new route: ${impact < 0.01 ? "under 0.01" : impact.toFixed(2)}% (TxWhy refuses any route above ${MAX_PRICE_IMPACT_PCT}%).`);
   }
 
   notes.push(

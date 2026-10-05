@@ -68,6 +68,8 @@ export function readSwapShape(ix: TransactionInstruction) {
     user,
     outputMint,
     amount: amounts.first,
+    /** The other side as quoted when the swap was built: output for ExactIn, input for ExactOut. The limit derives from it. */
+    quotedOther: amounts.second,
     slippageBps: amounts.slippageBps,
     /** Where the input comes from and where the output lands. These must never change. */
     source: at(layout.source),
@@ -76,6 +78,18 @@ export function readSwapShape(ix: TransactionInstruction) {
     // receives the output: the optional override when present, otherwise the user's account.
     receiver: layout.destinations.map(at).filter((a) => a && a !== JUPITER_V6).pop() ?? "",
   };
+}
+
+/**
+ * A replacement Jupiter swap keeps the amount and tolerance, but its quote may be far worse than the
+ * original if the market moved or the only route left is thin. The same cap as direct swaps applies:
+ * the quoted other side may move at most DIRECT_LIMIT_CAP_BPS against the user. A quote of zero in the
+ * original carries no information and constrains nothing.
+ */
+export function isAllowedQuoteMove(mode: Mode, before: bigint, after: bigint): boolean {
+  if (before === BigInt(0)) return true;
+  const cap = (before * BigInt(DIRECT_LIMIT_CAP_BPS)) / BigInt(10_000);
+  return mode === "ExactIn" ? after >= before - cap : after <= before + cap;
 }
 
 /* ---------------------------------------------------------------------------------------------

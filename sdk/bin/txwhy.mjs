@@ -26,15 +26,17 @@ if (json) {
 }
 
 const c = process.stdout.isTTY ? { g: "\x1b[32m", r: "\x1b[31m", d: "\x1b[2m", b: "\x1b[1m", x: "\x1b[0m" } : { g: "", r: "", d: "", b: "", x: "" };
-const colour = out.status === "repaired" || out.status === "valid" ? c.g : c.r;
-console.log(`\n${colour}${c.b}${out.status.toUpperCase().replace("_", " ")}${c.x}  ${out.summary}\n`);
+const repaired = out.status === "repaired" || out.status === "valid";
+const headline = { repaired: "REPAIRED", valid: "VALID AS IS", needs_requote: "NO REPAIR: QUOTE STALE", not_repairable: "NO REPAIR" }[out.status] ?? out.status.toUpperCase();
+console.log(`\n${repaired ? c.g : c.r}${c.b}${headline}${c.x}  ${out.summary}\n`);
+if (!repaired) console.log(`${c.r}No transaction is returned. Nothing below is a repair.${c.x}\n`);
 if (out.cause) {
   console.log(`${c.b}${out.cause.title}${c.x}${out.cause.code ? `  ${c.d}${out.cause.code}${c.x}` : ""}`);
   console.log(`${out.cause.cause}\n`);
   if (out.status !== "repaired") console.log(`${c.d}Fix:${c.x} ${out.cause.fix}\n`);
 }
-for (const ch of out.changes ?? []) console.log(`  ${ch.type.padEnd(28)} ${c.r}${ch.before}${c.x} -> ${c.g}${ch.after}${c.x}`);
-if (out.simulation) console.log(`\nSimulation of the returned transaction: ${out.simulation.passed ? `${c.g}passed${c.x}` : `${c.r}failed${c.x}`}${out.simulation.unitsConsumed ? ` (${out.simulation.unitsConsumed} compute units)` : ""}`);
+if (repaired) for (const ch of out.changes ?? []) console.log(`  ${ch.type.padEnd(28)} ${c.r}${ch.before}${c.x} -> ${c.g}${ch.after}${c.x}`);
+if (out.simulation && repaired) console.log(`\nSimulation of the returned transaction: ${out.simulation.passed ? `${c.g}passed${c.x}` : `${c.r}failed${c.x}`}${out.simulation.unitsConsumed ? ` (${out.simulation.unitsConsumed} compute units)` : ""}`);
 if (out.verification) console.log(`Verification: ${out.verification.ok ? `${c.g}nothing else was touched${c.x} (${out.verification.kept} instructions kept byte for byte)` : `${c.r}${out.verification.violations.join(" ")}${c.x}`}`);
 if (out.status === "repaired" && out.repairedTransaction) console.log(`\n${c.d}Rebuilt transaction, unsigned, base64:${c.x}\n${out.repairedTransaction}`);
 for (const n of out.notes ?? []) console.log(`${c.d}- ${n}${c.x}`);

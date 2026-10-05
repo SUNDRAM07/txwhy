@@ -1,5 +1,5 @@
 import type { PublicKey, TransactionInstruction } from "@solana/web3.js";
-import { DIRECT_LAYOUTS, isAllowedDirectLimitChange, readDirectSwapShape, readSwapShape, isAllowedWrapRaise, readSystemTransfer } from "./swap-shape";
+import { DIRECT_LAYOUTS, isAllowedDirectLimitChange, isAllowedQuoteMove, readDirectSwapShape, readSwapShape, isAllowedWrapRaise, readSystemTransfer } from "./swap-shape";
 
 /**
  * Verify a repair without trusting the service that made it.
@@ -132,6 +132,7 @@ export function verifyInstructions(
         was.mode !== now.mode && "the swap mode",
         was.amount !== now.amount && "the amount",
         was.slippageBps !== now.slippageBps && "the slippage tolerance",
+        !isAllowedQuoteMove(was.mode, was.quotedOther, now.quotedOther) && `the quoted ${was.mode === "ExactIn" ? "output" : "cost"}, by more than 25% against the user`,
         was.source !== now.source && "the token account the input is taken from",
         (!was.receiver || was.receiver !== now.receiver) && "the token account that receives the output",
       ].filter(Boolean);

@@ -88,6 +88,8 @@ const cases: [string, TransactionInstruction[], PublicKey, boolean][] = [
   ["ATTACK: new required signer slipped in", [limit(180_000), swap({}), feeTransfer, memo, new TransactionInstruction({ programId: ATA, keys: [{ pubkey: thief, isSigner: true, isWritable: true }], data: Buffer.from([1]) })], payer, false],
   ["ATTACK: swap amount raised", [limit(180_000), swap({ amount: BigInt(900_000_000) }), feeTransfer, memo], payer, false],
   ["ATTACK: slippage tolerance widened", [limit(180_000), swap({ slippage: 5000 }), feeTransfer, memo], payer, false],
+  ["swap re-quoted 25% worse, exactly at the cap", [limit(180_000), swap({ quoted: BigInt(3_750_000), route: 9 }), feeTransfer, memo], payer, true],
+  ["ATTACK: swap re-quoted 26% worse than the original quote", [limit(180_000), swap({ quoted: BigInt(3_700_000), route: 9 }), feeTransfer, memo], payer, false],
   ["ATTACK: output token changed", [limit(180_000), swap({ out: thief }), feeTransfer, memo], payer, false],
   ["ATTACK: swap executed for a different wallet", [limit(180_000), swap({ user: thief }), feeTransfer, memo], payer, false],
   ["ATTACK: swap proceeds redirected to a stranger's token account", [limit(180_000), swap({ receiver: thief }), feeTransfer, memo], payer, false],

@@ -5,7 +5,7 @@ Offline verifier for [TxWhy](https://txwhy.vercel.app) transaction repairs, in R
 TxWhy takes a failing Solana transaction and returns a rebuilt one that simulates clean. This crate lets you check, without trusting TxWhy and without a network call, that the rebuilt transaction only differs from yours in the ways a repair is allowed to:
 
 - ComputeBudget instructions may be added, removed or changed.
-- One Jupiter v6 swap may be replaced by an equivalent one: same wallet, same source and receiving token accounts, same output mint, same amount, same slippage tolerance. Idempotent token-account creation may precede it.
+- One Jupiter v6 swap may be replaced by an equivalent one: same wallet, same source and receiving token accounts, same output mint, same amount, same slippage tolerance, and a quote no more than 25% worse than the original. Idempotent token-account creation may precede it.
 - A SOL transfer that wraps funds into a Meteora exact-output swap's own input account may rise, by no more than that swap's maximum rose and no more than 25% of the original transfer.
 - One Pump.fun, PumpSwap, Raydium AMM v4, Raydium LaunchLab, Meteora DBC or Meteora DAMM v2 swap may have only its limit moved, never more than 25% against the user. Amount, accounts and flags stay identical.
 

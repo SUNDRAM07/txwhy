@@ -117,6 +117,8 @@ pub struct SwapShape {
     pub user: String,
     pub output_mint: String,
     pub amount: u64,
+    /// The other side as quoted when the swap was built: output for ExactIn, input for ExactOut.
+    pub quoted_other: u64,
     pub slippage_bps: u16,
     pub source: String,
     pub receiver: String,
@@ -140,6 +142,7 @@ pub fn read_swap_shape(ix: &Instruction) -> Option<SwapShape> {
         return None;
     }
     let amount = u64_le(&ix.data, start)?;
+    let quoted_other = u64_le(&ix.data, start + 8)?;
     let slippage_bps = u16::from_le_bytes([ix.data[start + 16], ix.data[start + 17]]);
     let at = |i: usize| ix.accounts.get(i).map(|a| a.pubkey.clone()).unwrap_or_default();
     let user = at(layout.user);
@@ -162,6 +165,7 @@ pub fn read_swap_shape(ix: &Instruction) -> Option<SwapShape> {
         user,
         output_mint,
         amount,
+        quoted_other,
         slippage_bps,
         source: at(layout.source),
         receiver,
@@ -304,6 +308,20 @@ pub fn allowed_wrap_raise(wrap_before: u64, wrap_after: u64, limit_before: u64, 
     raise <= (limit_after - limit_before) as u128 && raise <= wrap_before as u128 * DIRECT_LIMIT_CAP_BPS / 10_000
 }
 
+/// A replacement Jupiter quote may move at most the cap against the user: output no more than 25%
+/// lower (ExactIn), cost no more than 25% higher (ExactOut). A zero quote in the original constrains nothing.
+pub fn allowed_quote_move(mode: &str, before: u64, after: u64) -> bool {
+    if before == 0 {
+        return true;
+    }
+    let cap = before as u128 * DIRECT_LIMIT_CAP_BPS / 10_000;
+    if mode == "ExactIn" {
+        after as u128 >= (before as u128).saturating_sub(cap)
+    } else {
+        after as u128 <= before as u128 + cap
+    }
+}
+
 /// True when `after` is the same direct swap as `before` with only the limit moved, and moved no
 /// further against the user than the cap allows.
 pub fn allowed_direct_limit_change(before: &DirectSwapShape, after: &DirectSwapShape) -> Result<(), String> {
@@ -444,6 +462,9 @@ pub fn verify_instructions(original_payer: &str, original: &[Instruction], repai
             if was.mode != now.mode { mismatches.push("the swap mode"); }
             if was.amount != now.amount { mismatches.push("the amount"); }
             if was.slippage_bps != now.slippage_bps { mismatches.push("the slippage tolerance"); }
+            if !allowed_quote_move(was.mode, was.quoted_other, now.quoted_other) {
+                mismatches.push(if was.mode == "ExactIn" { "the quoted output, by more than 25% against the user" } else { "the quoted cost, by more than 25% against the user" });
+            }
             if was.source != now.source { mismatches.push("the token account the input is taken from"); }
             if was.receiver.is_empty() || was.receiver != now.receiver { mismatches.push("the token account that receives the output"); }
             if !mismatches.is_empty() {
@@ -573,6 +594,11 @@ mod tests {
         let mut accounts = vec![acct(PAYER, true, true), acct(SOURCE, false, true), acct(JUPITER_V6, false, false), acct(PROG, false, false), acct(MINT, false, false), acct(PROG, false, false), acct(PROG, false, false), acct(receiver, false, true), acct(OTHER, false, false)];
         accounts.push(acct(OTHER, false, true));
         Instruction { program_id: JUPITER_V6.into(), accounts, data }
+    }
+    fn jup_quoted(quoted: u64) -> Instruction {
+        let mut ix = jup(1_000, 50, DEST, &[1]);
+        ix.data[16..24].copy_from_slice(&quoted.to_le_bytes());
+        ix
     }
     fn pump_buy(amount: u64, max_cost: u64) -> Instruction {
         let mut data = hex_to_bytes("66063d1201daebea");
@@ -739,6 +765,17 @@ mod tests {
         assert!(!run(&[meteora_swap2(METEORA_DAMM_V2, 1_000, 10_000, 0)], &[meteora_swap2(METEORA_DAMM_V2, 1_000, 10_000, 2)]).ok);
         assert!(read_direct_swap_shape(&meteora_swap2(METEORA_DBC, 1, 1, 3)).is_none());
         assert!(!run(&[meteora_swap2(METEORA_DBC, 1_000, 10_000, 0)], &[meteora_swap2(METEORA_DBC, 1_001, 10_000, 0)]).ok);
+    }
+
+    #[test]
+    fn jupiter_quote_may_not_move_past_the_cap() {
+        assert!(run(&[jup_quoted(10_000)], &[jup_quoted(7_500)]).ok);
+        assert!(run(&[jup_quoted(10_000)], &[jup_quoted(12_000)]).ok);
+        let v = run(&[jup_quoted(10_000)], &[jup_quoted(7_499)]);
+        assert!(!v.ok);
+        assert!(v.violations[0].contains("quoted output, by more than 25%"), "{}", v.violations[0]);
+        // A zero quote in the original constrains nothing (older fixtures and token-ledger paths).
+        assert!(run(&[jup_quoted(0)], &[jup_quoted(1)]).ok);
     }
 
     #[test]
