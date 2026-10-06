@@ -29,30 +29,40 @@ interface ThinQuote {
 }
 let thinCache: { at: number; value: ThinQuote | null } | null = null;
 
-/** A token where a 2 SOL buy already carries 5% to 60% price impact on Jupiter (well past the 3% refusal line), picked from the hour's trending list. */
+/**
+ * A token where a 2 SOL buy already carries well over 3% price impact on Jupiter, picked from the
+ * hour's trending list. Quotes are fetched in parallel batches and the whole search is time-boxed,
+ * so a cold call answers in a few seconds instead of running into the function limit. A hit is
+ * cached for 10 minutes; a miss for one.
+ */
 async function findThinToken(): Promise<ThinQuote | null> {
-  if (thinCache && Date.now() - thinCache.at < 5 * 60_000 && thinCache.value) return thinCache.value;
+  if (thinCache && thinCache.value && Date.now() - thinCache.at < 10 * 60_000) return thinCache.value;
+  if (thinCache && !thinCache.value && Date.now() - thinCache.at < 60_000) return null;
+  const deadline = Date.now() + 12_000;
   let candidates: string[] = [];
   try {
-    const trending = (await (await fetch("https://lite-api.jup.ag/tokens/v2/toptrending/1h?limit=40", { cache: "no-store" })).json()) as { id?: string }[];
+    const trending = (await (await fetch("https://lite-api.jup.ag/tokens/v2/toptrending/1h?limit=100", { cache: "no-store", signal: AbortSignal.timeout(4000) })).json()) as { id?: string }[];
     candidates = trending.map((t) => t.id).filter((id): id is string => typeof id === "string" && id !== SOL);
   } catch {
     candidates = [];
   }
-  for (const mint of candidates.slice(0, 25)) {
+  const quoteFor = async (mint: string): Promise<ThinQuote | null> => {
     try {
-      const quote = (await (await fetch(`${JUPITER_API}/quote?inputMint=${SOL}&outputMint=${mint}&amount=2000000000&slippageBps=50`, { cache: "no-store" })).json()) as ThinQuote["quote"] & { error?: string };
+      const quote = (await (await fetch(`${JUPITER_API}/quote?inputMint=${SOL}&outputMint=${mint}&amount=2000000000&slippageBps=50`, { cache: "no-store", signal: AbortSignal.timeout(3500) })).json()) as ThinQuote["quote"] & { error?: string };
       const impact = Number(quote.priceImpactPct ?? 0) * 100;
-      if (!quote.error && quote.outAmount && impact > 5 && impact < 60) {
-        thinCache = { at: Date.now(), value: { mint, impact, quote } };
-        return thinCache.value;
-      }
+      return !quote.error && quote.outAmount && impact > 3.5 && impact < 60 ? { mint, impact, quote } : null;
     } catch {
-      /* next candidate */
+      return null;
     }
+  };
+  let best: ThinQuote | null = null;
+  for (let i = 0; i < candidates.length && Date.now() < deadline; i += 10) {
+    const hits = (await Promise.all(candidates.slice(i, i + 10).map(quoteFor))).filter((h): h is ThinQuote => h != null);
+    for (const h of hits) if (!best || h.impact > best.impact) best = h;
+    if (best && best.impact > 5) break; // comfortably past the line; stop searching
   }
-  thinCache = { at: Date.now(), value: null };
-  return null;
+  thinCache = { at: Date.now(), value: best };
+  return best;
 }
 const DEMO_RECIPIENT = new PublicKey("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM");
 const EXPIRED_BLOCKHASH = "EkSnNWid2cvwEVnVx9aBqawnmiCNiDgp3gUdkDPTKN1N";
@@ -94,7 +104,7 @@ export async function GET(request: Request) {
       // route carries more than 3% price impact, so the engine refuses to return a repair. This is
       // the refusal itself as a demo: a repair you should not sign is worse than no repair.
       const thin = await findThinToken();
-      if (!thin) throw new Error("No thin pool found right now; try again in a minute.");
+      if (!thin) throw new Error("No trending token with more than 3.5% price impact on a 2 SOL buy right now. Try again in a minute; this demo depends on live liquidity.");
       const stale = {
         ...thin.quote,
         outAmount: String(Math.floor(Number(thin.quote.outAmount) * 1.05)),

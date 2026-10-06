@@ -24,6 +24,8 @@ export default function RepairPage() {
   async function loadDemo(kind: string) {
     setLoadingDemo(kind);
     setDemo(null);
+    setSubmitted(false);
+    repair.reset();
     try {
       const res = await fetch(`/api/v1/example?kind=${kind}`);
       const body = await res.json();
@@ -71,10 +73,22 @@ export default function RepairPage() {
               disabled={loadingDemo !== null}
               className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm font-medium transition hover:border-emerald-500 hover:text-emerald-600 disabled:opacity-50 dark:border-neutral-700 dark:hover:text-emerald-400"
             >
-              {loadingDemo === d.kind ? "Building…" : d.label}
+              {loadingDemo === d.kind ? (
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" aria-hidden />
+                  Building on mainnet state…
+                </span>
+              ) : (
+                d.label
+              )}
             </button>
           ))}
         </div>
+        {loadingDemo && (
+          <p className="mt-3 text-xs text-neutral-500" aria-live="polite">
+            Building a real transaction against live chain state. The thin-pool demo searches live liquidity and can take up to 15 seconds.
+          </p>
+        )}
         {demo && "description" in demo && (
           <p className="mt-3 text-xs text-neutral-500">Loaded: {demo.description}</p>
         )}

@@ -54,6 +54,8 @@ export function useRepair(auto?: RepairInput) {
     setState({ result: null, error: null, loading: true });
     setState({ ...(await callRepair(input)), loading: false });
   }, []);
+  /** Clear a previous result, so nothing stale stays on screen while a new transaction is being built. */
+  const reset = useCallback(() => setState({ result: null, error: null, loading: false }), []);
 
   const autoKey = auto ? (auto.signature ?? auto.transaction ?? "") : null;
   useEffect(() => {
@@ -68,7 +70,7 @@ export function useRepair(auto?: RepairInput) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the input's identity, not the object
   }, [autoKey]);
 
-  return { ...state, run };
+  return { ...state, run, reset };
 }
 
 /** Self-contained panel that repairs on load. Used on the transaction page. */

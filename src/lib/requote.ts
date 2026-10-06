@@ -208,7 +208,18 @@ export async function describeStandingQuote(instructions: TransactionInstruction
     const limit = exactIn ? (intent.quotedOther * (BigInt(10000) - bps)) / BigInt(10000) : (intent.quotedOther * (BigInt(10000) + bps)) / BigInt(10000);
     const now = BigInt(exactIn ? quote.outAmount : quote.inAmount);
     const impact = quote.priceImpactPct != null ? Number(quote.priceImpactPct) * 100 : null;
-    return `Swap unchanged: you still ${exactIn ? "receive at least" : "pay at most"} ${human(limit, decimals.get(otherMint), otherMint)}, your original minimum. The market now quotes ${human(now, decimals.get(otherMint), otherMint)}${impact != null ? ` at ${impact < 0.01 ? "under 0.01" : impact.toFixed(2)}% price impact` : ""}, which is inside your ${(intent.slippageBps / 100).toFixed(2)}% tolerance again.`;
+    const side = exactIn ? "receive at least" : "pay at most";
+    const limitText = human(limit, decimals.get(otherMint), otherMint);
+    const nowText = human(now, decimals.get(otherMint), otherMint);
+    let line = `Swap unchanged: your original route and limit stay as you signed them, so you still ${side} ${limitText}. The price is back inside your ${(intent.slippageBps / 100).toFixed(2)}% slippage tolerance, which is why it passes now. For reference, a fresh route today would quote ${nowText}`;
+    if (impact != null) {
+      line += impact > MAX_PRICE_IMPACT_PCT
+        ? ` with ${impact.toFixed(2)}% price impact, above the ${MAX_PRICE_IMPACT_PCT}% line TxWhy applies to any route it builds; price impact is what the trade size costs on a route, not how far the price may move, and TxWhy did not build this one.`
+        : ` with ${impact < 0.01 ? "under 0.01" : impact.toFixed(2)}% price impact.`;
+    } else {
+      line += ".";
+    }
+    return line;
   } catch {
     return null;
   }
