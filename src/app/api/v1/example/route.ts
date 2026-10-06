@@ -12,7 +12,7 @@ import { buildV1 } from "@/lib/v1";
 import { buildStalePumpSwapBuy, buildStaleRaydiumSwap } from "@/lib/pump-demo";
 
 /**
- * GET /api/v1/example?kind=compute|blockhash|slippage
+ * GET /api/v1/example?kind=compute|blockhash|slippage|impact|pump|raydium|v1
  *
  * Builds a deliberately broken, UNSIGNED demo transaction so anyone can watch a repair
  * without owning a failed transaction. The fee payer is a public exchange wallet used
@@ -21,6 +21,39 @@ import { buildStalePumpSwapBuy, buildStaleRaydiumSwap } from "@/lib/pump-demo";
  */
 
 const DEMO_PAYER = new PublicKey("5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9");
+
+interface ThinQuote {
+  mint: string;
+  impact: number;
+  quote: { outAmount: string; otherAmountThreshold: string; priceImpactPct?: string };
+}
+let thinCache: { at: number; value: ThinQuote | null } | null = null;
+
+/** A token where a 2 SOL buy already carries 5% to 60% price impact on Jupiter (well past the 3% refusal line), picked from the hour's trending list. */
+async function findThinToken(): Promise<ThinQuote | null> {
+  if (thinCache && Date.now() - thinCache.at < 5 * 60_000 && thinCache.value) return thinCache.value;
+  let candidates: string[] = [];
+  try {
+    const trending = (await (await fetch("https://lite-api.jup.ag/tokens/v2/toptrending/1h?limit=40", { cache: "no-store" })).json()) as { id?: string }[];
+    candidates = trending.map((t) => t.id).filter((id): id is string => typeof id === "string" && id !== SOL);
+  } catch {
+    candidates = [];
+  }
+  for (const mint of candidates.slice(0, 25)) {
+    try {
+      const quote = (await (await fetch(`${JUPITER_API}/quote?inputMint=${SOL}&outputMint=${mint}&amount=2000000000&slippageBps=50`, { cache: "no-store" })).json()) as ThinQuote["quote"] & { error?: string };
+      const impact = Number(quote.priceImpactPct ?? 0) * 100;
+      if (!quote.error && quote.outAmount && impact > 5 && impact < 60) {
+        thinCache = { at: Date.now(), value: { mint, impact, quote } };
+        return thinCache.value;
+      }
+    } catch {
+      /* next candidate */
+    }
+  }
+  thinCache = { at: Date.now(), value: null };
+  return null;
+}
 const DEMO_RECIPIENT = new PublicKey("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM");
 const EXPIRED_BLOCKHASH = "EkSnNWid2cvwEVnVx9aBqawnmiCNiDgp3gUdkDPTKN1N";
 const JUPITER_API = process.env.JUPITER_API_BASE ?? "https://lite-api.jup.ag/swap/v1";
@@ -53,6 +86,33 @@ export async function GET(request: Request) {
         kind,
         description: "A transfer built with a blockhash that expired long ago.",
         transaction: encode(EXPIRED_BLOCKHASH, [transfer]),
+      });
+    }
+
+    if (kind === "impact") {
+      // A 2 SOL buy of a thin token built on a stale quote: it fails on slippage, and the only fresh
+      // route carries more than 3% price impact, so the engine refuses to return a repair. This is
+      // the refusal itself as a demo: a repair you should not sign is worse than no repair.
+      const thin = await findThinToken();
+      if (!thin) throw new Error("No thin pool found right now; try again in a minute.");
+      const stale = {
+        ...thin.quote,
+        outAmount: String(Math.floor(Number(thin.quote.outAmount) * 1.05)),
+        otherAmountThreshold: String(Math.floor(Number(thin.quote.otherAmountThreshold) * 1.05)),
+      };
+      const built = await (
+        await fetch(`${JUPITER_API}/swap`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ quoteResponse: stale, userPublicKey: DEMO_PAYER.toBase58(), wrapAndUnwrapSol: true, dynamicComputeUnitLimit: false }),
+          cache: "no-store",
+        })
+      ).json();
+      if (!built.swapTransaction) throw new Error("Could not build the demo swap.");
+      return Response.json({
+        kind,
+        description: `A 2 SOL buy of ${thin.mint.slice(0, 4)}…${thin.mint.slice(-4)} on a stale quote. It fails on slippage, and the only fresh route has ${thin.impact.toFixed(1)}% price impact, so TxWhy refuses to repair it.`,
+        transaction: built.swapTransaction,
       });
     }
 

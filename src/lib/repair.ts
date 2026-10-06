@@ -10,7 +10,7 @@ import {
 import { decodeTransactionError } from "./errors";
 import { fetchIdlErrors } from "./idl";
 import { lighthouseDetail } from "./lighthouse";
-import { requoteSwap } from "./requote";
+import { describeStandingQuote, requoteSwap } from "./requote";
 import type { ProbeResult } from "./requote-pump";
 import { readDirectSwapShape, readSwapShape } from "./swap-shape";
 import { RpcError, rpc } from "./rpc";
@@ -802,7 +802,7 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
       status: wantsRequote && !notSlippage ? "needs_requote" : verdict.status === "needs_requote" ? "not_repairable" : verdict.status,
       summary:
         wantsRequote && !notSlippage
-          ? "This transaction fails on slippage and needs a fresh quote. A blockhash or fee change cannot fix it."
+          ? "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote."
           : (verdict.cause?.cause ?? "This transaction fails for a reason that cannot be fixed by rebuilding it."),
       cause: landed ? (onchain?.error ?? verdict.cause ?? probeCause) : (verdict.cause ?? probeCause),
       changes: [],
@@ -850,7 +850,7 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
       before: currentFee === 0 ? "none" : `${currentFee} micro-lamports per CU`,
       after: `${marketFee} micro-lamports per CU`,
       reason:
-        "Below the 75th percentile recently paid for these accounts, so the transaction was likely to be dropped or delayed under load.",
+        "Raised to the 75th percentile of priority fees paid in the last minutes on the accounts this transaction writes to, so it is not dropped or delayed under load. The total is capped at 0.001 SOL; a fee you set yourself is never lowered.",
     });
   }
 
@@ -923,6 +923,10 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
 
   const wasBroken = cause != null;
   const budgetFixed = changes.some((c) => c.type === "compute_unit_limit" && /needs \d+ compute units/.test(c.reason));
+  if (passed && landed && !requoted && cause && SLIPPAGE_PATTERN.test(`${cause.title} ${cause.code ?? ""}`)) {
+    const standing = await describeStandingQuote(budget.rest);
+    if (standing) notes.unshift(standing);
+  }
   if (passed && landed && !budgetFixed && !requoted) {
     notes.unshift(
       "The original failure depended on chain state at that moment (price, liquidity or account state). That condition no longer holds, which is why the same instructions pass now. Confirm the amounts are still what you want before signing.",
@@ -1088,7 +1092,7 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
       const slippageNow = wantsRequote && !notSlippage;
       return {
         status: finalVerdict ? "not_repairable" : slippageNow ? "needs_requote" : verdict.status === "needs_requote" ? "not_repairable" : verdict.status,
-        summary: finalVerdict ?? (slippageNow ? "This transaction fails on slippage and needs a fresh quote. A blockhash or fee change cannot fix it." : (verdict.cause?.cause ?? "This transaction fails for a reason that cannot be fixed by rebuilding it.")),
+        summary: finalVerdict ?? (slippageNow ? "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote." : (verdict.cause?.cause ?? "This transaction fails for a reason that cannot be fixed by rebuilding it.")),
         cause: finalVerdict && base ? { ...base, fix: "Nothing to fix. This transaction did what it was designed to do when the opportunity was gone." } : base,
         changes: [],
         repairedTransaction: null,
@@ -1133,7 +1137,7 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
       type: "priority_fee",
       before: currentLamports === 0 ? "none" : `${currentLamports} lamports`,
       after: `${marketLamports} lamports (${rate} micro-lamports per CU x ${limit} units)`,
-      reason: "Below the 75th percentile recently paid for these accounts, so the transaction was likely to be dropped or delayed under load.",
+      reason: "Raised to the 75th percentile of priority fees paid in the last minutes on the accounts this transaction writes to, so it is not dropped or delayed under load. The total is capped at 0.001 SOL; a fee you set yourself is never lowered.",
     });
   }
 
@@ -1171,6 +1175,10 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
     notes.push("A fresh blockhash is always applied, so sign and send within about 60 seconds.");
   }
   notes.push("Simulation runs against current chain state. It proves the transaction executes now. It cannot guarantee inclusion if state changes before it lands.");
+  if (passed && landed && !requoted && cause && SLIPPAGE_PATTERN.test(`${cause.title} ${cause.code ?? ""}`)) {
+    const standing = await describeStandingQuote(instructions);
+    if (standing) notes.unshift(standing);
+  }
   const wasBroken = cause != null;
   return {
     status: passed ? (wasBroken ? "repaired" : "valid") : "not_repairable",

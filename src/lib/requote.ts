@@ -190,6 +190,30 @@ function toInstruction(ix: JupiterInstruction): TransactionInstruction {
   });
 }
 
+/**
+ * For a Jupiter swap that is left exactly as written (the price came back inside its own tolerance),
+ * one line that says what the unchanged minimum is and what the market quotes right now, with the
+ * price impact. Null when there is no Jupiter swap or the quote service is unavailable.
+ */
+export async function describeStandingQuote(instructions: TransactionInstruction[]): Promise<string | null> {
+  try {
+    const { intent } = await readSwapIntent(instructions);
+    if (!intent || intent.inputMint === intent.outputMint) return null;
+    const q = new URLSearchParams({ inputMint: intent.inputMint, outputMint: intent.outputMint, amount: intent.amount.toString(), slippageBps: String(intent.slippageBps), swapMode: intent.mode });
+    const quote = await jupiter<Quote>(`/quote?${q}`);
+    const decimals = await decimalsOf([intent.inputMint, intent.outputMint]);
+    const exactIn = intent.mode === "ExactIn";
+    const otherMint = exactIn ? intent.outputMint : intent.inputMint;
+    const bps = BigInt(intent.slippageBps);
+    const limit = exactIn ? (intent.quotedOther * (BigInt(10000) - bps)) / BigInt(10000) : (intent.quotedOther * (BigInt(10000) + bps)) / BigInt(10000);
+    const now = BigInt(exactIn ? quote.outAmount : quote.inAmount);
+    const impact = quote.priceImpactPct != null ? Number(quote.priceImpactPct) * 100 : null;
+    return `Swap unchanged: you still ${exactIn ? "receive at least" : "pay at most"} ${human(limit, decimals.get(otherMint), otherMint)}, your original minimum. The market now quotes ${human(now, decimals.get(otherMint), otherMint)}${impact != null ? ` at ${impact < 0.01 ? "under 0.01" : impact.toFixed(2)}% price impact` : ""}, which is inside your ${(intent.slippageBps / 100).toFixed(2)}% tolerance again.`;
+  } catch {
+    return null;
+  }
+}
+
 export async function requoteJupiter(instructions: TransactionInstruction[]): Promise<RequoteOutcome> {
   const { intent, reason } = await readSwapIntent(instructions);
   if (!intent) return { ok: false, reason: reason ?? "No swap found." };

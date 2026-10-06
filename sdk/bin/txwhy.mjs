@@ -35,7 +35,10 @@ if (out.cause) {
   console.log(`${out.cause.cause}\n`);
   if (out.status !== "repaired") console.log(`${c.d}Fix:${c.x} ${out.cause.fix}\n`);
 }
-if (repaired) for (const ch of out.changes ?? []) console.log(`  ${ch.type.padEnd(28)} ${c.r}${ch.before}${c.x} -> ${c.g}${ch.after}${c.x}`);
+if (repaired) for (const ch of out.changes ?? []) {
+  console.log(`  ${ch.type.padEnd(28)} ${c.r}${ch.before}${c.x} -> ${c.g}${ch.after}${c.x}`);
+  if (ch.reason) console.log(`  ${"".padEnd(28)} ${c.d}${ch.reason}${c.x}`);
+}
 if (out.simulation && repaired) console.log(`\nSimulation of the returned transaction: ${out.simulation.passed ? `${c.g}passed${c.x}` : `${c.r}failed${c.x}`}${out.simulation.unitsConsumed ? ` (${out.simulation.unitsConsumed} compute units)` : ""}`);
 if (out.verification) console.log(`Verification: ${out.verification.ok ? `${c.g}nothing else was touched${c.x} (${out.verification.kept} instructions kept byte for byte)` : `${c.r}${out.verification.violations.join(" ")}${c.x}`}`);
 if (out.status === "repaired" && out.repairedTransaction) console.log(`\n${c.d}Rebuilt transaction, unsigned, base64:${c.x}\n${out.repairedTransaction}`);

@@ -71,6 +71,16 @@ try {
   check("kit verifyRepair refuses a different transaction", !swapped.ok, `-> ${swapped.violations[0]}`);
 }
 {
+  // The refusal is a feature: a thin-pool buy whose only fresh route has >3% price impact must come back with no transaction.
+  try {
+    const impact = await getExample("impact");
+    const r = await repair({ transaction: impact.transaction }, opts);
+    check("refuses a re-route above 3% price impact", r.status === "not_repairable" && /price impact/i.test(r.summary) && !r.repairedTransaction, `-> ${r.status}: ${r.summary.slice(0, 90)}`);
+  } catch (e) {
+    check("refuses a re-route above 3% price impact", false, `-> ${e.message}`);
+  }
+}
+{
   const e = await explainError({ error: { InstructionError: [2, { Custom: 6001 }] }, logs: ["Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 invoke [1]", "Program log: AnchorError occurred. Error Code: SlippageToleranceExceeded. Error Number: 6001. Error Message: Slippage tolerance exceeded.", "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x1771"] }, opts);
   check("explainError names a Jupiter slippage failure", e.cause?.title === "SlippageToleranceExceeded" && e.repairable === true, `-> ${e.cause?.title}`);
 }
