@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "txwhy"
+version = "0.1.0"
+description = "Failed Solana transaction in, working transaction out. Repair API client, send loop for solana-py, and an offline verifier that proves a repair changed only what it may."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "Sundram Mahajan", email = "sundram500m@gmail.com" }]
+keywords = ["solana", "transaction", "repair", "slippage", "jupiter", "pump.fun", "meteora", "raydium", "agent"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Topic :: Software Development :: Libraries",
+]
+dependencies = []
+
+[project.optional-dependencies]
+solana = ["solders>=0.21", "solana>=0.34"]
+dev = ["pytest", "solders>=0.21", "solana>=0.34"]
+
+[project.urls]
+Homepage = "https://txwhy.vercel.app"
+Source = "https://github.com/SUNDRAM07/txwhy/tree/main/python"
+Documentation = "https://txwhy.vercel.app/docs"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

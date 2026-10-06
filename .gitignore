@@ -55,3 +55,10 @@ sdk/LICENSE
 .env*
 scripts/fuzz-results.json
 scripts/stress-results.json
+
+# python package
+python/dist/
+python/build/
+python/src/*.egg-info/
+__pycache__/
+.pytest_cache/

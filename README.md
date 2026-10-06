@@ -137,6 +137,8 @@ A service that hands you a transaction to sign could hand you anything. So the r
 
 The same rule also exists as a Rust crate with no Solana dependencies, [`txwhy-verify` on crates.io](https://crates.io/crates/txwhy-verify) (source in [crates/txwhy-verify](crates/txwhy-verify)), for Rust bots and programs that sign what TxWhy returns. Its `tests/parity.rs` replays real repairs produced by the live API (compute, Jupiter, PumpSwap, Raydium) and checks that the Rust and TypeScript verifiers reach the same verdict, then flips one byte in a real repair and checks it is refused.
 
+And as a Python package, [`txwhy` on PyPI](https://pypi.org/project/txwhy/) (source in [python](python)): the same verifier in pure Python with no dependencies, `txwhy.repair()` / `txwhy.explain()`, and `txwhy.solana.async_send_with_repair()` for solana-py, which simulates, repairs, verifies locally, signs and sends. Its tests replay the same real-repair fixtures as the Rust crate, so the three verifiers are held to one truth.
+
 ## Run it locally
 
 ```bash
@@ -173,7 +175,8 @@ node scripts/fuzz-mcp.mjs         # 52 malformed JSON-RPC calls and hostile tool
 node scripts/test-explain.mjs     # the explain endpoint on real err objects, logs and guard bytes from mainnet
 node scripts/stress.mjs 24        # 24 simultaneous repairs against production: status mix and latency spread, no 5xx
 node scripts/probe-ratelimit.mjs  # proves forged x-forwarded-for headers cannot dodge the per-IP limit
-cd crates/txwhy-verify && cargo test   # 17 Rust verifier tests, incl. parity with real production repairs
+cd crates/txwhy-verify && cargo test   # 21 Rust verifier tests, incl. parity with real production repairs
+cd python && PYTHONPATH=src python -m pytest   # the Python verifier: the same attack cases and the same parity fixtures
 ```
 
 ## What we learned from real data
