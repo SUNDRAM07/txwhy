@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SiteHeader } from "@/components/SiteHeader";
 import { useState } from "react";
 import { RepairView, useRepair } from "@/components/RepairPanel";
 
@@ -46,9 +47,7 @@ export default function RepairPage() {
 
   return (
     <main className="mx-auto w-full min-w-0 max-w-3xl px-4 py-10">
-      <Link href="/" className="font-bold tracking-tight">
-        Tx<span className="text-emerald-500">Why</span>
-      </Link>
+      <SiteHeader />
       <h1 className="mt-6 text-2xl font-bold tracking-tight">
         Repair a transaction before you send it
       </h1>
