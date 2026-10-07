@@ -370,6 +370,14 @@ function classifyUnrepairable(
   return { status: "not_repairable", notes: [] };
 }
 
+/** The fix line for a final refusal depends on which refusal it is; the arbitrage text must not leak onto the others. */
+function finalFix(reason: string, fallback: string): string {
+  if (/circular arbitrage/i.test(reason)) return "Nothing to fix. This transaction did what it was designed to do when the opportunity was gone.";
+  if (/price impact/i.test(reason)) return "Wait for liquidity or trade a smaller amount, then get a fresh quote. Do not widen slippage to force a thin route through; that is what the impact figure is warning about.";
+  if (/moved more than/i.test(reason)) return "Decide whether you still want this trade at today's price. If so, get a fresh quote and rebuild; TxWhy will not move a limit that far on your behalf.";
+  return fallback;
+}
+
 export interface RepairInput {
   signature?: string;
   transaction?: string;
@@ -786,7 +794,7 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
       return {
         status: "not_repairable",
         summary: finalVerdict,
-        cause: base ? { ...base, fix: "Nothing to fix. This transaction did what it was designed to do when the opportunity was gone." } : null,
+        cause: base ? { ...base, fix: finalFix(finalVerdict, base.fix) } : null,
         changes: [],
         repairedTransaction: null,
         simulation: {
@@ -1093,7 +1101,7 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
       return {
         status: finalVerdict ? "not_repairable" : slippageNow ? "needs_requote" : verdict.status === "needs_requote" ? "not_repairable" : verdict.status,
         summary: finalVerdict ?? (slippageNow ? "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote." : (verdict.cause?.cause ?? "This transaction fails for a reason that cannot be fixed by rebuilding it.")),
-        cause: finalVerdict && base ? { ...base, fix: "Nothing to fix. This transaction did what it was designed to do when the opportunity was gone." } : base,
+        cause: finalVerdict && base ? { ...base, fix: finalFix(finalVerdict, base.fix) } : base,
         changes: [],
         repairedTransaction: null,
         simulation: { passed: false, unitsConsumed: probeSim.unitsConsumed ?? null, error: probeCause, logsTail: (probeSim.logs ?? []).slice(-12) },
