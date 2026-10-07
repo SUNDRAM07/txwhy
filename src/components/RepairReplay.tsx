@@ -143,7 +143,7 @@ export function RepairReplay() {
           <span className="h-2.5 w-2.5 rounded-full bg-neutral-300 dark:bg-neutral-700" />
         </div>
         <p className="text-[11px] text-neutral-500">
-          {showingLive ? "live, on mainnet state right now" : "a real failure from mainnet, repaired live"}
+          {showingLive ? "live, on mainnet state right now" : "a real mainnet failure, repaired on Oct 7, 2026"}
         </p>
       </div>
 
