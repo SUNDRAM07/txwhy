@@ -12,13 +12,7 @@
 import Link from "next/link";
 import { useReducedMotion } from "framer-motion";
 import { useEffect, useState } from "react";
-
-interface IndexSummary {
-  transactionsSeen: number;
-  failureRate: number;
-  byProgram: unknown[];
-  repair?: { attempted: number; verdicts: Record<string, number>; segments?: { rebuilt: number; rebuiltShareOfPeople: number } };
-}
+import { useIndex } from "./useIndex";
 
 const COUNT_MS = 600;
 const STAGGER_MS = 80;
@@ -45,32 +39,18 @@ function useCountUp(value: number, delay: number, instant: boolean) {
 function Stat({ value, format, label, delay, instant }: { value: number; format: (v: number) => string; label: string; delay: number; instant: boolean }) {
   const shown = useCountUp(value, delay, instant);
   return (
-    <div className="rounded-xl border border-neutral-200 px-3 py-2 text-left dark:border-neutral-800">
+    <div className="rounded-xl border border-neutral-200 bg-white/60 px-3 py-2 text-left dark:border-neutral-800 dark:bg-neutral-900/40">
       <dd className="text-lg font-semibold tabular-nums">{format(shown)}</dd>
       <dt className="text-[11px] leading-tight text-neutral-600 dark:text-neutral-400">{label}</dt>
     </div>
   );
 }
 
-const compact = (v: number) => (v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : Math.round(v).toLocaleString("en-US"));
+export const compact = (v: number) => (v >= 1_000_000 ? `${(v / 1_000_000).toFixed(1)}M` : Math.round(v).toLocaleString("en-US"));
 
 export function LiveProof() {
-  const [index, setIndex] = useState<IndexSummary | null>(null);
+  const index = useIndex();
   const reduced = useReducedMotion();
-
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/v1/index", { headers: { "x-txwhy-client": "web" } })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json: IndexSummary | null) => {
-        if (alive && json?.transactionsSeen) setIndex(json);
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
-
   const rebuilt = index?.repair?.segments?.rebuilt ?? index?.repair?.verdicts.repaired ?? 0;
   const instant = reduced === true;
 

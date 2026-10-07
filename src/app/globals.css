@@ -22,5 +22,49 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+/* Hero backdrop: one soft accent glow and a dot grid that fades out. Static; nothing to animate here. */
+.hero-backdrop {
+  background-image:
+    radial-gradient(60% 50% at 70% 20%, rgb(16 185 129 / 0.14), transparent 70%),
+    radial-gradient(rgb(0 0 0 / 0.06) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    22px 22px;
+  mask-image: linear-gradient(to bottom, black 55%, transparent 100%);
+}
+@media (prefers-color-scheme: dark) {
+  .hero-backdrop {
+    background-image:
+      radial-gradient(60% 50% at 70% 20%, rgb(16 185 129 / 0.16), transparent 70%),
+      radial-gradient(rgb(255 255 255 / 0.07) 1px, transparent 1px);
+  }
+}
+
+/* Pipeline: a single pulse travels the connecting line once, then it rests. */
+.pipeline-pulse {
+  background: linear-gradient(90deg, rgb(229 229 229) 0%, rgb(16 185 129) 50%, rgb(229 229 229) 100%);
+  background-size: 300% 100%;
+  animation: pipeline-pulse 1.4s cubic-bezier(0.16, 1, 0.3, 1) 1 forwards;
+}
+@media (prefers-color-scheme: dark) {
+  .pipeline-pulse {
+    background: linear-gradient(90deg, rgb(38 38 38) 0%, rgb(16 185 129) 50%, rgb(38 38 38) 100%);
+    background-size: 300% 100%;
+  }
+}
+@keyframes pipeline-pulse {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pipeline-pulse {
+    animation: none;
+  }
 }
