@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@meteora-ag/dynamic-bonding-curve-sdk": "^1.5.13",
     "@modelcontextprotocol/server": "^2.0.0",
     "@pump-fun/pump-sdk": "^2.0.0",
     "@pump-fun/pump-swap-sdk": "^1.20.0",

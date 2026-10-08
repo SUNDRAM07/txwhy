@@ -39,6 +39,7 @@ And what it refuses to fake:
 | Failure | What TxWhy says instead |
 |---|---|
 | Not enough SOL, or not enough tokens to sell | The exact shortfall: what the account holds, what the swap needs, in SOL or in the token's units |
+| A buy bigger than what is left on a Meteora DBC launch pool | The exact room left before the pool graduates, what the buy puts in, and the Meteora DAMM v2 pool the token moves to, read from the pool's own account. A graduated pool gets the same answer with its new pool address |
 | A program rejected it | The named error, cause and fix from 1,874 bundled errors across 37 programs, plus any IDL the program published on chain |
 | A private program rejected it | Which program raised the code, and that only its authors can decode it |
 | Circular arbitrage that missed its gap | That it is built to fail this way and there is nothing to repair |
@@ -169,6 +170,7 @@ npx tsx scripts/test-verify.ts    # 29 verifier cases, most of them attacks; no 
 npx tsx scripts/test-lighthouse.ts # 16 cases: Lighthouse guard instructions from real transactions decoded into plain words; no network
 npx tsx scripts/test-pump.ts      # real Pump.fun / PumpSwap slippage failures: repaired, capped, or explained
 npx tsx scripts/test-v1.ts        # 11 version-1 cases: header repairs, expired blockhash, stale Jupiter / PumpSwap / Raydium swaps, a real landed v1
+npx tsx scripts/dbc-pool-verdict.ts # Meteora DBC pool-state verdicts on live mainnet: a graduated pool through the whole engine, the room-left figures on a live curve
 cd sdk && node test.mjs           # the npm package end to end against production
 node scripts/fuzz-repair.mjs      # 122 malformed, truncated, oversized and hostile inputs: never a 500, never a hang
 node scripts/fuzz-mcp.mjs         # 52 malformed JSON-RPC calls and hostile tool arguments against the MCP server

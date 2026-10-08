@@ -1,6 +1,7 @@
 import {
   AddressLookupTableAccount,
   ComputeBudgetProgram,
+  Connection,
   NonceAccount,
   PublicKey,
   TransactionInstruction,
@@ -12,8 +13,8 @@ import { fetchIdlErrors } from "./idl";
 import { lighthouseDetail } from "./lighthouse";
 import { describeStandingQuote, requoteSwap } from "./requote";
 import type { ProbeResult } from "./requote-pump";
-import { readDirectSwapShape, readSwapShape } from "./swap-shape";
-import { RpcError, rpc } from "./rpc";
+import { METEORA_DBC, readDirectSwapShape, readSwapShape } from "./swap-shape";
+import { RPC_URL, RpcError, rpc } from "./rpc";
 import { getTrace } from "./trace";
 import { V1_MAX_BYTES, decodeV1, inlineAddressCount, rebuildV1 } from "./v1";
 import { type Verification, verifyInstructions } from "./verify";
@@ -433,6 +434,69 @@ async function tokenShortfall(instructions: TransactionInstruction[], logs: stri
   return null;
 }
 
+const SOL_MINT = "So11111111111111111111111111111111111111112";
+const USDC_MINT = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
+const DBC_POOL_PATTERN = /InsufficientLiquidity|SwapAmountIsOverAThreshold|NotEnoughLiquidity|PoolIsCompleted/;
+
+/**
+ * Meteora DBC refusals that have numbers behind them. InsufficientLiquidity (6033, named
+ * SwapAmountIsOverAThreshold in older IDLs) is a buy larger than what is left on the bonding curve
+ * before the pool graduates; PoolIsCompleted (6013) is a pool that already graduated. Both are
+ * answered from the pool's own account: how much room is left, and the DAMM v2 pool the token moves to.
+ */
+export async function dbcPoolVerdict(instructions: TransactionInstruction[], cause: DecodedError, logs: string[]): Promise<{ cause: DecodedError; note: string } | null> {
+  if (!DBC_POOL_PATTERN.test(cause.title) || innermostFailedProgram(logs) !== METEORA_DBC) return null;
+  const hit = instructions.map((ix) => ({ ix, shape: readDirectSwapShape(ix) })).find((h) => h.shape?.program === "Meteora DBC");
+  const poolAddress = hit?.ix.keys[2]?.pubkey.toBase58();
+  if (!hit?.shape || !poolAddress) return null;
+  const sdk = await import("@meteora-ag/dynamic-bonding-curve-sdk");
+  const client = new sdk.DynamicBondingCurveClient(new Connection(RPC_URL, "confirmed"), "confirmed");
+  const pool = (await client.state.getPool(poolAddress))?.poolState;
+  if (!pool) return null;
+  const config = await client.state.getPoolConfig(pool.config);
+  if (!config) return null;
+  const quoteMint = config.quoteMint.toBase58();
+  const decimals =
+    quoteMint === SOL_MINT ? 9 : quoteMint === USDC_MINT ? 6 : ((await rpc<{ value: { decimals: number } }>("getTokenSupply", [quoteMint]).catch(() => null))?.value.decimals ?? 0);
+  const unit = quoteMint === SOL_MINT ? "SOL" : quoteMint === USDC_MINT ? "USDC" : `of quote token ${quoteMint}`;
+  const fmt = (v: bigint) => `${formatUnits(v, decimals)} ${unit}`;
+  const threshold = BigInt(config.migrationQuoteThreshold.toString());
+  const raised = BigInt(pool.quoteReserve.toString());
+  const feeConfig = sdk.DAMM_V2_MIGRATION_FEE_ADDRESS[config.migrationFeeOption];
+  const dammV2 = config.migrationOption === 1 && feeConfig ? sdk.deriveDammV2PoolAddress(feeConfig, pool.baseMint, config.quoteMint).toBase58() : null;
+  const where = dammV2 ? `Meteora DAMM v2 pool ${dammV2}` : config.migrationOption === 0 ? "a Meteora DAMM v1 pool" : "a Meteora DAMM v2 pool";
+  if (pool.isMigrated !== 0 || raised >= threshold) {
+    const moved = pool.isMigrated !== 0 ? "its liquidity moved to" : "its liquidity is being moved to";
+    return {
+      cause: {
+        title: "Launch pool already graduated",
+        code: cause.code,
+        cause: `Meteora DBC pool ${poolAddress} completed its bonding curve (${fmt(raised)} raised; ${fmt(threshold)} graduates it) and ${moved} ${where}. No swap against the launch pool can succeed any more.`,
+        fix: `Trade the token on ${where} instead, directly or through Jupiter, which routes there. Resending this transaction cannot succeed.`,
+      },
+      note: `Meteora DBC pool ${poolAddress} graduated: ${fmt(raised)} raised of ${fmt(threshold)}. Its liquidity sits in ${where}.`,
+    };
+  }
+  const room = threshold - raised;
+  const exactIn = hit.shape.fixed === "tokens_in";
+  return {
+    cause: {
+      title: "Launch pool nearly full",
+      code: cause.code,
+      cause: `Meteora DBC pool ${poolAddress} has ${fmt(room)} of room left before it graduates (${fmt(raised)} raised; ${fmt(threshold)} graduates it). ${exactIn ? `This buy puts in ${fmt(hit.shape.amount)}, more than the curve can take` : "This buy asks for more tokens than the curve has left to sell"}, and the program refuses the whole swap rather than fill part of it.`,
+      fix: `Buy at most ${fmt(room)} now, or send swap2 in partial-fill mode (swap mode 1), which buys what is left and returns the rest. Once the pool graduates the token trades on ${where}. TxWhy never changes the amount you chose, so there is no repair to return.`,
+    },
+    note: `Meteora DBC pool ${poolAddress}: ${fmt(raised)} raised, ${fmt(threshold)} graduates it, ${fmt(room)} left.${exactIn ? ` This buy: ${fmt(hit.shape.amount)}.` : ""}`,
+  };
+}
+
+/** The refusals that can be stated with exact figures from live state instead of the program's one-line error. */
+const PRECISE_PATTERN = new RegExp(`^InsufficientFunds$|${DBC_POOL_PATTERN.source}`);
+async function preciseVerdict(instructions: TransactionInstruction[], cause: DecodedError, logs: string[]): Promise<{ cause: DecodedError; note: string } | null> {
+  if (cause.title === "InsufficientFunds") return tokenShortfall(instructions, logs);
+  return dbcPoolVerdict(instructions, cause, logs).catch(() => null);
+}
+
 /**
  * The node can refuse a transaction before running a single instruction ("invalid transaction: ..."):
  * duplicate ComputeBudget instructions, malformed instruction data, a fee payer that is a program,
@@ -693,15 +757,14 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
       probeCause ?? { title: "Unknown failure", cause: "", fix: "" },
       probeSim.logs ?? [],
     );
-    if (verdict.status === "not_repairable" && probeCause?.title === "InsufficientFunds") {
-      const precise = await tokenShortfall(budget.rest, probeSim.logs ?? []);
-      if (precise) {
-        verdict.cause = precise.cause;
-        verdict.notes.push(precise.note);
-        if (onchain?.error?.title === "InsufficientFunds") onchain.error = precise.cause;
-      }
+    const titleChanged = landed && onchain?.error != null && probeCause != null && onchain.error.title !== probeCause.title;
+    const precise = verdict.status === "not_repairable" && probeCause ? await preciseVerdict(budget.rest, probeCause, probeSim.logs ?? []) : null;
+    if (precise) {
+      verdict.cause = precise.cause;
+      verdict.notes.push(precise.note);
+      if (onchain?.error && PRECISE_PATTERN.test(onchain.error.title)) onchain.error = precise.cause;
     }
-    if (landed && onchain?.error && probeCause && onchain.error.title !== probeCause.title) {
+    if (titleChanged && !precise && onchain?.error && probeCause) {
       notes.push(
         `Re-run today, this transaction fails earlier than it did on chain ("${probeCause.title}") because the accounts and prices it referenced have since changed. That is normal for a transaction that already landed; the on-chain cause above is the one that counts.`,
       );
@@ -1042,15 +1105,14 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
   if (probeSim.err != null) {
     const probeCause = (await decodeSimError(probeSim.err, probeSim.logs ?? [])) ?? cause;
     const verdict = classifyUnrepairable(probeCause ?? { title: "Unknown failure", cause: "", fix: "" }, probeSim.logs ?? []);
-    if (verdict.status === "not_repairable" && probeCause?.title === "InsufficientFunds") {
-      const precise = await tokenShortfall(decoded.instructions, probeSim.logs ?? []);
-      if (precise) {
-        verdict.cause = precise.cause;
-        verdict.notes.push(precise.note);
-        if (onchain?.error?.title === "InsufficientFunds") onchain.error = precise.cause;
-      }
+    const titleChanged = landed && onchain?.error != null && probeCause != null && onchain.error.title !== probeCause.title;
+    const precise = verdict.status === "not_repairable" && probeCause ? await preciseVerdict(decoded.instructions, probeCause, probeSim.logs ?? []) : null;
+    if (precise) {
+      verdict.cause = precise.cause;
+      verdict.notes.push(precise.note);
+      if (onchain?.error && PRECISE_PATTERN.test(onchain.error.title)) onchain.error = precise.cause;
     }
-    if (landed && onchain?.error && probeCause && onchain.error.title !== probeCause.title) {
+    if (titleChanged && !precise && onchain?.error && probeCause) {
       notes.push(`Re-run today, this transaction fails earlier than it did on chain ("${probeCause.title}") because the accounts and prices it referenced have since changed. That is normal for a transaction that already landed; the on-chain cause above is the one that counts.`);
     }
     const failedOnSlippage = onchain?.error != null && SLIPPAGE_PATTERN.test(`${onchain.error.title} ${onchain.error.code ?? ""}`);

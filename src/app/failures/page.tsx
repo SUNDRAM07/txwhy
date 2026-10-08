@@ -24,6 +24,7 @@ const WHY_LABELS: Record<string, [string, string]> = {
   more_than_slippage: ["Slippage was not the only problem", "still fails with the limit moved"],
   state_changed_since: ["Wallet or pool changed since it landed", "an artifact of replaying after the fact; does not apply before sending"],
   pool_graduated: ["Launch pool already graduated", "the token trades elsewhere now"],
+  pool_nearly_full: ["Launch pool nearly full", "the buy is bigger than what is left before graduation; buy less or use partial fill"],
   chained_swaps: ["Two swaps chained together", "moving one limit leaves the next short"],
   wallet_guard: ["Wallet guard tripped", "needs a fresh transaction from the app"],
   no_funds: ["Not enough funds", "no rebuild adds money"],

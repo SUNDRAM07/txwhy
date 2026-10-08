@@ -273,6 +273,7 @@ export function whyNot(result: { status: string; summary: string; cause: { title
   if (/Lighthouse guard|safety guard set by the wallet/i.test(text)) return "wallet_guard";
   if (/chains \d+ direct swaps/.test(text)) return "chained_swaps";
   if (/completed its bonding curve/.test(text)) return "pool_graduated";
+  if (/Launch pool nearly full|room left before it graduates|InsufficientLiquidity|SwapAmountIsOverAThreshold/.test(text)) return "pool_nearly_full";
   if (/moved more than \d+% against this trade/.test(text)) return "beyond_cap";
   if (/No swap found that TxWhy can re-quote|not a top-level instruction|inside another program by CPI/.test(text)) return "routed_by_private_program";
   if (/spliced in but the transaction still fails|lifted the transaction still fails|both raised \d+%/.test(text)) return "more_than_slippage";

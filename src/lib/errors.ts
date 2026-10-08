@@ -517,6 +517,12 @@ export function enrichCause(name: string, msg: string | undefined): string {
   if (n === "invalidsqrtpricelimitdirection") {
     return "The client passed a sqrt_price_limit on the wrong side of the current price for this swap's direction. Orca rejects the swap before touching the pool. This is a bug in how the transaction was built, not a market move.";
   }
+  if (n === "insufficientliquidity" || n === "swapamountisoverathreshold" || n === "notenoughliquidity") {
+    return "The pool does not have enough liquidity left to fill a trade of this size. On a launch pool (a bonding curve such as Meteora DBC) it means the buy is larger than what is left before the pool graduates, and the program refuses the whole swap rather than fill part of it.";
+  }
+  if (n === "pooliscompleted") {
+    return "The launch pool has completed its bonding curve and graduated. Its liquidity has moved, or is moving, to the AMM pool it migrates to, so no swap against the launch pool can succeed any more.";
+  }
   if (!thin) return msg as string;
   if (n.includes("slippage") || n.includes("toolittle") || n.includes("belowmin") || n.includes("amountoutbelow")) {
     return "The swap would have paid out less than the minimum this transaction allowed. The price moved between the moment the quote was taken and the moment the transaction executed, by more than the slippage tolerance set in the swap.";
@@ -539,6 +545,8 @@ export function suggestFixForName(name: string): string | undefined {
   if (n === "invalidsqrtpricelimitdirection") return "Rebuild the swap with the program's SDK, which computes sqrt_price_limit for the direction (or pass 0 for no limit). Retrying the same transaction cannot succeed.";
   if (n.includes("slippage") || n.includes("toolittle") || n.includes("toomuch") || n.includes("belowmin") || n.includes("amountoutbelow")) return "Get a fresh quote and resend with the same tolerance; the price has moved on. Widen the tolerance only if it keeps failing on a fast-moving token, and know that a wide tolerance is what sandwich bots feed on.";
   if (n.includes("expired") || n.includes("stale")) return "Refresh the quote/price data and rebuild the transaction — the inputs went stale.";
+  if (n === "insufficientliquidity" || n === "swapamountisoverathreshold" || n === "notenoughliquidity") return "Trade a smaller amount. On Meteora DBC, buy at most what is left before graduation, or use swap2 in partial-fill mode, which buys what is left and returns the rest. Paste the failed transaction into TxWhy to see the exact room left.";
+  if (n === "pooliscompleted") return "Trade the token on the pool it migrated to (Meteora DAMM v2 for DBC launches), directly or through Jupiter. Paste the failed transaction into TxWhy to get that pool's address.";
   if (n.includes("insufficient")) return "Top up the relevant balance (check both SOL for fees and the token being spent).";
   if (n.includes("paused") || n.includes("frozen") || n.includes("disabled")) return "The protocol has this feature paused — wait or check the project's status channels.";
   if (n.includes("exceed") || n.includes("cap") || n.includes("maxamount") || n.endsWith("limit")) return "Reduce the amount; a protocol limit or cap applies.";
