@@ -57,6 +57,18 @@ And what it refuses to fake:
 
 A rebuilt transaction is only ever returned if it passes simulation. TxWhy will not hand back something that would fail again.
 
+## Self-host
+
+The API, the site and the worker run anywhere Docker runs, in your own region, next to your own RPC.
+
+```bash
+docker build -t txwhy . && docker run -p 3000:3000 -e SOLANA_RPC_URL=https://your-rpc txwhy
+# or the whole thing, with your own failure index and Redis:
+SOLANA_RPC_URL=https://your-rpc docker compose up --build
+```
+
+Only `SOLANA_RPC_URL` is required. Optional: `SOLANA_RPC_FALLBACK_URL`; `JUPITER_API_KEY` and `JUPITER_API_BASE` for a paid Jupiter tier; `WORKER_URL` and `WORKER_SECRET` to attach the worker (global rate limits, /failures, /stats); `STATS_SALT` for hashed usage counters; `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` for the bot; `X402_PAY_TO` for pay-per-repair. Nothing is phoned home: a self-hosted TxWhy never contacts txwhy.vercel.app.
+
 ## How it works
 
 1. **Diagnose.** Fetch or simulate the transaction, build the full instruction and CPI tree, and find the exact failing call by replaying the runtime's own `invoke` / `success` / `failed` log lines.

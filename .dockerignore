@@ -1,0 +1,15 @@
+node_modules
+.next
+.git
+.github
+.vercel
+.env*
+crates/**/target
+python/.venv
+python/dist
+python/build
+sdk/node_modules
+sdk/dist
+extension
+scripts/soak-results.json
+*.log

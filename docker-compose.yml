@@ -1,0 +1,34 @@
+# The whole of TxWhy on your own machine or region: the API and site, the always-on worker that
+# builds your own failure index and enforces global rate limits, and Redis for both.
+#   SOLANA_RPC_URL=https://your-rpc docker compose up --build
+# Then open http://localhost:3000. Without the worker block, the API still repairs; /failures and /stats stay empty.
+services:
+  api:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      SOLANA_RPC_URL: ${SOLANA_RPC_URL:-https://api.mainnet-beta.solana.com}
+      WORKER_URL: http://worker:8787
+      WORKER_SECRET: ${WORKER_SECRET:-change-me}
+      STATS_SALT: ${STATS_SALT:-change-me-too}
+    depends_on:
+      - worker
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      SOLANA_RPC_URL: ${SOLANA_RPC_URL:-https://api.mainnet-beta.solana.com}
+      REDIS_URL: redis://redis:6379
+      WORKER_SECRET: ${WORKER_SECRET:-change-me}
+      PORT: "8787"
+    depends_on:
+      - redis
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "no"]
+    volumes:
+      - txwhy-redis:/data
+volumes:
+  txwhy-redis:
