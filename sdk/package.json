@@ -1,6 +1,6 @@
 {
   "name": "@txwhy/sdk",
-  "version": "0.3.3",
+  "version": "0.4.0",
   "description": "Failed Solana transaction in, working transaction out. Repair inside your send loop, and verify every repair offline.",
   "license": "MIT",
   "author": "Sundram Mahajan",
@@ -19,7 +19,9 @@
     "blockhash",
     "compute-units",
     "agents",
-    "jupiter"
+    "jupiter",
+    "wallet-adapter",
+    "phantom"
   ],
   "type": "module",
   "main": "./dist/index.cjs",
@@ -40,6 +42,11 @@
       "types": "./dist/types/sdk/src/kit.d.ts",
       "import": "./dist/kit.js",
       "require": "./dist/kit.cjs"
+    },
+    "./wallet": {
+      "types": "./dist/types/sdk/src/wallet.d.ts",
+      "import": "./dist/wallet.js",
+      "require": "./dist/wallet.cjs"
     }
   },
   "bin": {

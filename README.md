@@ -11,6 +11,7 @@ TxWhy finds the exact reason a Solana transaction failed, rebuilds it, and prove
 - Telegram: **[@txwhy_bot](https://t.me/txwhy_bot)** (try `/demo`)
   In a private chat, `/watch <address>` makes the bot message you the moment a transaction from that wallet fails, with the cause and the fix (up to 3 wallets, 5 alerts an hour each; `/unwatch` deletes it).
 - Usage, in the open: https://txwhy.vercel.app/stats
+- Every claim with its one-click check: https://txwhy.vercel.app/proof
 
 ## Why
 
@@ -21,6 +22,16 @@ Explorers and AI explainers tell you what happened. Nothing hands you the transa
 Most failures never reach the chain. Wallets and agents simulate first, and the transaction dies there. So the core flow is not "paste an old signature". It is:
 
 > Your transaction just failed simulation. Hand it to TxWhy. Get back one that passes, typically in under a second.
+
+## One line, any dApp or wallet
+
+```ts
+import { withRepair } from "@txwhy/sdk/wallet";
+
+const { signature, repairs } = await withRepair(wallet, connection).sendTransaction(tx);
+```
+
+`wallet` is whatever `useWallet()` gives you (Phantom, Solflare, Backpack) or `window.solana`. The transaction is simulated; if it would fail, TxWhy rebuilds it, the repair is verified locally against the original, and only then is the wallet asked to sign, once, for the transaction that lands. Bots and agents use `sendWithRepair` with their own keypair; the same loop exists for @solana/kit and for Python.
 
 ## What it fixes
 

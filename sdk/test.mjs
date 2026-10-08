@@ -84,5 +84,25 @@ try {
   const e = await explainError({ error: { InstructionError: [2, { Custom: 6001 }] }, logs: ["Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 invoke [1]", "Program log: AnchorError occurred. Error Code: SlippageToleranceExceeded. Error Number: 6001. Error Message: Slippage tolerance exceeded.", "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x1771"] }, opts);
   check("explainError names a Jupiter slippage failure", e.cause?.title === "SlippageToleranceExceeded" && e.repairable === true, `-> ${e.cause?.title}`);
 }
+// The wallet entry point: a wallet-adapter-shaped object that only signs. The user is prompted once, for the transaction that passes.
+{
+  const { withRepair } = await import("./dist/wallet.js");
+  const example = await getExample("blockhash");
+  const tx = VersionedTransaction.deserialize(Buffer.from(example.transaction, "base64"));
+  let prompts = 0;
+  const wallet = { publicKey: { toBase58: () => tx.message.staticAccountKeys[0].toBase58() }, signTransaction: async (t) => { prompts++; return t; } };
+  try {
+    const out = await withRepair(wallet, connection, opts).sendTransaction(tx);
+    check("withRepair(wallet).sendTransaction repairs then prompts once", out.signature === "STUBBED-NOT-SENT" && out.repairs.length === 1 && prompts === 1, `-> repairs=${out.repairs.length} prompts=${prompts}`);
+  } catch (e) {
+    check("withRepair(wallet).sendTransaction repairs then prompts once", false, `-> ${e.message}`);
+  }
+  try {
+    await withRepair({ publicKey: null }, connection, opts).sendTransaction(tx);
+    check("withRepair refuses a wallet without signTransaction", false);
+  } catch (e) {
+    check("withRepair refuses a wallet without signTransaction", e instanceof TxWhyError, `-> ${e.message.slice(0, 80)}`);
+  }
+}
 console.log(`\n${pass}/${total} passed`);
 process.exit(pass === total ? 0 : 1);

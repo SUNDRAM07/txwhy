@@ -91,6 +91,17 @@ const { signature, repairs } = await sendWithRepair(
 );`,
   },
   {
+    id: "wallet",
+    label: "Any dApp",
+    install: "npm i @txwhy/sdk",
+    code: `import { withRepair } from "@txwhy/sdk/wallet";
+
+// Phantom, Solflare, Backpack: anything that can sign. One prompt, for the tx that lands.
+const { connection } = useConnection();
+const wallet = useWallet();
+const { signature, repairs } = await withRepair(wallet, connection).sendTransaction(tx);`,
+  },
+  {
     id: "py",
     label: "Python",
     install: 'pip install "txwhy[solana]"',
@@ -424,6 +435,12 @@ export default function Home() {
         <section id="proof" className={section}>
           <p className={eyebrow}>Proof, on chain</p>
           <h2 className="mt-2 text-2xl font-bold tracking-tight">Two transactions on mainnet you can open yourself</h2>
+          <p className={`mt-2 ${muted}`}>
+            Every other claim on this site, next to the one link that checks it:{" "}
+            <Link href="/proof" className={link}>
+              txwhy.vercel.app/proof
+            </Link>
+          </p>
           <ul className="mt-5 grid gap-4 text-sm leading-relaxed sm:grid-cols-2">
             <li className={card}>
               <p className="font-semibold">A repaired transaction that landed</p>

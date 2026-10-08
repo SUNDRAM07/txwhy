@@ -81,6 +81,22 @@ verifyInstructions({ payer, instructions: before }, { payer, instructions: after
 
 The TxWhy server runs this same function on its own output and refuses to return anything that fails it.
 
+## Any dApp, any wallet: one line
+
+Wrap the connected wallet. The user sees one signature prompt, for the transaction that will actually land.
+
+```ts
+import { withRepair } from "@txwhy/sdk/wallet";
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
+
+const { connection } = useConnection();
+const wallet = useWallet(); // Phantom, Solflare, Backpack: anything with signTransaction
+
+const { signature, repairs } = await withRepair(wallet, connection).sendTransaction(tx);
+```
+
+What happens: simulate; if it would fail, TxWhy rebuilds it; the repair is verified locally against the original (same signers, every other instruction byte for byte); only then is the wallet asked to sign. A repair that fails verification never reaches the wallet. `window.solana` (Phantom injected) works the same way, and no wallet-adapter package is required by this entry point.
+
 ## @solana/kit users, and version 1 transactions
 
 The same loop exists for [@solana/kit](https://github.com/anza-xyz/kit), with no web3.js involved, and it is the way to send **version 1** transactions (SIMD-0385, mainnet since Sep 15, 2026), which web3.js 1.x can read but never serialize, sign or send:

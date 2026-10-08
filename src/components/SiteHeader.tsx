@@ -6,6 +6,7 @@ const LINKS: { href: string; label: string; wide?: boolean }[] = [
   { href: "/failures", label: "Failure index" },
   { href: "/#api", label: "API" },
   { href: "/stats", label: "Usage", wide: true },
+  { href: "/proof", label: "Proof", wide: true },
 ];
 
 const link = "rounded px-1 py-2 transition-colors duration-100 hover:text-emerald-600 focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:outline-none dark:hover:text-emerald-400";
