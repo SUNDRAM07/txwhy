@@ -429,6 +429,53 @@ async function watchOnce(store: Store) {
   }
 }
 
+/** Hourly snapshot of the cumulative counters, kept 30 days, so the index has a history and a downloadable dataset. */
+const HISTORY_DAYS = 30;
+let lastHistoryHour = "";
+async function snapshotHistory(store: Store) {
+  const now = new Date();
+  const hour = now.toISOString().slice(0, 13);
+  const seenBy = await store.hgetall("i:seen_by_program");
+  const failedBy = await store.hgetall("i:failed_by_program");
+  const verdicts = await store.hgetall("i:repair:verdicts");
+  const point = {
+    t: `${hour}:00:00.000Z`,
+    seen: await store.get("i:seen"),
+    failed: await store.get("i:failed"),
+    attempted: await store.get("i:repair:attempted"),
+    rebuilt: verdicts.repaired ?? 0,
+    by: Object.fromEntries(Object.keys(seenBy).map((p) => [p, [seenBy[p], failedBy[p] ?? 0]])),
+  };
+  await store.hset("i:hist", hour, JSON.stringify(point));
+  if (hour !== lastHistoryHour) {
+    lastHistoryHour = hour;
+    const cutoff = new Date(now.getTime() - HISTORY_DAYS * 86_400_000).toISOString().slice(0, 13);
+    for (const key of Object.keys(await store.hgetallStr("i:hist"))) if (key < cutoff) await store.hdel("i:hist", key);
+  }
+}
+
+export interface HistoryPoint {
+  t: string;
+  seen: number;
+  failed: number;
+  attempted: number;
+  rebuilt: number;
+  by?: Record<string, [number, number]>;
+}
+
+async function readHistory(store: Store, days: number, withPrograms: boolean): Promise<HistoryPoint[]> {
+  const raw = await store.hgetallStr("i:hist");
+  const cutoff = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 13);
+  return Object.keys(raw)
+    .filter((k) => k >= cutoff)
+    .sort()
+    .map((k) => {
+      const point = JSON.parse(raw[k]) as HistoryPoint;
+      if (!withPrograms) delete point.by;
+      return point;
+    });
+}
+
 async function readIndex(store: Store) {
   const seen = await store.get("i:seen");
   const failed = await store.get("i:failed");
@@ -446,6 +493,7 @@ async function readIndex(store: Store) {
     topCauses: (await store.ztop("i:causes", 12)).map((r) => ({ title: r.member, count: r.score })),
     topCulprits: (await store.ztop("i:culprits", 10)).map((r) => ({ program: r.member, count: r.score })),
     repair: await readRepairStats(store),
+    history: await readHistory(store, 7, false),
     watch: { addresses: Object.keys(await store.hgetallStr("w:list")).length, alerts: await store.get("w:alerts") },
   };
 }
@@ -546,6 +594,9 @@ async function main() {
       }
       if (req.method === "GET" && path === "/stats") return json(res, 200, await readStats(store));
       if (req.method === "GET" && path === "/index") return json(res, 200, await readIndex(store));
+      if (req.method === "GET" && path === "/history") {
+        return json(res, 200, { since: await store.getStr("i:since"), days: HISTORY_DAYS, points: await readHistory(store, HISTORY_DAYS, true) });
+      }
       if (req.method === "POST" && path === "/watch") {
         if (!SECRET || req.headers.authorization !== `Bearer ${SECRET}`) return json(res, 401, { error: "unauthorized" });
         const body = (await readBody(req)) as { op?: string; chatId?: number; address?: string };
@@ -581,6 +632,7 @@ async function main() {
     const loop = async () => {
       try {
         await sampleOnce(store);
+        await snapshotHistory(store);
       } catch (e) {
         console.error("index:", e instanceof Error ? e.message : e);
       }

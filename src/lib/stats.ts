@@ -188,6 +188,34 @@ export interface FailureIndex {
     why?: Record<string, number>;
     whyByProgram?: Record<string, Record<string, number>>;
   };
+  /** Hourly snapshots of the cumulative counters, last 7 days, totals only. Absent on older workers. */
+  history?: HistoryPoint[];
+}
+
+export interface HistoryPoint {
+  t: string;
+  seen: number;
+  failed: number;
+  attempted: number;
+  rebuilt: number;
+  by?: Record<string, [number, number]>;
+}
+
+export interface FailureHistory {
+  since: string | null;
+  days: number;
+  points: HistoryPoint[];
+}
+
+/** The index over time: hourly snapshots for 30 days, per program. Null when no worker is attached. */
+export async function readFailureHistory(): Promise<FailureHistory | null> {
+  if (!WORKER_URL) return null;
+  try {
+    const res = await fetch(`${WORKER_URL}/history`, { cache: "no-store", signal: AbortSignal.timeout(3000) });
+    return res.ok ? ((await res.json()) as FailureHistory) : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The worker's live sample of mainnet failures. Null when no worker is attached. */

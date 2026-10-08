@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { FailureHistory } from "@/components/FailureHistory";
 import { SiteHeader } from "@/components/SiteHeader";
 import { readFailureIndex } from "@/lib/stats";
 
@@ -107,6 +108,12 @@ export default async function FailuresPage() {
                 note: `${pct(p.failureRate)} of ${n(p.seen)}`,
               }))}
             />
+          </section>
+
+          <section className="mt-10">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-500">Failure rate, hour by hour</h2>
+            <p className="mt-1 text-xs text-neutral-500">Share of the sampled transactions that failed in each hour, all nine programs together, last 7 days.</p>
+            <FailureHistory points={index.history ?? []} />
           </section>
 
           <div className="mt-10 grid gap-8 sm:grid-cols-2">
