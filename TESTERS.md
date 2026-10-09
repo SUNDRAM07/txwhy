@@ -1,0 +1,18 @@
+# External testers and what they found
+
+| # | Who | Date | What they ran | Verdict | What changed because of it |
+|---|---|---|---|---|---|
+| 1 | Gwill (@gwill on Colosseum Arena, builder of Vouch) | Oct 4, 2026 | Three fresh failed Jupiter swaps (Custom 6001) through `npx @txwhy/sdk` | Explanation right on 3 of 3. Would sign 0 of 3: the one repair rode a 10.2% price-impact route; the two non-repairs read like repairs in the CLI. Called the CLI diff output "excellent". | Oct 5: engine refuses any route above 3% price impact and any quote more than 25% worse than the original; both verifiers enforce the 25% cap; CLI prints NO REPAIR headlines. SDK 0.3.2, txwhy-verify 0.1.2. |
+| 2 | Andrzej (@kelvara_bear on Colosseum Arena, builder of Kelvara) | Oct 9, 2026 | A failed Drift Vaults withdraw request from March 2026 through the website | Came back "Unrecognized error": the node reported a transaction-level rent error with a payload ({"InsufficientFundsForRent":{"account_index":1}}) that the decoder did not handle | Fixed and live within the hour: payload errors decode through the transaction-error table; the rent check now names the account, its balance and size, and the rent-exempt minimum from the RPC (0.00065 SOL for an empty account), for landed failures and transactions about to be sent. Regression case added to scripts/test-explain.mjs. Quote pending permission. |
+
+Quote for the submission (verbatim): "The CLI output itself is excellent (blockhash/quote/CU diff, 'nothing else was touched')."
+
+Permission to quote: given Oct 5, 2026 ("Quote away, happily"). On-screen use in the video: granted Oct 5 ("Yes, show it, name visible is fine"), credit as "Godswill, Vouch, vouchhq.vercel.app". He asked to name us in his submission: yes.
+
+Round two (Oct 5, SDK 0.3.2): 2 and 3 read NO REPAIR: QUOTE STALE, correct. 1 passed unchanged (price back inside tolerance) but printed no amounts or impact; wording inconsistent between "a blockhash or fee change cannot fix it" and a blockhash-only repair; a 19x priority-fee jump with no reason shown; never saw the 3% refusal fire. Fixed Oct 6: standing-quote line, consistent wording, fee reasons in the CLI, example?kind=impact demo. SDK 0.3.3.
+
+Round three (Oct 6, SDK 0.3.3): standing-quote line confirmed good, blockhash row "explains itself"; but "10.21% price impact ... inside your 1.00% tolerance" read wrong (impact and tolerance are different things); the thin-pool demo returned 502 six times then "No thin pool found"; the /repair demo button showed no spinner for 30 s and the previous "Repaired" result stayed on screen. Fixed Oct 6 (same day): parallel, time-boxed thin-pool search (answers in seconds, hit cached 10 min); spinner + stale result cleared on demo start; standing-quote line separates tolerance from impact and flags impact above 3% explicitly. His own traction slide cites our verified delivery on Vouch.
+
+Round four (Oct 7, 0.3.3): refusal confirmed firing ("5.06% price impact, no transaction returned. Exactly what a signer wants"); standing-quote line "reads clearly". One bug: the refusal response reused the circular-arbitrage fix text ("Nothing to fix. This transaction did what it was designed to do...") on a 2 SOL buy. Fixed Oct 7: each final refusal carries its own fix line. His closing: "four rounds, every point fixed the same day."
+
+Close (Oct 7, 3:13 PM): confirmed the refusal fix live ("6.04% impact, no transaction, and the fix line reads... That last sentence is a nice touch. All good."). His closing line: "this was the most useful swap of the hackathon for us as well, and you were the first stranger to get paid on Vouch." Both sides will exchange submission links.
