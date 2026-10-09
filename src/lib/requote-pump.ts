@@ -178,7 +178,7 @@ async function limitFromProbe(
   lifted[index] = new (ix.constructor as typeof TransactionInstruction)({ programId: ix.programId, keys: ix.keys, data });
   const result = await probe(lifted);
   if (result.err != null && result.errorTitle === "PoolIsCompleted") {
-    throw new NotSlippageError("this launch pool has completed its bonding curve and migrated, so no swap against it can succeed any more; trade the token on the pool it migrated to");
+    throw new PoolGraduatedError(`The ${shape.program} ${shape.name} cannot be repaired by moving its limit: this launch pool has completed its bonding curve and migrated, so no swap against it can succeed any more; trade the token on the pool it migrated to.`);
   }
   if (result.err != null) {
     throw new NotSlippageError(
@@ -197,6 +197,8 @@ async function limitFromProbe(
 class NotSlippageError extends Error {}
 /** The price is past the cap: a final answer, not "try a fresh quote". */
 class BeyondCapError extends Error {}
+/** The launch pool has graduated: no quote against it can ever work, so this is final too. */
+class PoolGraduatedError extends Error {}
 
 type Shape = NonNullable<ReturnType<typeof readDirectSwapShape>>;
 const rebuild = (ix: TransactionInstruction, data: Buffer) => new (ix.constructor as typeof TransactionInstruction)({ programId: ix.programId, keys: ix.keys, data });
@@ -326,7 +328,7 @@ export async function requoteDirect(instructions: TransactionInstruction[], hint
       fresh = await freshLimit(ix, shape);
     }
   } catch (e) {
-    if (e instanceof BeyondCapError) return { ok: false, final: true, reason: e.message };
+    if (e instanceof BeyondCapError || e instanceof PoolGraduatedError) return { ok: false, final: true, reason: e.message };
     if (e instanceof NotSlippageError) return { ok: false, reason: `The ${shape.program} ${shape.name} cannot be repaired by moving its limit: ${e.message}.` };
     return { ok: false, reason: `Could not price the ${shape.program} swap from the pool's current state (${e instanceof Error ? e.message : "unknown error"}).` };
   }

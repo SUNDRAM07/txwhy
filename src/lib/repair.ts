@@ -376,6 +376,7 @@ function finalFix(reason: string, fallback: string): string {
   if (/circular arbitrage/i.test(reason)) return "Nothing to fix. This transaction did what it was designed to do when the opportunity was gone.";
   if (/price impact/i.test(reason)) return "Wait for liquidity or trade a smaller amount, then get a fresh quote. Do not widen slippage to force a thin route through; that is what the impact figure is warning about.";
   if (/moved more than/i.test(reason)) return "Decide whether you still want this trade at today's price. If so, get a fresh quote and rebuild; TxWhy will not move a limit that far on your behalf.";
+  if (GRADUATED_PATTERN.test(reason)) return "Trade the token on the pool it migrated to (Meteora DAMM v2 for DBC launches), directly or through Jupiter. Resending or re-quoting against the launch pool cannot succeed.";
   return fallback;
 }
 
@@ -490,12 +491,23 @@ export async function dbcPoolVerdict(instructions: TransactionInstruction[], cau
   };
 }
 
-/** The refusals that can be stated with exact figures from live state instead of the program's one-line error. */
-const PRECISE_PATTERN = new RegExp(`^InsufficientFunds$|${DBC_POOL_PATTERN.source}`);
-async function preciseVerdict(instructions: TransactionInstruction[], cause: DecodedError, logs: string[]): Promise<{ cause: DecodedError; note: string } | null> {
-  if (cause.title === "InsufficientFunds") return tokenShortfall(instructions, logs);
-  return dbcPoolVerdict(instructions, cause, logs).catch(() => null);
+/**
+ * The refusals that can be stated with exact figures from live state instead of the program's one-line
+ * error. `replaces` says which on-chain causes the precise one may stand in for: a pool that graduated
+ * since must not overwrite an on-chain "insufficient funds", and vice versa.
+ */
+async function preciseVerdict(instructions: TransactionInstruction[], cause: DecodedError, logs: string[]): Promise<{ cause: DecodedError; note: string; replaces: RegExp } | null> {
+  if (cause.title === "InsufficientFunds") {
+    const precise = await tokenShortfall(instructions, logs);
+    return precise ? { ...precise, replaces: /^InsufficientFunds$/ } : null;
+  }
+  const precise = await dbcPoolVerdict(instructions, cause, logs).catch(() => null);
+  return precise ? { ...precise, replaces: DBC_POOL_PATTERN } : null;
 }
+
+const GRADUATED_PATTERN = /completed its bonding curve/;
+/** With the limit lifted the swap fails on money, not price: a fresh quote cannot help, so the verdict is final. */
+const FUNDS_NOW_PATTERN = /still fails \((Insufficient SOL|InsufficientFunds|Not enough tokens to swap)\)/;
 
 /**
  * The node can refuse a transaction before running a single instruction ("invalid transaction: ..."):
@@ -762,7 +774,7 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
     if (precise) {
       verdict.cause = precise.cause;
       verdict.notes.push(precise.note);
-      if (onchain?.error && PRECISE_PATTERN.test(onchain.error.title)) onchain.error = precise.cause;
+      if (onchain?.error && precise.replaces.test(onchain.error.title)) onchain.error = precise.cause;
     }
     if (titleChanged && !precise && onchain?.error && probeCause) {
       notes.push(
@@ -848,16 +860,17 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
         finalVerdict = requote.reason;
       } else {
         notes.push(requote.reason);
-        if (requote.fits) notSlippage = true;
+        if (requote.fits || FUNDS_NOW_PATTERN.test(requote.reason)) notSlippage = true;
       }
     }
 
     if (!requoted && finalVerdict) {
       const base = landed ? (onchain?.error ?? verdict.cause ?? probeCause) : (verdict.cause ?? probeCause);
+      const graduated = GRADUATED_PATTERN.test(finalVerdict) ? await dbcPoolVerdict(budget.rest, { title: "PoolIsCompleted", code: base?.code, cause: "", fix: "" }, probeSim.logs ?? []).catch(() => null) : null;
       return {
         status: "not_repairable",
         summary: finalVerdict,
-        cause: base ? { ...base, fix: finalFix(finalVerdict, base.fix) } : null,
+        cause: graduated ? graduated.cause : base ? { ...base, fix: finalFix(finalVerdict, base.fix) } : null,
         changes: [],
         repairedTransaction: null,
         simulation: {
@@ -866,7 +879,7 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
           error: probeCause,
           logsTail: (probeSim.logs ?? []).slice(-12),
         },
-        notes: [],
+        notes: graduated ? [graduated.note] : [],
       };
     }
     if (!requoted) return {
@@ -1110,7 +1123,7 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
     if (precise) {
       verdict.cause = precise.cause;
       verdict.notes.push(precise.note);
-      if (onchain?.error && PRECISE_PATTERN.test(onchain.error.title)) onchain.error = precise.cause;
+      if (onchain?.error && precise.replaces.test(onchain.error.title)) onchain.error = precise.cause;
     }
     if (titleChanged && !precise && onchain?.error && probeCause) {
       notes.push(`Re-run today, this transaction fails earlier than it did on chain ("${probeCause.title}") because the accounts and prices it referenced have since changed. That is normal for a transaction that already landed; the on-chain cause above is the one that counts.`);
@@ -1154,20 +1167,21 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
         finalVerdict = requote.reason;
       } else {
         notes.push(requote.reason);
-        if (requote.fits) notSlippage = true;
+        if (requote.fits || FUNDS_NOW_PATTERN.test(requote.reason)) notSlippage = true;
       }
     }
     if (!requoted) {
       const base = landed ? (onchain?.error ?? verdict.cause ?? probeCause) : (verdict.cause ?? probeCause);
       const slippageNow = wantsRequote && !notSlippage;
+      const graduated = finalVerdict && GRADUATED_PATTERN.test(finalVerdict) ? await dbcPoolVerdict(decoded.instructions, { title: "PoolIsCompleted", code: base?.code, cause: "", fix: "" }, probeSim.logs ?? []).catch(() => null) : null;
       return {
         status: finalVerdict ? "not_repairable" : slippageNow ? "needs_requote" : verdict.status === "needs_requote" ? "not_repairable" : verdict.status,
         summary: finalVerdict ?? (slippageNow ? "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote." : (verdict.cause?.cause ?? "This transaction fails for a reason that cannot be fixed by rebuilding it.")),
-        cause: finalVerdict && base ? { ...base, fix: finalFix(finalVerdict, base.fix) } : base,
+        cause: graduated ? graduated.cause : finalVerdict && base ? { ...base, fix: finalFix(finalVerdict, base.fix) } : base,
         changes: [],
         repairedTransaction: null,
         simulation: { passed: false, unitsConsumed: probeSim.unitsConsumed ?? null, error: probeCause, logsTail: (probeSim.logs ?? []).slice(-12) },
-        notes: finalVerdict ? [] : [...verdict.notes, ...notes],
+        notes: finalVerdict ? (graduated ? [graduated.note] : []) : [...verdict.notes, ...notes],
       };
     }
   }
