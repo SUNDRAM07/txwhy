@@ -596,6 +596,24 @@ export function decodeTransactionError(
     }
   }
 
+  // Transaction-level errors with a payload: {"InsufficientFundsForRent":{"account_index":1}}, {"DuplicateInstruction":3},
+  // {"ProgramExecutionTemporarilyRestricted":{"account_index":2}}. Same table as the bare string form, plus where it points.
+  if (typeof err === "object" && err !== null) {
+    const [key] = Object.keys(err as Record<string, unknown>);
+    const known = key ? TX_ERRORS[key] : undefined;
+    if (known) {
+      const detail = (err as Record<string, unknown>)[key];
+      const index =
+        detail && typeof detail === "object" && "account_index" in (detail as Record<string, unknown>)
+          ? Number((detail as { account_index: number }).account_index)
+          : typeof detail === "number"
+            ? detail
+            : null;
+      const where = index == null ? "" : key === "DuplicateInstruction" ? ` Instruction #${index + 1} is the duplicate.` : ` The account is #${index + 1} in the transaction's account list.`;
+      return { ...known, code: key, cause: `${known.cause}${where}` };
+    }
+  }
+
   return {
     title: "Unrecognized error",
     cause: JSON.stringify(err),

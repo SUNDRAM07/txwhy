@@ -239,6 +239,7 @@ export async function getTrace(signature: string): Promise<Trace | null> {
         const ix = result.transaction.message.instructions[i] as unknown as { programId?: string; accounts?: string[]; data?: string } | undefined;
         return ix?.programId && typeof ix.data === "string" ? { programId: ix.programId, accounts: ix.accounts ?? [], data: base58ToBytes(ix.data) } : undefined;
       }) ?? decodeTransactionError(err, failedProgramId, logs, idlErrors),
+    rawError: err,
     logs,
     tree: buildTree(result, failedOuterIndex, failedPrograms, logs),
   };

@@ -505,6 +505,41 @@ async function preciseVerdict(instructions: TransactionInstruction[], cause: Dec
   return precise ? { ...precise, replaces: DBC_POOL_PATTERN } : null;
 }
 
+/**
+ * The runtime's post-execution rent check names an account only by its index. Say which account it is,
+ * what it holds, and the rent-exempt minimum for its size, so the fix is a number rather than a rule.
+ */
+async function rentShortfall(err: unknown, keys: PublicKey[]): Promise<{ cause: DecodedError; note: string } | null> {
+  const detail = err && typeof err === "object" ? (err as { InsufficientFundsForRent?: { account_index?: number } }).InsufficientFundsForRent : undefined;
+  const index = detail?.account_index;
+  if (index == null || !keys[index]) return null;
+  const address = keys[index].toBase58();
+  const info = (await rpc<{ value: { lamports: number; space?: number } | null }>("getAccountInfo", [address, { encoding: "base64", dataSlice: { offset: 0, length: 0 }, commitment: "confirmed" }]).catch(() => null))?.value ?? null;
+  const space = info?.space ?? 0;
+  const minimum = await rpc<number>("getMinimumBalanceForRentExemption", [space]).catch(() => null);
+  if (minimum == null) return null;
+  const holds = info?.lamports ?? 0;
+  const sol = (v: number) => `${(v / 1e9).toFixed(6)} SOL`;
+  const exists = info != null;
+  return {
+    cause: {
+      title: "Account left below rent minimum",
+      code: "InsufficientFundsForRent",
+      cause: `After this transaction, account ${address} (#${index + 1} in the account list) would hold less than the rent-exempt minimum, and the runtime refuses any transaction that leaves an account under that line. ${
+        exists
+          ? `It holds ${sol(holds)} now and stores ${space} bytes, so its minimum is ${sol(minimum)}.`
+          : `It does not exist yet, so whatever creates it must fund it with at least ${sol(minimum)}, the minimum for an empty account; more for any data it stores.`
+      }`,
+      fix: exists
+        ? `Leave at least ${sol(minimum)} in ${address} after the transaction: lower the amount it sends, or top the account up first.${holds < minimum ? ` It is already ${sol(minimum - holds)} short.` : ""}`
+        : `Fund ${address} with at least ${sol(minimum)} in the same transaction (a System transfer or a create with enough lamports), then resend.`,
+    },
+    note: `Rent check: ${address} holds ${sol(holds)}; the minimum for ${space} bytes is ${sol(minimum)}.`,
+  };
+}
+
+const RENT_PATTERN = /^Insufficient funds for rent$|^Account left below rent minimum$/;
+
 const GRADUATED_PATTERN = /completed its bonding curve/;
 /** With the limit lifted the swap fails on money, not price: a fresh quote cannot help, so the verdict is final. */
 const FUNDS_NOW_PATTERN = /still fails \((Insufficient SOL|InsufficientFunds|Not enough tokens to swap)\)/;
@@ -662,6 +697,15 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
   }
   const budget = splitComputeBudget(decompiled.instructions);
   const notes: string[] = [];
+  const messageKeys = original.message.getAccountKeys({ addressLookupTableAccounts: tables });
+  const accountKeys = Array.from({ length: messageKeys.length }, (_, i) => messageKeys.get(i)).filter((k): k is PublicKey => k != null);
+  if (onchain?.rawError != null) {
+    const rent = await rentShortfall(onchain.rawError, accountKeys).catch(() => null);
+    if (rent) {
+      onchain.error = rent.cause;
+      notes.push(rent.note);
+    }
+  }
   const changes: RepairChange[] = [];
 
   // 1. Was the submitted blockhash still usable?
@@ -770,7 +814,8 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
       probeSim.logs ?? [],
     );
     const titleChanged = landed && onchain?.error != null && probeCause != null && onchain.error.title !== probeCause.title;
-    const precise = verdict.status === "not_repairable" && probeCause ? await preciseVerdict(budget.rest, probeCause, probeSim.logs ?? []) : null;
+    const rent = verdict.status === "not_repairable" ? await rentShortfall(probeSim.err, accountKeys).catch(() => null) : null;
+    const precise = rent ? { ...rent, replaces: RENT_PATTERN } : verdict.status === "not_repairable" && probeCause ? await preciseVerdict(budget.rest, probeCause, probeSim.logs ?? []) : null;
     if (precise) {
       verdict.cause = precise.cause;
       verdict.notes.push(precise.note);
@@ -887,7 +932,7 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
       summary:
         wantsRequote && !notSlippage
           ? "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote."
-          : (verdict.cause?.cause ?? "This transaction fails for a reason that cannot be fixed by rebuilding it."),
+          : (verdict.cause?.cause ?? (landed ? onchain?.error?.cause : undefined) ?? "This transaction fails for a reason that cannot be fixed by rebuilding it."),
       cause: landed ? (onchain?.error ?? verdict.cause ?? probeCause) : (verdict.cause ?? probeCause),
       changes: [],
       repairedTransaction: null,

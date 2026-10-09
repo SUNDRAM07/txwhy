@@ -30,6 +30,11 @@ const explain = async (body) => { const res = await fetch(`${BASE}/api/v1/explai
   const r = await explain({ error: "BlockhashNotFound" });
   check("transaction-level error string", r.status === 200 && r.json?.cause?.title, r.json?.cause?.title);
 }
+// 4b. A transaction-level error with a payload: the runtime's rent check, which names an account by index (tester report, Oct 9).
+{
+  const r = await explain({ error: { InsufficientFundsForRent: { account_index: 1 } }, logs: [] });
+  check("rent error with an account index is named, not unrecognized", r.status === 200 && /rent/i.test(r.json?.cause?.title ?? "") && /#2 in the transaction/.test(r.json?.cause?.cause ?? ""), `${r.json?.cause?.title} | ${(r.json?.cause?.cause ?? "").slice(0, 90)}`);
+}
 // 5. Bad input.
 {
   const a = await explain({});

@@ -24,6 +24,8 @@ export interface Trace {
   feeLamports: number;
   failedOuterIndex: number | null;
   error: DecodedError | null;
+  /** The node's error object as returned, for payloads the decoded form cannot carry (an account index, for example). */
+  rawError?: unknown;
   logs: string[];
   tree: TraceNode[];
 }
