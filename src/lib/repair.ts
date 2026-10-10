@@ -13,6 +13,7 @@ import { fetchIdlErrors } from "./idl";
 import { lighthouseDetail } from "./lighthouse";
 import { describeStandingQuote, requoteSwap } from "./requote";
 import type { ProbeResult } from "./requote-pump";
+import { programName } from "./programs";
 import { METEORA_DBC, readDirectSwapShape, readSwapShape } from "./swap-shape";
 import { RPC_URL, RpcError, rpc } from "./rpc";
 import { getTrace } from "./trace";
@@ -80,9 +81,13 @@ interface SimValue {
   err: unknown;
   logs: string[] | null;
   unitsConsumed?: number;
+  /** Parsed inner instructions, when the simulation asked for them; the token transfers in here name exact shortfalls. */
+  innerInstructions?: ParsedInner[] | null;
 }
 
 interface ParsedInner {
+  /** Index of the outer instruction these ran inside. */
+  index?: number;
   instructions?: { program?: string; parsed?: { type?: string; info?: { source?: string; destination?: string; mint?: string; amount?: string; tokenAmount?: { amount?: string } } } }[];
 }
 
@@ -175,7 +180,7 @@ const isBlockhashNotFound = (err: unknown) => err === "BlockhashNotFound";
  */
 async function simulateBase64(encoded: string): Promise<SimValue> {
   const run = async (replaceRecentBlockhash: boolean) =>
-    (await rpc<{ value: SimValue }>("simulateTransaction", [encoded, { encoding: "base64", sigVerify: false, replaceRecentBlockhash, commitment: "confirmed" }])).value;
+    (await rpc<{ value: SimValue }>("simulateTransaction", [encoded, { encoding: "base64", sigVerify: false, replaceRecentBlockhash, commitment: "confirmed", innerInstructions: true }])).value;
   let value = await run(false);
   if (isBlockhashNotFound(value.err)) {
     await new Promise((resolve) => setTimeout(resolve, 450));
@@ -397,26 +402,49 @@ const formatUnits = (raw: bigint, decimals: number) => {
  * what the source token account actually holds right now. The usual story is a sell built from a
  * stale balance (part of it already sold), so the exact figure is what the person needs.
  */
-async function tokenShortfall(instructions: TransactionInstruction[], logs: string[]): Promise<{ cause: DecodedError; note: string } | null> {
+const TOKEN_PROGRAMS = new Set(["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"]);
+
+/** The outer instruction the node blamed, from an InstructionError. */
+function failingIndex(err: unknown): number | null {
+  const ie = err && typeof err === "object" ? (err as { InstructionError?: [number, unknown] }).InstructionError : undefined;
+  return Array.isArray(ie) && typeof ie[0] === "number" ? ie[0] : null;
+}
+
+/** A top-level SPL Token transfer (tag 3) or transferChecked (tag 12): the paying account and the amount. */
+function readTokenTransfer(ix: TransactionInstruction): { source: string; amount: bigint } | null {
+  if (!TOKEN_PROGRAMS.has(ix.programId.toBase58())) return null;
+  const data = Buffer.from(ix.data);
+  if (data.length < 9 || (data[0] !== 3 && data[0] !== 12)) return null;
+  const source = ix.keys[0]?.pubkey.toBase58();
+  return source ? { source, amount: data.readBigUInt64LE(1) } : null;
+}
+
+async function tokenShortfall(instructions: TransactionInstruction[], logs: string[], err?: unknown, inner?: ParsedInner[] | null): Promise<{ cause: DecodedError; note: string } | null> {
   if (!logs.some((l) => /Program log: Error: insufficient funds/i.test(l))) return null;
+  const candidates: { account: string; amount: bigint; what: string; swap: boolean }[] = [];
+  // The instruction the node blamed: a plain token transfer at the top level, or the last transfer that ran inside it.
+  const failing = failingIndex(err);
+  if (failing != null) {
+    const ix = instructions[failing];
+    const direct = ix ? readTokenTransfer(ix) : null;
+    if (direct) candidates.push({ account: direct.source, amount: direct.amount, what: `token transfer at instruction #${failing + 1}`, swap: false });
+    const group = inner?.find((g) => g.index === failing);
+    const moved = (group?.instructions ?? []).filter((i) => i.program?.startsWith("spl-token") && (i.parsed?.type === "transfer" || i.parsed?.type === "transferChecked"));
+    const last = moved[moved.length - 1]?.parsed?.info;
+    const amount = last?.amount ?? last?.tokenAmount?.amount;
+    if (last?.source && amount && ix) candidates.push({ account: last.source, amount: BigInt(amount), what: `token transfer inside instruction #${failing + 1} (${programName(ix.programId.toBase58())})`, swap: false });
+  }
   for (const ix of instructions) {
-    let account: string | undefined;
-    let amount: bigint | undefined;
-    let what = "";
     const direct = readDirectSwapShape(ix);
     if (direct && direct.userIn != null && (direct.fixed === "tokens_in" || direct.fixed === "quote_in")) {
-      account = ix.keys[direct.userIn]?.pubkey.toBase58();
-      amount = direct.amount;
-      what = `${direct.program} ${direct.name}`;
-    } else {
-      const jup = readSwapShape(ix);
-      if (jup && jup.mode === "ExactIn") {
-        account = jup.source;
-        amount = jup.amount;
-        what = "Jupiter swap";
-      }
+      const account = ix.keys[direct.userIn]?.pubkey.toBase58();
+      if (account) candidates.push({ account, amount: direct.amount, what: `${direct.program} ${direct.name}`, swap: true });
+      continue;
     }
-    if (!account || amount == null) continue;
+    const jup = readSwapShape(ix);
+    if (jup && jup.mode === "ExactIn") candidates.push({ account: jup.source, amount: jup.amount, what: "Jupiter swap", swap: true });
+  }
+  for (const { account, amount, what, swap } of candidates) {
     const balance = await rpc<{ value: { amount: string; decimals: number } | null }>("getTokenAccountBalance", [account, { commitment: "confirmed" }]).catch(() => null);
     if (!balance?.value) continue;
     const have = BigInt(balance.value.amount);
@@ -424,12 +452,15 @@ async function tokenShortfall(instructions: TransactionInstruction[], logs: stri
     const fmt = (v: bigint) => formatUnits(v, balance.value!.decimals);
     return {
       cause: {
-        title: "Not enough tokens to swap",
+        title: swap ? "Not enough tokens to swap" : "Not enough tokens to transfer",
         code: "Custom(1) — 0x1",
         cause: `The ${what} spends ${fmt(amount)} from token account ${account}, which holds ${fmt(have)}. Usually the amount came from a balance that was already partly sold or transferred.`,
-        fix: `Rebuild the swap for at most ${fmt(have)}, or top the account up by ${fmt(amount - have)} first. TxWhy never changes the amount you chose, so there is no repair to return.`,
+        fix:
+          have === BigInt(0)
+            ? `Token account ${account} is empty. Fund it with ${fmt(amount)} first, or drop the ${swap ? "swap" : "transfer"}. TxWhy never changes the amount you chose, so there is no repair to return.`
+            : `${swap ? "Rebuild the swap" : "Rebuild the transfer"} for at most ${fmt(have)}, or top the account up by ${fmt(amount - have)} first. TxWhy never changes the amount you chose, so there is no repair to return.`,
       },
-      note: `Source token account ${account}: holds ${fmt(have)}, the swap needs ${fmt(amount)}. Shortfall: ${fmt(amount - have)}.`,
+      note: `Source token account ${account}: holds ${fmt(have)}, the ${swap ? "swap" : "transfer"} needs ${fmt(amount)}. Shortfall: ${fmt(amount - have)}.`,
     };
   }
   return null;
@@ -496,9 +527,9 @@ export async function dbcPoolVerdict(instructions: TransactionInstruction[], cau
  * error. `replaces` says which on-chain causes the precise one may stand in for: a pool that graduated
  * since must not overwrite an on-chain "insufficient funds", and vice versa.
  */
-async function preciseVerdict(instructions: TransactionInstruction[], cause: DecodedError, logs: string[]): Promise<{ cause: DecodedError; note: string; replaces: RegExp } | null> {
+async function preciseVerdict(instructions: TransactionInstruction[], cause: DecodedError, logs: string[], err?: unknown, inner?: ParsedInner[] | null): Promise<{ cause: DecodedError; note: string; replaces: RegExp } | null> {
   if (cause.title === "InsufficientFunds") {
-    const precise = await tokenShortfall(instructions, logs);
+    const precise = await tokenShortfall(instructions, logs, err, inner);
     return precise ? { ...precise, replaces: /^InsufficientFunds$/ } : null;
   }
   const precise = await dbcPoolVerdict(instructions, cause, logs).catch(() => null);
@@ -815,7 +846,8 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
     );
     const titleChanged = landed && onchain?.error != null && probeCause != null && onchain.error.title !== probeCause.title;
     const rent = verdict.status === "not_repairable" ? await rentShortfall(probeSim.err, accountKeys).catch(() => null) : null;
-    const precise = rent ? { ...rent, replaces: RENT_PATTERN } : verdict.status === "not_repairable" && probeCause ? await preciseVerdict(budget.rest, probeCause, probeSim.logs ?? []) : null;
+    const probeList = probeResult ? withBudget([ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept], budget.rest) : decompiled.instructions;
+    const precise = rent ? { ...rent, replaces: RENT_PATTERN } : verdict.status === "not_repairable" && probeCause ? await preciseVerdict(probeList, probeCause, probeSim.logs ?? [], probeSim.err, probeSim.innerInstructions) : null;
     if (precise) {
       verdict.cause = precise.cause;
       verdict.notes.push(precise.note);
@@ -1164,7 +1196,7 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
     const probeCause = (await decodeSimError(probeSim.err, probeSim.logs ?? [])) ?? cause;
     const verdict = classifyUnrepairable(probeCause ?? { title: "Unknown failure", cause: "", fix: "" }, probeSim.logs ?? []);
     const titleChanged = landed && onchain?.error != null && probeCause != null && onchain.error.title !== probeCause.title;
-    const precise = verdict.status === "not_repairable" && probeCause ? await preciseVerdict(decoded.instructions, probeCause, probeSim.logs ?? []) : null;
+    const precise = verdict.status === "not_repairable" && probeCause ? await preciseVerdict(decoded.instructions, probeCause, probeSim.logs ?? [], probeSim.err, probeSim.innerInstructions) : null;
     if (precise) {
       verdict.cause = precise.cause;
       verdict.notes.push(precise.note);
