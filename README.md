@@ -1,3 +1,5 @@
+<img src="public/logo.png" alt="TxWhy" width="96" align="right">
+
 # TxWhy
 
 [![ci](https://github.com/SUNDRAM07/txwhy/actions/workflows/ci.yml/badge.svg)](https://github.com/SUNDRAM07/txwhy/actions/workflows/ci.yml) [![npm](https://img.shields.io/npm/v/%40txwhy%2Fsdk)](https://www.npmjs.com/package/@txwhy/sdk) [![crates.io](https://img.shields.io/crates/v/txwhy-verify)](https://crates.io/crates/txwhy-verify)
