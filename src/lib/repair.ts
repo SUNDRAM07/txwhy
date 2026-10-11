@@ -112,7 +112,7 @@ async function probeTransfers(base64: string): Promise<ProbeResult> {
     }
   }
   const errorTitle = value.err == null ? undefined : ((await decodeSimError(value.err, value.logs ?? []))?.title ?? "unknown error");
-  return { err: value.err, errorTitle, transfers };
+  return { err: value.err, errorTitle, transfers, logs: value.logs, innerInstructions: value.innerInstructions };
 }
 
 function innermostFailedProgram(logs: string[]): string | null {
@@ -572,6 +572,30 @@ async function rentShortfall(err: unknown, keys: PublicKey[]): Promise<{ cause: 
 const RENT_PATTERN = /^Insufficient funds for rent$|^Account left below rent minimum$/;
 
 const GRADUATED_PATTERN = /completed its bonding curve/;
+
+/**
+ * When the limit-lifted run inside a re-quote fails on money rather than price, name the figure from
+ * that run: the token account and shortfall, or the lamports the payer is short.
+ */
+async function liftedShortfall(requote: { probe?: ProbeResult; lifted?: TransactionInstruction[] }): Promise<{ cause: DecodedError; note: string } | null> {
+  if (!requote.probe || !requote.lifted) return null;
+  const logs = requote.probe.logs ?? [];
+  const tokens = await tokenShortfall(requote.lifted, logs, requote.probe.err, requote.probe.innerInstructions as ParsedInner[] | null | undefined).catch(() => null);
+  if (tokens) return tokens;
+  const lamports = logs.join("\n").match(/insufficient lamports (\d+), need (\d+)/);
+  if (!lamports) return null;
+  const have = Number(lamports[1]);
+  const need = Number(lamports[2]);
+  return {
+    cause: {
+      title: "Insufficient SOL",
+      code: "Custom(1) — 0x1",
+      cause: `With the swap's limit lifted, the transaction still fails because the paying account holds ${have.toLocaleString("en-US")} lamports and needs ${need.toLocaleString("en-US")}. The price is not the problem; the balance is.`,
+      fix: `Fund the paying account with at least ${((need - have) / 1e9).toFixed(6)} SOL, then get a fresh quote and resend.`,
+    },
+    note: `The paying account holds ${have.toLocaleString("en-US")} lamports and needs ${need.toLocaleString("en-US")}. Shortfall: ${(need - have).toLocaleString("en-US")} lamports (${((need - have) / 1e9).toFixed(6)} SOL).`,
+  };
+}
 /** With the limit lifted the swap fails on money, not price: a fresh quote cannot help, so the verdict is final. */
 const FUNDS_NOW_PATTERN = /still fails \((Insufficient SOL|InsufficientFunds|Not enough tokens to swap)\)/;
 
@@ -938,6 +962,13 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
       } else {
         notes.push(requote.reason);
         if (requote.fits || FUNDS_NOW_PATTERN.test(requote.reason)) notSlippage = true;
+        if (FUNDS_NOW_PATTERN.test(requote.reason)) {
+          const precise = await liftedShortfall(requote);
+          if (precise && !verdict.notes.includes(precise.note)) {
+            verdict.cause = precise.cause;
+            verdict.notes.push(precise.note);
+          }
+        }
       }
     }
 
@@ -1245,6 +1276,13 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
       } else {
         notes.push(requote.reason);
         if (requote.fits || FUNDS_NOW_PATTERN.test(requote.reason)) notSlippage = true;
+        if (FUNDS_NOW_PATTERN.test(requote.reason)) {
+          const precise = await liftedShortfall(requote);
+          if (precise && !verdict.notes.includes(precise.note)) {
+            verdict.cause = precise.cause;
+            verdict.notes.push(precise.note);
+          }
+        }
       }
     }
     if (!requoted) {

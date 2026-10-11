@@ -1,7 +1,7 @@
 import { PublicKey, TransactionInstruction } from "@solana/web3.js";
 import { rpc } from "./rpc";
 import { JUPITER_V6, LAYOUTS, readAmounts, readSwapShape, type Mode } from "./swap-shape";
-import { findDirectSwap, requoteDirect, type RequoteHints } from "./requote-pump";
+import { type ProbeResult, findDirectSwap, requoteDirect, type RequoteHints } from "./requote-pump";
 import { DIRECT_LAYOUTS, DIRECT_LIMIT_CAP_BPS, isAllowedQuoteMove, readDirectSwapShape } from "./swap-shape";
 
 export { readSwapShape };
@@ -319,12 +319,15 @@ export async function requoteJupiter(instructions: TransactionInstruction[]): Pr
  * Re-quote whichever swap the transaction carries: a Jupiter route gets a fresh quote and
  * route; a direct Pump.fun or PumpSwap swap gets only its limit moved to the current price.
  */
-export async function requoteSwap(instructions: TransactionInstruction[], hints: RequoteHints = {}): Promise<RequoteOutcome & { program?: string; fits?: boolean }> {
+export async function requoteSwap(
+  instructions: TransactionInstruction[],
+  hints: RequoteHints = {},
+): Promise<RequoteOutcome & { program?: string; fits?: boolean; probe?: ProbeResult; lifted?: TransactionInstruction[] }> {
   const hasJupiter = instructions.some((ix) => ix.programId.toBase58() === JUPITER_V6);
   if (hasJupiter) return requoteJupiter(instructions);
   if (findDirectSwap(instructions)) {
     const direct = await requoteDirect(instructions, hints);
-    if (!direct.ok) return { ok: false, reason: direct.reason, final: direct.final, fits: direct.fits };
+    if (!direct.ok) return { ok: false, reason: direct.reason, final: direct.final, fits: direct.fits, probe: direct.probe, lifted: direct.lifted };
     return {
       ok: true,
       instructions: direct.instructions,

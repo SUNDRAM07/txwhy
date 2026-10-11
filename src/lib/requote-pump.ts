@@ -23,7 +23,16 @@ export const DIRECT_TOLERANCE_BPS = 100;
 
 export type DirectRequoteOutcome =
   | { ok: true; instructions: TransactionInstruction[]; before: string; after: string; notes: string[]; program: string }
-  | { ok: false; reason: string; final?: boolean; /** The swap fits its own limit at the current price: whatever fails now is not slippage. */ fits?: boolean };
+  | {
+      ok: false;
+      reason: string;
+      final?: boolean;
+      /** The swap fits its own limit at the current price: whatever fails now is not slippage. */
+      fits?: boolean;
+      /** The limit-lifted simulation that still failed, and the instructions it ran, so the caller can name the exact shortfall. */
+      probe?: ProbeResult;
+      lifted?: TransactionInstruction[];
+    };
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const bn = (v: bigint) => new BN(v.toString());
@@ -152,6 +161,9 @@ export interface ProbeResult {
   errorTitle?: string;
   /** Every SPL token transfer the simulation executed by CPI. */
   transfers: { source: string; destination: string; amount: bigint; mint?: string }[];
+  /** The simulation's logs and parsed inner instructions, for naming a shortfall when the lifted run still fails. */
+  logs?: string[] | null;
+  innerInstructions?: unknown;
 }
 
 const U64_MAX = (BigInt(1) << BigInt(64)) - BigInt(1);
@@ -185,6 +197,8 @@ async function limitFromProbe(
       shape.limit === "max_in"
         ? `with the maximum lifted the transaction still fails (${result.errorTitle ?? "unknown error"}); an exact-output swap that wraps or holds only its original maximum cannot pay a higher price`
         : `with the minimum lifted the transaction still fails (${result.errorTitle ?? "unknown error"}), so slippage is not the only problem`,
+      result,
+      lifted,
     );
   }
   const moved = result.transfers.filter((t) => (shape.limit === "min_out" ? t.destination === watched : t.source === watched));
@@ -194,7 +208,16 @@ async function limitFromProbe(
   return { limit: withTolerance(actual, shape.limit === "max_in" ? "up" : "down"), expected: actual, unit };
 }
 
-class NotSlippageError extends Error {}
+class NotSlippageError extends Error {
+  constructor(
+    message: string,
+    /** The lifted-limit simulation that still failed, and what it ran, when there was one. */
+    readonly probe?: ProbeResult,
+    readonly lifted?: TransactionInstruction[],
+  ) {
+    super(message);
+  }
+}
 /** The price is past the cap: a final answer, not "try a fresh quote". */
 class BeyondCapError extends Error {}
 /** The launch pool has graduated: no quote against it can ever work, so this is final too. */
@@ -248,7 +271,7 @@ async function limitFromProbeWithWrap(
     );
   }
   if (result.err != null) {
-    throw new NotSlippageError(`with the wrapped SOL and the maximum both raised ${DIRECT_LIMIT_CAP_BPS / 100}%, the most a repair may move them, the transaction still fails (${result.errorTitle ?? "unknown error"})`);
+    throw new NotSlippageError(`with the wrapped SOL and the maximum both raised ${DIRECT_LIMIT_CAP_BPS / 100}%, the most a repair may move them, the transaction still fails (${result.errorTitle ?? "unknown error"})`, result, lifted);
   }
   const actual = result.transfers.filter((t) => t.source === input).reduce((sum, t) => sum + t.amount, BigInt(0));
   if (actual === BigInt(0)) throw new Error("the simulation moved no tokens for the user");
@@ -329,7 +352,7 @@ export async function requoteDirect(instructions: TransactionInstruction[], hint
     }
   } catch (e) {
     if (e instanceof BeyondCapError || e instanceof PoolGraduatedError) return { ok: false, final: true, reason: e.message };
-    if (e instanceof NotSlippageError) return { ok: false, reason: `The ${shape.program} ${shape.name} cannot be repaired by moving its limit: ${e.message}.` };
+    if (e instanceof NotSlippageError) return { ok: false, reason: `The ${shape.program} ${shape.name} cannot be repaired by moving its limit: ${e.message}.`, probe: e.probe, lifted: e.lifted };
     return { ok: false, reason: `Could not price the ${shape.program} swap from the pool's current state (${e instanceof Error ? e.message : "unknown error"}).` };
   }
   const cap = BigInt(DIRECT_LIMIT_CAP_BPS);
