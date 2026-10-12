@@ -126,10 +126,22 @@ async function answerTransaction(transaction: string, caller: string): Promise<s
 
 /** Build a deliberately broken swap on live mainnet state, then repair it, so anyone can watch it work. */
 async function answerDemo(): Promise<string> {
-  try {
+  // The quote service hiccups now and then; three tries a few seconds apart cover it.
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const answer = await demoOnce().catch(() => null);
+    if (answer) return answer;
+    if (attempt < 3) await new Promise((r) => setTimeout(r, 2500));
+  }
+  return `The demo could not reach the quote service just now. Try again, or run it at ${SITE}/repair`;
+}
+
+/** One attempt: build the broken swap, repair it, render it. Null when the quote service did not give a repair this time. */
+async function demoOnce(): Promise<string | null> {
+  {
     const example = await (await fetch(`${SITE}/api/v1/example?kind=slippage`, { cache: "no-store" })).json();
     if (!example.transaction) throw new Error("no example");
     const result = await repair({ transaction: example.transaction });
+    if (result.status !== "repaired") return null;
     return [
       "<b>Live demo.</b> I just built a real 0.05 SOL → USDC swap on a quote that is 5% too optimistic, so it fails the way a stale quote does. Then I repaired it:",
       "",
@@ -141,8 +153,6 @@ async function answerDemo(): Promise<string> {
     ]
       .filter((l, i, a) => !(l === "" && a[i - 1] === ""))
       .join("\n");
-  } catch {
-    return `The demo could not reach the quote service just now. Try again, or run it at ${SITE}/repair`;
   }
 }
 

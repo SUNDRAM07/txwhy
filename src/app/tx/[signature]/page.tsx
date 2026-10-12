@@ -182,7 +182,12 @@ export default async function TxPage({
             </div>
           )}
 
-          {!trace.success && <RepairPanel signature={signature} />}
+          {!trace.success && (
+            <RepairPanel
+              signature={signature}
+              known={trace.error ? { title: trace.error.title, cause: trace.error.cause } : undefined}
+            />
+          )}
 
           <h2 className="mt-8 mb-2 text-sm font-semibold uppercase tracking-wide text-neutral-500">
             Instruction tree

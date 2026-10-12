@@ -73,10 +73,16 @@ export function useRepair(auto?: RepairInput) {
   return { ...state, run, reset };
 }
 
+/** The cause a page already shows above the panel, so the panel repeats it only when the engine found something more precise. */
+export interface KnownCause {
+  title: string;
+  cause: string;
+}
+
 /** Self-contained panel that repairs on load. Used on the transaction page. */
-export function RepairPanel({ signature }: { signature: string }) {
+export function RepairPanel({ signature, known }: { signature: string; known?: KnownCause }) {
   const state = useRepair({ signature });
-  return <RepairView {...state} onRun={() => state.run({ signature })} />;
+  return <RepairView {...state} known={known} onRun={() => state.run({ signature })} />;
 }
 
 export function RepairView({
@@ -84,11 +90,13 @@ export function RepairView({
   error,
   loading,
   onRun,
+  known,
 }: {
   result: RepairResult | null;
   error: string | null;
   loading: boolean;
   onRun?: () => void;
+  known?: KnownCause;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -129,7 +137,7 @@ export function RepairView({
         <div className="mt-4 space-y-4 text-sm">
           <p className="leading-relaxed">{result.summary}</p>
 
-          {result.cause && (
+          {result.cause && !(known && known.title === result.cause.title && known.cause === result.cause.cause) && (
             <div className="rounded-lg bg-neutral-100 p-3 dark:bg-neutral-900">
               <p className="font-semibold">
                 {result.cause.title}
@@ -178,20 +186,26 @@ export function RepairView({
             </div>
           )}
 
-          <p className="text-xs text-neutral-500">
-            Simulation of the returned transaction:{" "}
-            <span
-              className={
-                result.simulation.passed
-                  ? "text-emerald-600 dark:text-emerald-400"
-                  : "text-red-600 dark:text-red-400"
-              }
-            >
-              {result.simulation.passed ? "passed" : "failed"}
-            </span>
-            {result.simulation.unitsConsumed != null &&
-              ` · ${result.simulation.unitsConsumed.toLocaleString()} compute units`}
-          </p>
+          {result.repairedTransaction || result.status === "valid" ? (
+            <p className="text-xs text-neutral-500">
+              Simulation of the {result.status === "valid" ? "transaction as sent" : "rebuilt transaction"}:{" "}
+              <span
+                className={
+                  result.simulation.passed
+                    ? "text-emerald-600 dark:text-emerald-400"
+                    : "text-red-600 dark:text-red-400"
+                }
+              >
+                {result.simulation.passed ? "passed" : "failed"}
+              </span>
+              {result.simulation.unitsConsumed != null &&
+                ` · ${result.simulation.unitsConsumed.toLocaleString()} compute units`}
+            </p>
+          ) : (
+            <p className="text-xs text-neutral-500">
+              Nothing returned: no rebuild within TxWhy&apos;s rules passes simulation against live state.
+            </p>
+          )}
 
           {result.verification?.ok && (
             <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
