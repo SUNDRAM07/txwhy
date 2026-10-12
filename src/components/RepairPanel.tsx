@@ -147,7 +147,7 @@ export function RepairView({
                   </span>
                 )}
               </p>
-              {result.cause.cause && (
+              {result.cause.cause && result.cause.cause !== result.summary && (
                 <p className="mt-1 text-neutral-600 dark:text-neutral-400">{result.cause.cause}</p>
               )}
             </div>

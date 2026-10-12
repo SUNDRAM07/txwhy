@@ -272,7 +272,7 @@ function reasonKey(title: string | undefined, summary: string): string {
  * /failures reads as sentences again and old and new verdicts share a row.
  */
 async function migrateReasonRows(store: Store) {
-  const FLAG = "i:migrated:reason-rows-1";
+  const FLAG = "i:migrated:reason-rows-3";
   if (await store.getStr(FLAG)) return;
   let moved = 0;
   for (const verdict of ["not_repairable", "moved_too_far"]) {

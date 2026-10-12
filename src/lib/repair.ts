@@ -419,20 +419,23 @@ function readTokenTransfer(ix: TransactionInstruction): { source: string; amount
   return source ? { source, amount: data.readBigUInt64LE(1) } : null;
 }
 
-async function tokenShortfall(instructions: TransactionInstruction[], logs: string[], err?: unknown, inner?: ParsedInner[] | null): Promise<{ cause: DecodedError; note: string } | null> {
+async function tokenShortfall(instructions: TransactionInstruction[], logs: string[], err?: unknown, inner?: ParsedInner[] | null, original?: TransactionInstruction[]): Promise<{ cause: DecodedError; note: string } | null> {
   if (!logs.some((l) => /Program log: Error: insufficient funds/i.test(l))) return null;
   const candidates: { account: string; amount: bigint; what: string; swap: boolean }[] = [];
   // The instruction the node blamed: a plain token transfer at the top level, or the last transfer that ran inside it.
   const failing = failingIndex(err);
   if (failing != null) {
     const ix = instructions[failing];
+    // The probe may carry a different compute-budget prefix than the transaction as sent; number the instruction as the sender sees it.
+    const shown = ix && original ? original.findIndex((o) => o.programId.equals(ix.programId) && o.data.equals(ix.data) && o.keys.length === ix.keys.length) : -1;
+    const label = `#${(shown >= 0 ? shown : failing) + 1}`;
     const direct = ix ? readTokenTransfer(ix) : null;
-    if (direct) candidates.push({ account: direct.source, amount: direct.amount, what: `token transfer at instruction #${failing + 1}`, swap: false });
+    if (direct) candidates.push({ account: direct.source, amount: direct.amount, what: `token transfer at instruction ${label}`, swap: false });
     const group = inner?.find((g) => g.index === failing);
     const moved = (group?.instructions ?? []).filter((i) => i.program?.startsWith("spl-token") && (i.parsed?.type === "transfer" || i.parsed?.type === "transferChecked"));
     const last = moved[moved.length - 1]?.parsed?.info;
     const amount = last?.amount ?? last?.tokenAmount?.amount;
-    if (last?.source && amount && ix) candidates.push({ account: last.source, amount: BigInt(amount), what: `token transfer inside instruction #${failing + 1} (${programName(ix.programId.toBase58())})`, swap: false });
+    if (last?.source && amount && ix) candidates.push({ account: last.source, amount: BigInt(amount), what: `token transfer inside instruction ${label} (${programName(ix.programId.toBase58())})`, swap: false });
   }
   for (const ix of instructions) {
     const direct = readDirectSwapShape(ix);
@@ -527,9 +530,9 @@ export async function dbcPoolVerdict(instructions: TransactionInstruction[], cau
  * error. `replaces` says which on-chain causes the precise one may stand in for: a pool that graduated
  * since must not overwrite an on-chain "insufficient funds", and vice versa.
  */
-async function preciseVerdict(instructions: TransactionInstruction[], cause: DecodedError, logs: string[], err?: unknown, inner?: ParsedInner[] | null): Promise<{ cause: DecodedError; note: string; replaces: RegExp } | null> {
+async function preciseVerdict(instructions: TransactionInstruction[], cause: DecodedError, logs: string[], err?: unknown, inner?: ParsedInner[] | null, original?: TransactionInstruction[]): Promise<{ cause: DecodedError; note: string; replaces: RegExp } | null> {
   if (cause.title === "InsufficientFunds") {
-    const precise = await tokenShortfall(instructions, logs, err, inner);
+    const precise = await tokenShortfall(instructions, logs, err, inner, original);
     return precise ? { ...precise, replaces: /^InsufficientFunds$/ } : null;
   }
   const precise = await dbcPoolVerdict(instructions, cause, logs).catch(() => null);
@@ -871,7 +874,7 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
     const titleChanged = landed && onchain?.error != null && probeCause != null && onchain.error.title !== probeCause.title;
     const rent = verdict.status === "not_repairable" ? await rentShortfall(probeSim.err, accountKeys).catch(() => null) : null;
     const probeList = probeResult ? withBudget([ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept], budget.rest) : decompiled.instructions;
-    const precise = rent ? { ...rent, replaces: RENT_PATTERN } : verdict.status === "not_repairable" && probeCause ? await preciseVerdict(probeList, probeCause, probeSim.logs ?? [], probeSim.err, probeSim.innerInstructions) : null;
+    const precise = rent ? { ...rent, replaces: RENT_PATTERN } : verdict.status === "not_repairable" && probeCause ? await preciseVerdict(probeList, probeCause, probeSim.logs ?? [], probeSim.err, probeSim.innerInstructions, decompiled.instructions) : null;
     if (precise) {
       verdict.cause = precise.cause;
       verdict.notes.push(precise.note);
