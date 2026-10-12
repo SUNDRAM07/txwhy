@@ -343,7 +343,7 @@ const IX_ERRORS: Record<string, DecodedError> = {
 
 /** Anchor framework error codes (stable, published). */
 export const ANCHOR_ERRORS: Record<number, DecodedError> = {
-  100: { title: "InstructionMissing", cause: "8-byte instruction discriminator not found.", fix: "Call a real instruction on this program — likely wrong instruction data or wrong program." },
+  100: { title: "InstructionMissing", cause: "The program has no instruction with this 8-byte discriminator: the client was built against a different version of the program, or sent its data to the wrong program.", fix: "Regenerate the client from the program's current IDL and check the program ID it targets." },
   101: { title: "InstructionFallbackNotFound", cause: "Fallback handler not found for unrecognized instruction.", fix: "The instruction discriminator does not match any handler — check IDL or client version drift." },
   102: { title: "InstructionDidNotDeserialize", cause: "The instruction data failed to deserialize into the expected arguments.", fix: "Regenerate the client from the current IDL — argument layout drifted." },
   2000: { title: "ConstraintMut", cause: "An account expected to be mutable was passed read-only.", fix: "Mark the account writable in the client (isWritable: true)." },
@@ -365,7 +365,7 @@ export const ANCHOR_ERRORS: Record<number, DecodedError> = {
   3001: { title: "AccountDiscriminatorNotFound", cause: "No discriminator — the account was never initialized by this program.", fix: "Initialize the account first, or pass the correct existing account." },
   3002: { title: "AccountDiscriminatorMismatch", cause: "The account holds a different Anchor account type than expected.", fix: "You passed the wrong account (right program, wrong type). Check derivations." },
   3003: { title: "AccountDidNotDeserialize", cause: "The account data failed to deserialize into the expected type.", fix: "Account layout drift — verify program version and account address." },
-  3005: { title: "AccountNotEnoughKeys", cause: "Fewer accounts supplied than the instruction context requires.", fix: "Regenerate the client from the IDL so the account list matches." },
+  3005: { title: "AccountNotEnoughKeys", cause: "The instruction was given fewer accounts than the program expects, which happens when the client was built against an older version of the program.", fix: "Regenerate the client from the current IDL so the account list matches." },
   3006: { title: "AccountNotMutable", cause: "An account that must be writable was passed read-only.", fix: "Mark it writable in the transaction." },
   3007: { title: "AccountOwnedByWrongProgram", cause: "The account is owned by a different program than expected.", fix: "Pass an account created or owned by the expected program — commonly the wrong token program (Token vs Token-2022)." },
   3008: { title: "InvalidProgramId", cause: "A program account has an unexpected ID.", fix: "Pass the exact program the instruction expects (e.g. the right token program)." },
@@ -526,6 +526,9 @@ export function enrichCause(name: string, msg: string | undefined): string {
   if (!thin) return msg as string;
   if (n.includes("slippage") || n.includes("toolittle") || n.includes("belowmin") || n.includes("amountoutbelow")) {
     return "The swap would have paid out less than the minimum this transaction allowed. The price moved between the moment the quote was taken and the moment the transaction executed, by more than the slippage tolerance set in the swap.";
+  }
+  if (n.includes("noncealreadyexists") || n.includes("alreadyprocessed") || n.includes("alreadyexecuted") || n.includes("duplicate")) {
+    return "The program keeps a nonce per order and this one was already used: the same order was sent twice and the second copy failed. The first copy is the one that counts; there is nothing to resend.";
   }
   if (n.includes("overflow") || n.includes("underflow")) {
     return "An arithmetic operation inside the program went out of range. In exchanges this usually means the amount, price or liquidity at that moment produced a number the pool cannot represent, often a trade far larger than the pool can absorb.";

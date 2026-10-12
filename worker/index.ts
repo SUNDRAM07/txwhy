@@ -12,8 +12,8 @@
 import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createClient } from "redis";
-import { blankNumbers, cleanLegacyRow } from "./reason";
-import { decodeTransactionError } from "../src/lib/errors";
+import { GENERIC_REFUSAL, blankNumbers, cleanLegacyRow } from "./reason";
+import { ANCHOR_ERRORS, TOKEN_ERRORS, decodeTransactionError, enrichCause } from "../src/lib/errors";
 import { fetchIdlErrors } from "../src/lib/idl";
 import { RepairInputError, repair } from "../src/lib/repair";
 import { isNamedProgram, programName } from "../src/lib/programs";
@@ -287,6 +287,36 @@ async function migrateReasonRows(store: Store) {
   }
   await store.setStr(FLAG, new Date().toISOString());
   console.log(`refusal rows migrated: ${moved}`);
+}
+
+/** What the engine now says for the refusals that once carried only the generic sentence; the rows merge into these. */
+const GENERIC_ROW_TEXT: Record<string, string> = {
+  InsufficientFunds: TOKEN_ERRORS[1].cause,
+  Overflow: enrichCause("Overflow", undefined),
+  InstructionMissing: ANCHOR_ERRORS[100].cause,
+  AccountNotEnoughKeys: ANCHOR_ERRORS[3005].cause,
+  NonceAlreadyExists: enrichCause("NonceAlreadyExists", undefined),
+};
+
+/** One-time merge of "Title: generic sentence" rows into the row the same failure lands on today. */
+async function migrateGenericRows(store: Store) {
+  const FLAG = "i:migrated:reason-rows-2";
+  if (await store.getStr(FLAG)) return;
+  let moved = 0;
+  for (const verdict of ["not_repairable", "moved_too_far"]) {
+    const key = `i:repair:detail:${verdict}`;
+    for (const row of await store.ztop(key, 5000)) {
+      const m = row.member.match(/^([A-Za-z]+): (.*)$/);
+      if (!m || m[2] !== GENERIC_REFUSAL || !GENERIC_ROW_TEXT[m[1]]) continue;
+      const clean = reasonKey(m[1], GENERIC_ROW_TEXT[m[1]]);
+      if (clean === row.member) continue;
+      await store.zincr(key, clean, row.score);
+      await store.zrem(key, row.member);
+      moved++;
+    }
+  }
+  await store.setStr(FLAG, new Date().toISOString());
+  console.log(`generic refusal rows merged: ${moved}`);
 }
 
 /**
@@ -613,6 +643,7 @@ async function main() {
   console.log(`storage: ${process.env.REDIS_URL ? "redis" : "memory"} | rpc: ${new URL(RPC_URL).host}`);
   if (!(await store.getStr("i:since"))) await store.setStr("i:since", new Date().toISOString());
   await migrateReasonRows(store);
+  await migrateGenericRows(store);
 
   createServer(async (req, res) => {
     try {

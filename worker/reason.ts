@@ -4,6 +4,9 @@
  * the spaces and punctuation around them.
  */
 
+/** The sentence the engine used for a refusal it could not explain, kept as a row until the cause text replaced it. */
+export const GENERIC_REFUSAL = "This transaction fails for a reason that cannot be fixed by rebuilding it.";
+
 /**
  * A number to blank: an integer, a decimal, a thousands-separated figure, optionally followed by a
  * percent sign. Digits attached to a word ("swap2", "Token-2022", "v0") are part of its name and stay.

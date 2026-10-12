@@ -1291,7 +1291,7 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
       const graduated = finalVerdict && GRADUATED_PATTERN.test(finalVerdict) ? await dbcPoolVerdict(decoded.instructions, { title: "PoolIsCompleted", code: base?.code, cause: "", fix: "" }, probeSim.logs ?? []).catch(() => null) : null;
       return {
         status: finalVerdict ? "not_repairable" : slippageNow ? "needs_requote" : verdict.status === "needs_requote" ? "not_repairable" : verdict.status,
-        summary: finalVerdict ?? (slippageNow ? "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote." : (verdict.cause?.cause ?? "This transaction fails for a reason that cannot be fixed by rebuilding it.")),
+        summary: finalVerdict ?? (slippageNow ? "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote." : (verdict.cause?.cause ?? base?.cause ?? "This transaction fails for a reason that cannot be fixed by rebuilding it.")),
         cause: graduated ? graduated.cause : finalVerdict && base ? { ...base, fix: finalFix(finalVerdict, base.fix) } : base,
         changes: [],
         repairedTransaction: null,
