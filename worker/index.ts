@@ -12,6 +12,7 @@
 import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createClient } from "redis";
+import { blankNumbers, cleanLegacyRow } from "./reason";
 import { decodeTransactionError } from "../src/lib/errors";
 import { fetchIdlErrors } from "../src/lib/idl";
 import { RepairInputError, repair } from "../src/lib/repair";
@@ -49,6 +50,7 @@ interface Store {
   incr(key: string, by?: number): Promise<void>;
   hincr(key: string, field: string, by?: number): Promise<void>;
   zincr(key: string, member: string, by?: number): Promise<void>;
+  zrem(key: string, member: string): Promise<void>;
   pfadd(key: string, member: string): Promise<void>;
   get(key: string): Promise<number>;
   hgetall(key: string): Promise<Record<string, number>>;
@@ -79,6 +81,7 @@ function memoryStore(): Store {
     async incr(k, by = 1) { nums.set(k, (nums.get(k) ?? 0) + by); },
     async hincr(k, f, by = 1) { h(k).set(f, (h(k).get(f) ?? 0) + by); },
     async zincr(k, m, by = 1) { h(`z:${k}`).set(m, (h(`z:${k}`).get(m) ?? 0) + by); },
+    async zrem(k, m) { h(`z:${k}`).delete(m); },
     async pfadd(k, m) { (sets.get(k) ?? sets.set(k, new Set()).get(k)!).add(m); },
     async get(k) { return nums.get(k) ?? 0; },
     async hgetall(k) { return Object.fromEntries(h(k)); },
@@ -117,6 +120,7 @@ async function redisStore(url: string): Promise<Store> {
     async incr(k, by = 1) { await client.incrBy(k, by); },
     async hincr(k, f, by = 1) { await client.hIncrBy(k, f, by); },
     async zincr(k, m, by = 1) { await client.zIncrBy(k, by, m); },
+    async zrem(k, m) { await client.zRem(k, m); },
     async pfadd(k, m) { await client.pfAdd(k, m); },
     async get(k) { return Number((await client.get(k)) ?? 0); },
     async hgetall(k) { return Object.fromEntries(Object.entries(await client.hGetAll(k)).map(([f, v]) => [f, Number(v)])); },
@@ -256,10 +260,33 @@ async function sampleOnce(store: Store) {
 
 /** "Title: reason" with numbers and addresses blanked, so the same kind of failure lands on the same row of the ranked list. */
 function reasonKey(title: string | undefined, summary: string): string {
-  const reason = summary.replace(/[1-9A-HJ-NP-Za-km-z]{32,}/g, "…").replace(/[1-9A-HJ-NP-Za-km-z]{4}…[1-9A-HJ-NP-Za-km-z]{4}/g, "…").replace(/-?\d[\d.,]*\s?%?/g, "N");
+  const reason = blankNumbers(summary.replace(/[1-9A-HJ-NP-Za-km-z]{32,}/g, "…").replace(/[1-9A-HJ-NP-Za-km-z]{4}…[1-9A-HJ-NP-Za-km-z]{4}/g, "…"));
   // Every private-program error is the same story for us (no published error list), so they share one row.
   const t = /from a private program/i.test(title ?? "") ? "Private program (unnamed)" : (title ?? "").replace(/\([^)]*\)/g, "").trim();
   return `${t ? `${t}: ` : ""}${reason}`.slice(0, 120);
+}
+
+/**
+ * One-time cleanup of the refusal rows written while number blanking ate the spaces around a figure
+ * ("#Nspends Nfrom"): each legacy row is merged into its clean spelling, so the ranked list on
+ * /failures reads as sentences again and old and new verdicts share a row.
+ */
+async function migrateReasonRows(store: Store) {
+  const FLAG = "i:migrated:reason-rows-1";
+  if (await store.getStr(FLAG)) return;
+  let moved = 0;
+  for (const verdict of ["not_repairable", "moved_too_far"]) {
+    const key = `i:repair:detail:${verdict}`;
+    for (const row of await store.ztop(key, 5000)) {
+      const clean = cleanLegacyRow(row.member);
+      if (clean === row.member) continue;
+      await store.zincr(key, clean, row.score);
+      await store.zrem(key, row.member);
+      moved++;
+    }
+  }
+  await store.setStr(FLAG, new Date().toISOString());
+  console.log(`refusal rows migrated: ${moved}`);
 }
 
 /**
@@ -585,6 +612,7 @@ async function main() {
   const store = process.env.REDIS_URL ? await redisStore(process.env.REDIS_URL) : memoryStore();
   console.log(`storage: ${process.env.REDIS_URL ? "redis" : "memory"} | rpc: ${new URL(RPC_URL).host}`);
   if (!(await store.getStr("i:since"))) await store.setStr("i:since", new Date().toISOString());
+  await migrateReasonRows(store);
 
   createServer(async (req, res) => {
     try {
