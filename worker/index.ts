@@ -332,6 +332,7 @@ export function whyNot(result: { status: string; summary: string; cause: { title
   if (/completed its bonding curve/.test(text)) return "pool_graduated";
   if (/Launch pool nearly full|room left before it graduates|InsufficientLiquidity|SwapAmountIsOverAThreshold/.test(text)) return "pool_nearly_full";
   if (/NonceAlreadyExists/.test(result.cause?.title ?? "")) return "duplicate_send";
+  if (/fee-recipient check refused/.test(text)) return "fee_recipient_rejected";
   if (/moved more than \d+% against this trade/.test(text)) return "beyond_cap";
   if (/No swap found that TxWhy can re-quote|not a top-level instruction|inside another program by CPI/.test(text)) return "routed_by_private_program";
   if (/spliced in but the transaction still fails|lifted the transaction still fails|both raised \d+%/.test(text)) return "more_than_slippage";

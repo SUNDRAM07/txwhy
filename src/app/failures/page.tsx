@@ -27,6 +27,7 @@ const WHY_LABELS: Record<string, [string, string]> = {
   pool_graduated: ["Launch pool already graduated", "the token trades elsewhere now"],
   pool_nearly_full: ["Launch pool nearly full", "the buy is bigger than what is left before graduation; buy less or use partial fill"],
   duplicate_send: ["Same order sent twice", "a bot program's replay guard (NonceAlreadyExists); the first copy already ran"],
+  fee_recipient_rejected: ["Fee recipient rejected", "Pump.fun refused the fee account the client passed; rebuild with the recipient the SDK picks for this mint"],
   chained_swaps: ["Two swaps chained together", "moving one limit leaves the next short"],
   wallet_guard: ["Wallet guard tripped", "needs a fresh transaction from the app"],
   no_funds: ["Not enough funds", "no rebuild adds money"],

@@ -401,7 +401,43 @@ export const TOKEN_ERRORS: Record<number, DecodedError> = {
 };
 
 const ANCHOR_LOG_RE =
-  /AnchorError (?:thrown in .+?:\d+|occurred)\. Error Code: (\w+)\. Error Number: (\d+)\. Error Message: (.+?)\.?$/;
+  /AnchorError (?:thrown in (.+?):\d+|caused by account: (\w+)|occurred)\. Error Code: (\w+)\. Error Number: (\d+)\. Error Message: (.+?)\.?$/;
+
+/** Anchor's account-constraint errors: the log names the account the constraint was on, which is the whole diagnosis. */
+const ACCOUNT_HINTS: Record<string, (account: string) => { cause: string; fix: string }> = {
+  AccountNotInitialized: (a) => ({
+    cause: `The account the program calls "${a}" does not exist yet (no data at that address), so the instruction cannot use it.`,
+    fix: `Create "${a}" before this instruction runs. For a token account, add an idempotent associated-token-account creation in front; for a program account, run the program's initialize step first.`,
+  }),
+  AccountNotEnoughKeys: (a) => ({
+    cause: `The instruction was given fewer accounts than the program expects; the first missing one is "${a}".`,
+    fix: `Regenerate the client from the program's current IDL so the account list matches.`,
+  }),
+  ConstraintSeeds: (a) => ({
+    cause: `The address passed as "${a}" is not the program-derived address the program expects for it.`,
+    fix: `Derive "${a}" with the seeds and program the current IDL specifies.`,
+  }),
+  ConstraintOwner: (a) => ({
+    cause: `The account passed as "${a}" is owned by a different program than the instruction requires.`,
+    fix: `Pass an account owned by the expected program for "${a}" (a Token vs Token-2022 mismatch is the usual case).`,
+  }),
+  ConstraintHasOne: (a) => ({
+    cause: `The account passed as "${a}" does not match the one recorded in the program's state for it.`,
+    fix: `Pass the "${a}" the program's state points to; the client used a stale or wrong address.`,
+  }),
+  ConstraintTokenMint: (a) => ({
+    cause: `The token account passed as "${a}" is for a different mint than the instruction requires.`,
+    fix: `Pass the token account for the right mint as "${a}".`,
+  }),
+  ConstraintRaw: (a) => ({
+    cause: `A check the program wrote for the account "${a}" failed.`,
+    fix: `The program's own constraint on "${a}" did not hold; check the account against the program's docs or source.`,
+  }),
+  AccountOwnedByWrongProgram: (a) => ({
+    cause: `The account passed as "${a}" is owned by the wrong program.`,
+    fix: `Pass an account owned by the program the instruction expects for "${a}".`,
+  }),
+};
 
 const TOKEN_PROGRAMS = new Set([
   "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
@@ -451,11 +487,11 @@ function decodeCustom(
   // Layer 2a — the program's own on-chain IDL names the error precisely.
   const idlHit = idlErrors?.get(code);
   // Layer 2b — the log parser catches Anchor's runtime explanation when present.
-  let logMsg: { name: string; msg: string } | null = null;
+  let logMsg: { name: string; msg: string; file?: string; account?: string } | null = null;
   for (const line of logs) {
     const m = line.match(ANCHOR_LOG_RE);
-    if (m && Number(m[2]) === code) {
-      logMsg = { name: m[1], msg: m[3] };
+    if (m && Number(m[4]) === code) {
+      logMsg = { name: m[3], msg: m[5], file: m[1], account: m[2] };
       break;
     }
   }
@@ -466,11 +502,14 @@ function decodeCustom(
     const name = idlHit?.name ?? logMsg?.name ?? bundled!.name;
     const msg = idlHit?.msg ?? logMsg?.msg ?? bundled?.msg;
     const kb = ANCHOR_ERRORS[code];
+    const hint = logMsg?.account ? ACCOUNT_HINTS[name]?.(logMsg.account) : undefined;
+    const where = logMsg?.file ? ` The program raised it in ${logMsg.file.replace(/^programs\//, "")}.` : "";
     return {
       title: name,
       code: `Custom(${code}) — 0x${code.toString(16)}`,
-      cause: enrichCause(name, msg),
+      cause: hint ? hint.cause : logMsg?.account ? `${enrichCause(name, msg)} The account involved is the one the program calls "${logMsg.account}".` : `${enrichCause(name, msg)}${where}`,
       fix:
+        hint?.fix ??
         kb?.fix ??
         suggestFixForName(name) ??
         "The error name above is the program's own diagnosis — search the program's docs or source for it.",

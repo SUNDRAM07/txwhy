@@ -155,6 +155,17 @@ export interface RequoteHints {
   probe?: (instructions: TransactionInstruction[]) => Promise<ProbeResult>;
 }
 
+let feeRecipientsCache: { at: number; list: string[] } | null = null;
+
+/** Pump.fun's current fee-recipient accounts, read from its global account through the SDK and cached for ten minutes. */
+export async function pumpFeeRecipients(): Promise<string[]> {
+  if (feeRecipientsCache && Date.now() - feeRecipientsCache.at < 600_000) return feeRecipientsCache.list;
+  const global = await new OnlinePumpSdk(conn()).fetchGlobal();
+  const list = [global.feeRecipient, ...(global.feeRecipients ?? [])].map(String);
+  feeRecipientsCache = { at: Date.now(), list };
+  return list;
+}
+
 export interface ProbeResult {
   err: unknown;
   /** One line naming the failure, when there was one. */

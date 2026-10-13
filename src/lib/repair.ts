@@ -12,9 +12,10 @@ import { decodeTransactionError } from "./errors";
 import { fetchIdlErrors } from "./idl";
 import { lighthouseDetail } from "./lighthouse";
 import { describeStandingQuote, requoteSwap } from "./requote";
+import { pumpFeeRecipients } from "./requote-pump";
 import type { ProbeResult } from "./requote-pump";
 import { programName } from "./programs";
-import { METEORA_DBC, readDirectSwapShape, readSwapShape } from "./swap-shape";
+import { METEORA_DBC, PUMP_FUN, readDirectSwapShape, readSwapShape } from "./swap-shape";
 import { RPC_URL, RpcError, rpc } from "./rpc";
 import { getTrace } from "./trace";
 import { V1_MAX_BYTES, decodeV1, inlineAddressCount, rebuildV1 } from "./v1";
@@ -530,7 +531,40 @@ export async function dbcPoolVerdict(instructions: TransactionInstruction[], cau
  * error. `replaces` says which on-chain causes the precise one may stand in for: a pool that graduated
  * since must not overwrite an on-chain "insufficient funds", and vice versa.
  */
+/**
+ * Pump.fun checks the fee-recipient account a buy or sell passes (programs/pump/src/fee_recipient.rs) and
+ * answers NotAuthorized when it is not one it accepts for that token. Name the account the client passed
+ * and whether it is even one of the protocol's current recipients, so the fix is a rebuild, not a retry.
+ */
+async function pumpFeeRecipientVerdict(instructions: TransactionInstruction[], cause: DecodedError, logs: string[]): Promise<{ cause: DecodedError; note: string } | null> {
+  if (cause.title !== "NotAuthorized" || !logs.some((l) => /pump\/src\/fee_recipient\.rs/.test(l))) return null;
+  const ix = instructions.find((i) => i.programId.toBase58() === PUMP_FUN && readDirectSwapShape(i)?.program === "Pump.fun");
+  const passed = ix?.keys[1]?.pubkey.toBase58();
+  if (!ix || !passed) return null;
+  const name = readDirectSwapShape(ix)?.name ?? "swap";
+  const current = await pumpFeeRecipients().catch(() => [] as string[]);
+  const known = current.length ? current.includes(passed) : null;
+  const standing = known === true
+    ? "It is one of the protocol's global fee recipients, so the rejection is specific to this token: Pump.fun accepts a different recipient for some tokens, and the client used the generic one."
+    : known === false
+      ? `It is not one of the protocol's current fee recipients (${current.length} are valid today, for example ${current[0]}), so the client built the instruction with a stale address.`
+      : "Whether it is still a current recipient could not be read just now.";
+  return {
+    cause: {
+      title: "Fee recipient rejected",
+      code: cause.code,
+      cause: `Pump.fun's fee-recipient check refused the ${name}: the fee account passed as its second account, ${passed}, is not accepted for this token. ${standing}`,
+      fix: "Rebuild the instruction with the fee recipient Pump.fun expects for this mint; the Pump SDK's buy and sell builders read it from the global account for you. The amount and every other account are fine as they are.",
+    },
+    note: `Fee recipient passed: ${passed}. ${known === true ? "Listed among the protocol's global recipients." : known === false ? `Not among the ${current.length} current recipients.` : "Current recipients could not be read."}`,
+  };
+}
+
 async function preciseVerdict(instructions: TransactionInstruction[], cause: DecodedError, logs: string[], err?: unknown, inner?: ParsedInner[] | null, original?: TransactionInstruction[]): Promise<{ cause: DecodedError; note: string; replaces: RegExp } | null> {
+  if (cause.title === "NotAuthorized") {
+    const precise = await pumpFeeRecipientVerdict(instructions, cause, logs).catch(() => null);
+    return precise ? { ...precise, replaces: /^NotAuthorized$/ } : null;
+  }
   if (cause.title === "InsufficientFunds") {
     const precise = await tokenShortfall(instructions, logs, err, inner, original);
     return precise ? { ...precise, replaces: /^InsufficientFunds$/ } : null;
@@ -998,7 +1032,7 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
       summary:
         wantsRequote && !notSlippage
           ? "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote."
-          : (verdict.cause?.cause ?? (landed ? onchain?.error?.cause : undefined) ?? "This transaction fails for a reason that cannot be fixed by rebuilding it."),
+          : ((titleChanged && !precise ? onchain?.error?.cause : undefined) ?? verdict.cause?.cause ?? (landed ? onchain?.error?.cause : undefined) ?? "This transaction fails for a reason that cannot be fixed by rebuilding it."),
       cause: landed ? (onchain?.error ?? verdict.cause ?? probeCause) : (verdict.cause ?? probeCause),
       changes: [],
       repairedTransaction: null,
@@ -1294,7 +1328,7 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
       const graduated = finalVerdict && GRADUATED_PATTERN.test(finalVerdict) ? await dbcPoolVerdict(decoded.instructions, { title: "PoolIsCompleted", code: base?.code, cause: "", fix: "" }, probeSim.logs ?? []).catch(() => null) : null;
       return {
         status: finalVerdict ? "not_repairable" : slippageNow ? "needs_requote" : verdict.status === "needs_requote" ? "not_repairable" : verdict.status,
-        summary: finalVerdict ?? (slippageNow ? "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote." : (verdict.cause?.cause ?? base?.cause ?? "This transaction fails for a reason that cannot be fixed by rebuilding it.")),
+        summary: finalVerdict ?? (slippageNow ? "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote." : ((titleChanged && !precise ? base?.cause : undefined) ?? verdict.cause?.cause ?? base?.cause ?? "This transaction fails for a reason that cannot be fixed by rebuilding it.")),
         cause: graduated ? graduated.cause : finalVerdict && base ? { ...base, fix: finalFix(finalVerdict, base.fix) } : base,
         changes: [],
         repairedTransaction: null,
