@@ -53,8 +53,10 @@ And what it refuses to fake:
 |---|---|
 | Not enough SOL, or not enough tokens for a swap or any token transfer | The exact shortfall: which token account, what it holds, what the instruction needs, found through the instruction the node blamed, inside a router too |
 | An account left below the rent-exempt minimum | Which account, what it holds, its size, and the minimum for that size from the RPC |
+| A Pump.fun buy or sell refused at the fee-recipient check (NotAuthorized from fee_recipient.rs) | Names the fee account the client passed, checks it against the protocol's current recipients, and says to rebuild with the recipient the SDK picks for that mint |
+| An Anchor account constraint (AccountNotInitialized, ConstraintSeeds, ConstraintOwner, ConstraintHasOne, and the rest) | Names the account the program blamed and what to do about it: create it first, derive it from the right seeds, pass the right owner or mint |
 | A buy bigger than what is left on a Meteora DBC launch pool | The exact room left before the pool graduates, what the buy puts in, and the Meteora DAMM v2 pool the token moves to, read from the pool's own account. A graduated pool gets the same answer with its new pool address |
-| A program rejected it | The named error, cause and fix from 1,874 bundled errors across 37 programs, plus any IDL the program published on chain |
+| A program rejected it | The named error, cause and fix from 1,891 bundled errors across 38 programs, plus any IDL the program published on chain |
 | A private program rejected it | Which program raised the code, and that only its authors can decode it |
 | Circular arbitrage that missed its gap | That it is built to fail this way and there is nothing to repair |
 
