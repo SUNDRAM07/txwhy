@@ -560,7 +560,53 @@ async function pumpFeeRecipientVerdict(instructions: TransactionInstruction[], c
   };
 }
 
+/**
+ * Pump.fun raises Overflow (programs/pump/src/lib.rs) inside the fee arithmetic of a sell. Every case the
+ * replay has sampled came through a router's percentage sell, which computes the amount for Pump.fun;
+ * name that path, so the fix is a direct sell rather than a retry.
+ */
+function pumpOverflowVerdict(instructions: TransactionInstruction[], cause: DecodedError, logs: string[], err?: unknown): { cause: DecodedError; note: string } | null {
+  if (cause.title !== "Overflow") return null;
+  const at = logs.findIndex((l) => /AnchorError thrown in programs\/pump\/src\/lib\.rs/.test(l));
+  if (at < 0) return null;
+  const names = logs.slice(0, at).filter((l) => l.startsWith("Program log: Instruction: ")).map((l) => l.slice("Program log: Instruction: ".length));
+  const pumpIx = [...names].reverse().find((n) => /^(Sell|Buy)/.test(n)) ?? "sell";
+  const failing = failingIndex(err);
+  const top = failing != null ? instructions[failing] : undefined;
+  const topProgram = top?.programId.toBase58();
+  const routed = topProgram != null && topProgram !== PUMP_FUN;
+  const routerIx = routed ? names[Math.max(0, names.lastIndexOf(pumpIx) - 1)] : undefined;
+  const router = routed ? programName(topProgram) : undefined;
+  const instruction = /^SellV2/.test(pumpIx) ? "sell_v2" : /^Sell/.test(pumpIx) ? "sell" : /^BuyV2/.test(pumpIx) ? "buy_v2" : "buy";
+  return {
+    cause: {
+      title: "Pump.fun fee arithmetic overflow",
+      code: cause.code,
+      cause: routed
+        ? `Pump.fun's ${instruction} overflowed inside its fee arithmetic (programs/pump/src/lib.rs) right after the fee program priced the trade. The sell came through ${router} (${routerIx ?? "its sell instruction"}), which works out the amount for Pump.fun. Every case TxWhy has sampled came through a router's percentage sell.`
+        : `Pump.fun's ${instruction} overflowed inside its fee arithmetic (programs/pump/src/lib.rs) for this amount.`,
+      fix: routed
+        ? `Sell the amount directly with Pump.fun's ${instruction} instruction (the Pump SDK builds it), or a smaller amount through the router. Nothing on your side is short; the router's amount does not fit Pump.fun's fee math.`
+        : "Sell a smaller amount, or split the sell into two.",
+    },
+    note: `Overflow raised inside Pump.fun's ${pumpIx}${routed ? `, called by ${router}` : ""}.`,
+  };
+}
+
+/** The rebuilt transaction failed its final simulation: say with what, and what that means when it is the same slippage check again. */
+function stillFailsSummary(finalError: DecodedError | null, requoted: boolean): string {
+  if (!finalError) return "The rebuilt transaction still fails simulation.";
+  if (requoted && SLIPPAGE_PATTERN.test(`${finalError.title} ${finalError.code ?? ""}`)) {
+    return `The rebuilt transaction still fails simulation, on the same slippage check (${finalError.title}): the pool moved again between pricing and the final check, past the tolerance of the rebuilt swap. This pool is moving faster than a fixed limit can follow right now; try again in a few seconds.`;
+  }
+  return `The rebuilt transaction still fails simulation, with "${finalError.title}". ${finalError.cause}`;
+}
+
 async function preciseVerdict(instructions: TransactionInstruction[], cause: DecodedError, logs: string[], err?: unknown, inner?: ParsedInner[] | null, original?: TransactionInstruction[]): Promise<{ cause: DecodedError; note: string; replaces: RegExp } | null> {
+  if (cause.title === "Overflow") {
+    const precise = pumpOverflowVerdict(instructions, cause, logs, err);
+    return precise ? { ...precise, replaces: /^Overflow$/ } : null;
+  }
   if (cause.title === "NotAuthorized") {
     const precise = await pumpFeeRecipientVerdict(instructions, cause, logs).catch(() => null);
     return precise ? { ...precise, replaces: /^NotAuthorized$/ } : null;
@@ -1166,7 +1212,7 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
     summary: !passed
       ? simulated
         ? "A rebuild was produced and it simulates, but it failed TxWhy's own safety check, so it is withheld. Nothing is returned that we cannot prove is the same transaction."
-        : "The rebuilt transaction still fails simulation."
+        : stillFailsSummary(finalError, requoted)
       : requoted
         ? "Repaired with a fresh quote. Only the swap instruction changed. Your tokens, amount, slippage tolerance and every other instruction are kept, and the result passes simulation."
       : wasBroken
@@ -1421,7 +1467,7 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
     summary: !passed
       ? simulated
         ? "A rebuild was produced and it simulates, but it failed TxWhy's own safety check, so it is withheld."
-        : "The rebuilt transaction still fails simulation."
+        : stillFailsSummary(finalError, requoted)
       : requoted
         ? "Repaired with a fresh quote. Only the swap instruction changed. Your tokens, amount, slippage tolerance and every other instruction are kept, and the result passes simulation."
         : wasBroken
