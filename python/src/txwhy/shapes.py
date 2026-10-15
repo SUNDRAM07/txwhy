@@ -270,5 +270,17 @@ def is_idempotent_ata_create(ix: Instruction) -> bool:
     return ix.program_id == ATA_PROGRAM and len(ix.data) >= 1 and ix.data[0] == 1
 
 
+def is_allowed_ata_create(ix: Instruction, payer: str, user: str | None) -> bool:
+    """An inserted token-account creation is allowed only when it creates the swapping wallet's own account,
+    funded by the fee payer (accounts: funding payer, the token account, the wallet that owns it, the mint)."""
+    return (
+        is_idempotent_ata_create(ix)
+        and len(ix.accounts) >= 3
+        and user is not None
+        and ix.accounts[0].pubkey == payer
+        and ix.accounts[2].pubkey == user
+    )
+
+
 def pubkey_from_bytes(raw: bytes) -> str:
     return b58encode(raw)

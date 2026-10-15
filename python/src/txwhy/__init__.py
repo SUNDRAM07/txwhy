@@ -37,7 +37,7 @@ __all__ = [
     "repair",
     "verify_instructions",
 ]
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 DEFAULT_ENDPOINT = "https://txwhy.vercel.app/api/v1/repair"
 

@@ -56,6 +56,14 @@ function signerSet(payer: PublicKey, instructions: TransactionInstruction[]): Se
 const isComputeBudget = (ix: TransactionInstruction) => id(ix.programId) === COMPUTE_BUDGET;
 /** Associated Token Account "CreateIdempotent" (tag 1): harmless if the account already exists. */
 const isIdempotentAtaCreate = (ix: TransactionInstruction) => id(ix.programId) === ATA_PROGRAM && ix.data[0] === 1;
+/**
+ * An inserted token-account creation is allowed only when it creates the swapping wallet's own account,
+ * funded by the fee payer (accounts: funding payer, the token account, the wallet that owns it, the mint).
+ * Anything else would make the user pay rent for a stranger's account.
+ */
+const isAllowedAtaCreate = (ix: TransactionInstruction, payer: string, user: string | undefined) =>
+  isIdempotentAtaCreate(ix) && ix.keys.length >= 3 && user != null && id(ix.keys[0].pubkey) === payer && id(ix.keys[2].pubkey) === user;
+const ataOwner = (ix: TransactionInstruction) => (ix.keys[2] ? id(ix.keys[2].pubkey) : "an unknown wallet");
 
 function describeBudget(ix: TransactionInstruction): string {
   const data = Buffer.from(ix.data);
@@ -116,11 +124,16 @@ export function verifyInstructions(
       continue;
     }
     if (id(a[i].programId) === JUPITER_V6) {
-      // Allowed: [idempotent token-account creation]* followed by one equivalent Jupiter swap.
-      let k = j;
-      while (k < b.length && isIdempotentAtaCreate(b[k])) k++;
-      const candidate = b[k];
+      // Allowed: [idempotent creation of the swapping wallet's own token accounts]* followed by one equivalent Jupiter swap.
       const was = readSwapShape(a[i]);
+      const payerId = id(repaired.payer);
+      let k = j;
+      while (k < b.length && isAllowedAtaCreate(b[k], payerId, was?.user)) k++;
+      if (k < b.length && isIdempotentAtaCreate(b[k])) {
+        violations.push(`A token-account creation for a different wallet (${ataOwner(b[k])}) was inserted before the swap.`);
+        break;
+      }
+      const candidate = b[k];
       const now = candidate && id(candidate.programId) === JUPITER_V6 ? readSwapShape(candidate) : null;
       if (!was || !now) {
         violations.push(`Instruction ${i + 1} (a Jupiter swap) was changed into something that is not an equivalent swap.`);

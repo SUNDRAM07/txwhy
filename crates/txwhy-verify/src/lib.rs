@@ -390,6 +390,12 @@ fn is_idempotent_ata_create(ix: &Instruction) -> bool {
     ix.program_id == ATA_PROGRAM && ix.data.first() == Some(&1)
 }
 
+/// An inserted token-account creation is allowed only when it creates the swapping wallet's own account,
+/// funded by the fee payer (accounts: funding payer, the token account, the wallet that owns it, the mint).
+fn is_allowed_ata_create(ix: &Instruction, payer: &str, user: &str) -> bool {
+    is_idempotent_ata_create(ix) && ix.accounts.len() >= 3 && ix.accounts[0].pubkey == payer && ix.accounts[2].pubkey == user
+}
+
 fn describe_budget(ix: &Instruction) -> String {
     let d = &ix.data;
     match d.first() {
@@ -445,12 +451,18 @@ pub fn verify_instructions(original_payer: &str, original: &[Instruction], repai
             }
         }
         if a[i].program_id == JUPITER_V6 {
-            // Allowed: [idempotent token-account creation]* followed by one equivalent Jupiter swap.
+            // Allowed: [idempotent creation of the swapping wallet's own token accounts]* followed by one equivalent Jupiter swap.
+            let was = read_swap_shape(a[i]);
+            let user = was.as_ref().map(|w| w.user.clone()).unwrap_or_default();
             let mut k = j;
-            while k < b.len() && is_idempotent_ata_create(b[k]) {
+            while k < b.len() && is_allowed_ata_create(b[k], repaired_payer, &user) {
                 k += 1;
             }
-            let was = read_swap_shape(a[i]);
+            if k < b.len() && is_idempotent_ata_create(b[k]) {
+                let owner = b[k].accounts.get(2).map(|m| m.pubkey.as_str()).unwrap_or("an unknown wallet");
+                violations.push(format!("A token-account creation for a different wallet ({owner}) was inserted before the swap."));
+                break;
+            }
             let now = b.get(k).filter(|c| c.program_id == JUPITER_V6).and_then(|c| read_swap_shape(c));
             let (was, now) = match (was, now) {
                 (Some(w), Some(n)) => (w, n),
@@ -696,10 +708,15 @@ mod tests {
 
     #[test]
     fn jupiter_swap_with_ata_setup_accepted() {
-        let ata = Instruction { program_id: ATA_PROGRAM.into(), accounts: vec![acct(PAYER, true, true)], data: vec![1] };
+        let ata = Instruction { program_id: ATA_PROGRAM.into(), accounts: vec![acct(PAYER, true, true), acct(OTHER, false, true), acct(PAYER, false, false)], data: vec![1] };
         let v = run(&[jup(5, 10, DEST, &[1])], &[ata, jup(5, 10, DEST, &[2])]);
         assert!(v.ok, "{:?}", v.violations);
         assert_eq!(v.changes.iter().filter(|c| c.kind == ChangeKind::TokenAccountSetup).count(), 1);
+        // A token account created for someone else, at the user's expense, is not setup; it is an insertion.
+        let stranger = Instruction { program_id: ATA_PROGRAM.into(), accounts: vec![acct(PAYER, true, true), acct(OTHER, false, true), acct(OTHER, false, false)], data: vec![1] };
+        let s = run(&[jup(5, 10, DEST, &[1])], &[stranger, jup(5, 10, DEST, &[2])]);
+        assert!(!s.ok);
+        assert!(s.violations[0].contains("different wallet"), "{:?}", s.violations);
         let non_idempotent = Instruction { program_id: ATA_PROGRAM.into(), accounts: vec![acct(PAYER, true, true)], data: vec![0] };
         assert!(!run(&[jup(5, 10, DEST, &[1])], &[non_idempotent, jup(5, 10, DEST, &[2])]).ok);
     }

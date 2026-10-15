@@ -27,6 +27,7 @@ from .shapes import (
     allowed_quote_move,
     allowed_wrap_raise,
     is_compute_budget,
+    is_allowed_ata_create,
     is_idempotent_ata_create,
     read_direct_swap_shape,
     read_swap_shape,
@@ -116,10 +117,14 @@ def verify_instructions(original_payer: str, original: list[Instruction], repair
                 j += 1
                 continue
         if a[i].program_id == JUPITER_V6:
-            k = j
-            while k < len(b) and is_idempotent_ata_create(b[k]):
-                k += 1
             was = read_swap_shape(a[i])
+            k = j
+            while k < len(b) and is_allowed_ata_create(b[k], repaired_payer, was.user if was else None):
+                k += 1
+            if k < len(b) and is_idempotent_ata_create(b[k]):
+                owner = b[k].accounts[2].pubkey if len(b[k].accounts) > 2 else "an unknown wallet"
+                violations.append(f"A token-account creation for a different wallet ({owner}) was inserted before the swap.")
+                break
             now = read_swap_shape(b[k]) if k < len(b) and b[k].program_id == JUPITER_V6 else None
             if was is None or now is None:
                 violations.append(f"Instruction {i + 1} (a Jupiter swap) was changed into something that is not an equivalent swap.")

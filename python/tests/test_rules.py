@@ -2,6 +2,7 @@
 
 from txwhy import AccountMeta, Instruction, verify_instructions
 from txwhy.shapes import (
+    ATA_PROGRAM,
     JUPITER_V6,
     METEORA_DAMM_V2,
     METEORA_DBC,
@@ -132,3 +133,11 @@ def test_shapes_read_correctly():
     d = read_direct_swap_shape(pump_buy(7, 9))
     assert (d.amount, d.limit_value, d.limit, d.name) == (7, 9, "max_in", "buy")
     assert read_direct_swap_shape(plain(PROG, [1])) is None
+
+
+def test_token_account_setup_only_for_the_swapping_wallet():
+    own = Instruction(ATA_PROGRAM, [acct(PAYER, True, True), acct(OTHER, False, True), acct(PAYER)], b"\x01")
+    stranger = Instruction(ATA_PROGRAM, [acct(PAYER, True, True), acct(OTHER, False, True), acct(THIEF)], b"\x01")
+    assert run([jup()], [own, jup(route=b"\x02")]).ok
+    v = run([jup()], [stranger, jup(route=b"\x02")])
+    assert not v.ok and "different wallet" in v.violations[0]

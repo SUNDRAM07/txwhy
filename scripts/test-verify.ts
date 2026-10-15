@@ -42,7 +42,9 @@ function sharedSwap(opts: { receiver?: PublicKey; quoted?: bigint }) {
 
 const memo = new TransactionInstruction({ programId: MEMO, keys: [], data: Buffer.from("order-42") });
 const feeTransfer = SystemProgram.transfer({ fromPubkey: payer, toPubkey: other, lamports: 5000 });
-const ataCreate = new TransactionInstruction({ programId: ATA, keys: [{ pubkey: payer, isSigner: true, isWritable: true }], data: Buffer.from([1]) });
+/** CreateIdempotent accounts: funding payer, the token account, the wallet that owns it, the mint (the rest omitted here). */
+const ataCreate = new TransactionInstruction({ programId: ATA, keys: [{ pubkey: payer, isSigner: true, isWritable: true }, { pubkey: other, isSigner: false, isWritable: true }, { pubkey: payer, isSigner: false, isWritable: false }], data: Buffer.from([1]) });
+const strangerAta = new TransactionInstruction({ programId: ATA, keys: [{ pubkey: payer, isSigner: true, isWritable: true }, { pubkey: other, isSigner: false, isWritable: true }, { pubkey: thief, isSigner: false, isWritable: false }], data: Buffer.from([1]) });
 const limit = (units: number) => ComputeBudgetProgram.setComputeUnitLimit({ units });
 const price = (microLamports: number) => ComputeBudgetProgram.setComputeUnitPrice({ microLamports });
 
@@ -79,6 +81,7 @@ const cases: [string, TransactionInstruction[], PublicKey, boolean][] = [
   ["swap re-quoted with token-account setup in front", [limit(180_000), ataCreate, swap({ quoted: BigInt(4_700_000), route: 9 }), feeTransfer, memo], payer, true],
   ["swap re-quoted into a different Jupiter layout, same receiver", [limit(180_000), sharedSwap({}), feeTransfer, memo], payer, true],
   ["ATTACK: different layout used to redirect the proceeds", [limit(180_000), sharedSwap({ receiver: thief }), feeTransfer, memo], payer, false],
+  ["ATTACK: token-account creation for a stranger slipped in before the swap", [limit(180_000), strangerAta, swap({ quoted: BigInt(4_700_000), route: 9 }), feeTransfer, memo], payer, false],
   ["ATTACK: extra transfer to a stranger appended", [limit(180_000), swap({}), feeTransfer, memo, SystemProgram.transfer({ fromPubkey: payer, toPubkey: thief, lamports: 9_000_000 })], payer, false],
   ["ATTACK: fee transfer redirected to a stranger", [limit(180_000), swap({}), SystemProgram.transfer({ fromPubkey: payer, toPubkey: thief, lamports: 5000 }), memo], payer, false],
   ["ATTACK: fee transfer amount raised", [limit(180_000), swap({}), SystemProgram.transfer({ fromPubkey: payer, toPubkey: other, lamports: 5_000_000 }), memo], payer, false],

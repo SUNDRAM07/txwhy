@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "txwhy"
-version = "0.1.0"
+version = "0.1.1"
 description = "Failed Solana transaction in, working transaction out. Repair API client, send loop for solana-py, and an offline verifier that proves a repair changed only what it may."
 readme = "README.md"
 license = { text = "MIT" }
