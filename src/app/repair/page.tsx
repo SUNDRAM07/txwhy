@@ -15,6 +15,16 @@ const DEMOS = [
   { kind: "v1", label: "Version 1 transaction" },
 ];
 
+/**
+ * A signature is 64 bytes in base58: 86 to 88 characters and never the + / = of base64. People paste
+ * signatures and explorer links here as often as transactions, so both are accepted.
+ */
+function asSignature(text: string): string | null {
+  const fromLink = text.match(/\/tx\/([1-9A-HJ-NP-Za-km-z]{86,88})/);
+  const candidate = fromLink ? fromLink[1] : text;
+  return /^[1-9A-HJ-NP-Za-km-z]{86,88}$/.test(candidate) ? candidate : null;
+}
+
 export default function RepairPage() {
   const [input, setInput] = useState("");
   const [submitted, setSubmitted] = useState(false);
@@ -52,7 +62,7 @@ export default function RepairPage() {
         Repair a transaction before you send it
       </h1>
       <p className="mt-2 text-sm leading-relaxed text-neutral-500">
-        Paste a serialized transaction in base64, signed or unsigned. TxWhy simulates it against live
+        Paste a serialized transaction in base64, signed or unsigned, or the signature of one that already failed. TxWhy simulates it against live
         chain state, fixes what can be fixed, and returns a rebuilt unsigned transaction with proof
         that it passes.
       </p>
@@ -102,13 +112,14 @@ export default function RepairPage() {
           if (!transaction) return;
           setDemo(null);
           setSubmitted(true);
-          void repair.run({ transaction });
+          const signature = asSignature(transaction);
+          void repair.run(signature ? { signature } : { transaction });
         }}
       >
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Base64 transaction"
+          placeholder="Base64 transaction, or the signature (or explorer link) of one that already failed"
           spellCheck={false}
           rows={5}
           className="w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 font-mono text-xs outline-none focus:border-emerald-500 dark:border-neutral-700 dark:bg-neutral-900"
