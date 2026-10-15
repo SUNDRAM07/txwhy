@@ -4,6 +4,7 @@ import { notFound, permanentRedirect } from "next/navigation";
 import { SignatureBox } from "@/components/SignatureBox";
 import { SiteHeader } from "@/components/SiteHeader";
 import { getError, listPrograms, sameCodeElsewhere } from "@/lib/catalog";
+import { fieldNote, repairBlurb } from "@/lib/field-notes";
 
 type Params = Promise<{ program: string; code: string }>;
 
@@ -34,6 +35,8 @@ export default async function ErrorCodePage({ params }: { params: Params }) {
   if (code !== String(error.code)) permanentRedirect(`/errors/${program.slug}/${error.code}`);
 
   const elsewhere = sameCodeElsewhere(error.code, program.slug);
+  const seen = fieldNote(program.address, error.name);
+  const blurb = repairBlurb(program.address, error.repair);
   const position = program.errors.findIndex((e) => e.code === error.code);
   const previous = program.errors[position - 1];
   const next = program.errors[position + 1];
@@ -52,6 +55,15 @@ export default async function ErrorCodePage({ params }: { params: Params }) {
         name: `How do I fix ${error.name} on ${program.name}?`,
         acceptedAnswer: { "@type": "Answer", text: error.fix },
       },
+      ...(seen
+        ? [
+            {
+              "@type": "Question",
+              name: `What does ${error.name} on ${program.name} look like on mainnet?`,
+              acceptedAnswer: { "@type": "Answer", text: seen },
+            },
+          ]
+        : []),
     ],
   };
 
@@ -86,17 +98,25 @@ export default async function ErrorCodePage({ params }: { params: Params }) {
         <p className="mt-1 text-sm leading-relaxed">{error.fix}</p>
       </section>
 
+      {seen && (
+        <section className="mt-6 rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Seen on mainnet</h2>
+          <p className="mt-1 text-sm leading-relaxed">{seen}</p>
+          <p className="mt-2 text-xs text-neutral-500">
+            From replaying real landed failures through the repair engine, around the clock since September 21, 2026. Every verdict and its reason is on the{" "}
+            <Link href="/failures" className="underline hover:text-emerald-500">
+              failure index
+            </Link>
+            .
+          </p>
+        </section>
+      )}
+
       <section className="mt-6 rounded-xl border border-emerald-500/40 bg-emerald-500/5 p-4">
-        <h2 className="text-sm font-semibold">
-          {error.repair === "requote" ? "TxWhy can repair this one" : "Have the transaction that failed with this?"}
-        </h2>
-        <p className="mt-1 text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">
-          {error.repair === "requote"
-            ? "When the swap was routed through Jupiter, TxWhy replaces only the stale swap instruction with a current quote for the same tokens, amount and slippage tolerance, keeps every other instruction byte for byte, and proves the result passes simulation."
-            : "Paste its signature. TxWhy shows the exact instruction and inner call that raised the error, and rebuilds the transaction when the cause is one it can fix (compute limit, expired blockhash, priority fee, stale swap quote)."}
-        </p>
+        <h2 className="text-sm font-semibold">{blurb.title}</h2>
+        <p className="mt-1 text-sm leading-relaxed text-neutral-600 dark:text-neutral-400">{blurb.text}</p>
         <div className="mt-3">
-          <SignatureBox cta={error.repair === "requote" ? "Repair" : "Diagnose"} />
+          <SignatureBox cta={blurb.cta} />
         </div>
       </section>
 
