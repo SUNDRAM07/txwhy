@@ -593,6 +593,37 @@ function pumpOverflowVerdict(instructions: TransactionInstruction[], cause: Deco
   };
 }
 
+const ZERO_AMOUNT_TITLE = /^(RequireGtViolated|RequireGteViolated|ZeroAmount|ZeroSellAmount|ZeroBuyAmount|BuyZeroAmount|SellZeroAmount|AmountIsZero)$/;
+
+/**
+ * A trade built for zero tokens: a percentage sell of an empty balance, or a quote that rounded to
+ * nothing. Programs refuse it with a "require greater than" or a named zero-amount error; say so, with
+ * the amount read from the instruction, so nobody retries it.
+ */
+function zeroAmountVerdict(instructions: TransactionInstruction[], cause: DecodedError, logs: string[], err?: unknown): { cause: DecodedError; note: string } | null {
+  if (!ZERO_AMOUNT_TITLE.test(cause.title)) return null;
+  const named = /Zero/i.test(cause.title);
+  const failing = failingIndex(err);
+  const ix = failing != null ? instructions[failing] : undefined;
+  const shape = ix ? readDirectSwapShape(ix) : null;
+  const data = ix ? Buffer.from(ix.data) : null;
+  const amount = shape ? shape.amount : data && data.length >= 16 ? data.readBigUInt64LE(8) : null;
+  if (!named && amount !== BigInt(0)) return null;
+  if (named && amount != null && amount !== BigInt(0) && !shape) return null;
+  const where = logs.map((l) => l.match(/thrown in (?:programs\/)?([^:]+?)\/src\/instructions\/([a-z_]+)\.rs/)).find(Boolean);
+  const program = where ? where[1].replace(/-/g, " ") : shape?.program ?? "The program";
+  const instruction = shape?.name ?? (where ? where[2] : "trade");
+  return {
+    cause: {
+      title: "Trade amount is zero",
+      code: cause.code,
+      cause: `${program === "The program" ? program : `${program}'s ${instruction}`} refused this trade because its amount is zero: the client built a ${instruction} for 0 tokens. That happens when a percentage sell runs on a balance that is already empty, or when a quote rounds to nothing.`,
+      fix: "Check the balance before building the trade; there is nothing to sell or buy here, and nothing on chain to fix.",
+    },
+    note: amount != null ? `Amount in the instruction: ${amount.toString()}.` : "The program named the amount as zero.",
+  };
+}
+
 /** The rebuilt transaction failed its final simulation: say with what, and what that means when it is the same slippage check again. */
 function stillFailsSummary(finalError: DecodedError | null, requoted: boolean): string {
   if (!finalError) return "The rebuilt transaction still fails simulation.";
@@ -606,6 +637,10 @@ async function preciseVerdict(instructions: TransactionInstruction[], cause: Dec
   if (cause.title === "Overflow") {
     const precise = pumpOverflowVerdict(instructions, cause, logs, err);
     return precise ? { ...precise, replaces: /^Overflow$/ } : null;
+  }
+  if (ZERO_AMOUNT_TITLE.test(cause.title)) {
+    const precise = zeroAmountVerdict(instructions, cause, logs, err);
+    return precise ? { ...precise, replaces: ZERO_AMOUNT_TITLE } : null;
   }
   if (cause.title === "NotAuthorized") {
     const precise = await pumpFeeRecipientVerdict(instructions, cause, logs).catch(() => null);
