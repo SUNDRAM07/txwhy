@@ -19,7 +19,8 @@ import { verifyInstructions, type Verification } from "@/lib/verify";
  * Backpack providers as a fallback for older builds.
  */
 
-const PUBLIC_RPC = "https://api.mainnet-beta.solana.com";
+/** The public Solana endpoint answers browsers with 403, so every chain read and the final send go through the site's narrow JSON-RPC pass-through. */
+const rpcUrl = () => `${window.location.origin}/api/v1/rpc`;
 const DEMO_LAMPORTS = 5_000_000;
 const CHAIN = "solana:mainnet";
 
@@ -90,7 +91,7 @@ function fromBase64(text: string): Uint8Array {
 }
 
 async function sendRaw(bytes: Uint8Array): Promise<string> {
-  return new Connection(PUBLIC_RPC, "confirmed").sendRawTransaction(bytes, { maxRetries: 3 });
+  return new Connection(rpcUrl(), "confirmed").sendRawTransaction(bytes, { maxRetries: 3 });
 }
 
 function fromStandard(w: StandardWallet): WalletLike | null {
@@ -203,7 +204,7 @@ async function decompile(conn: Connection, base64: string) {
 
 /** The verifier, run here: same rule as the SDK and the server, with the lookup tables fetched from a public node. */
 async function verifyHere(original: string, repaired: string): Promise<{ verification: Verification; tx: VersionedTransaction; payer: string }> {
-  const conn = new Connection(PUBLIC_RPC, "confirmed");
+  const conn = new Connection(rpcUrl(), "confirmed");
   const [o, r] = await Promise.all([decompile(conn, original), decompile(conn, repaired)]);
   return {
     verification: verifyInstructions({ payer: o.payer, instructions: o.instructions }, { payer: r.payer, instructions: r.instructions }),
@@ -214,7 +215,7 @@ async function verifyHere(original: string, repaired: string): Promise<{ verific
 
 /** The bytes of a landed transaction, from a public node; version 1 comes back as bytes too and fails later in decompile with a clear message. */
 async function fetchOriginal(signature: string): Promise<string> {
-  const res = await fetch(PUBLIC_RPC, {
+  const res = await fetch(rpcUrl(), {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getTransaction", params: [signature, { encoding: "base64", maxSupportedTransactionVersion: 1, commitment: "confirmed" }] }),
@@ -226,7 +227,7 @@ async function fetchOriginal(signature: string): Promise<string> {
 }
 
 async function watchLanding(signature: string): Promise<string> {
-  const conn = new Connection(PUBLIC_RPC, "confirmed");
+  const conn = new Connection(rpcUrl(), "confirmed");
   for (let i = 0; i < 20; i++) {
     await new Promise((r) => setTimeout(r, 3000));
     const { value } = await conn.getSignatureStatuses([signature]);
@@ -330,7 +331,7 @@ export function WalletTry() {
       setWallet(w);
       setAddress(addr);
       setStep("connected");
-      const lamports = await new Connection(PUBLIC_RPC, "confirmed").getBalance(new PublicKey(addr)).catch(() => null);
+      const lamports = await new Connection(rpcUrl(), "confirmed").getBalance(new PublicKey(addr)).catch(() => null);
       setBalance(lamports == null ? null : lamports / 1e9);
     } catch (e) {
       setStep("idle");
