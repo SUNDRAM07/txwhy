@@ -4,6 +4,7 @@ import Link from "next/link";
 import { SiteHeader } from "@/components/SiteHeader";
 import { useState } from "react";
 import { RepairView, useRepair } from "@/components/RepairPanel";
+import { WalletTry } from "@/components/WalletTry";
 
 const DEMOS = [
   { kind: "compute", label: "Compute limit too low" },
@@ -103,6 +104,8 @@ export default function RepairPage() {
         )}
         {demo && "error" in demo && <p className="mt-3 text-xs text-red-500">{demo.error}</p>}
       </div>
+
+      <WalletTry />
 
       <form
         className="mt-6"

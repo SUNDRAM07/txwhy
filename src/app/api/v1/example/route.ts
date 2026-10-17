@@ -83,7 +83,22 @@ export async function GET(request: Request) {
   const limit = rateLimit(request, "example", 12);
   if (!limit.ok) return tooManyRequests(limit.retryAfterSeconds);
 
-  const kind = new URL(request.url).searchParams.get("kind") ?? "compute";
+  const url = new URL(request.url);
+  const kind = url.searchParams.get("kind") ?? "compute";
+  // "Try it with your own wallet": the stale-quote swap can be built for a connected wallet, for a small amount.
+  const payerParam = url.searchParams.get("payer");
+  let swapPayer = DEMO_PAYER;
+  if (payerParam) {
+    try {
+      swapPayer = new PublicKey(payerParam);
+    } catch {
+      return Response.json({ error: "payer is not a valid public key." }, { status: 400 });
+    }
+  }
+  const lamports = Number(url.searchParams.get("lamports") ?? (payerParam ? 5_000_000 : 50_000_000));
+  if (!Number.isInteger(lamports) || lamports < 1_000_000 || (payerParam && lamports > 20_000_000)) {
+    return Response.json({ error: "lamports must be a whole number between 1,000,000 and 20,000,000 for a connected wallet." }, { status: 400 });
+  }
   const transfer = SystemProgram.transfer({
     fromPubkey: DEMO_PAYER,
     toPubkey: DEMO_RECIPIENT,
@@ -128,7 +143,7 @@ export async function GET(request: Request) {
 
     if (kind === "slippage") {
       const quoteRes = await fetch(
-        `${JUPITER_API}/quote?inputMint=${SOL}&outputMint=${USDC}&amount=50000000&slippageBps=50`,
+        `${JUPITER_API}/quote?inputMint=${SOL}&outputMint=${USDC}&amount=${lamports}&slippageBps=50`,
         { cache: "no-store" },
       );
       const quote = await quoteRes.json();
@@ -144,7 +159,7 @@ export async function GET(request: Request) {
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             quoteResponse: stale,
-            userPublicKey: DEMO_PAYER.toBase58(),
+            userPublicKey: swapPayer.toBase58(),
             wrapAndUnwrapSol: true,
             dynamicComputeUnitLimit: false,
           }),
@@ -152,9 +167,12 @@ export async function GET(request: Request) {
         })
       ).json();
       if (!built.swapTransaction) throw new Error("Could not build the demo swap.");
+      const sol = (lamports / 1e9).toLocaleString("en-US", { maximumFractionDigits: 4 });
       return Response.json({
         kind,
-        description: "A 0.05 SOL to USDC swap built on a stale quote, so it fails on slippage.",
+        description: payerParam
+          ? `A ${sol} SOL to USDC swap for ${swapPayer.toBase58().slice(0, 4)}…${swapPayer.toBase58().slice(-4)}, built on a stale quote, so it fails on slippage.`
+          : `A ${sol} SOL to USDC swap built on a stale quote, so it fails on slippage.`,
         transaction: built.swapTransaction,
       });
     }
