@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { after } from "next/server";
 import { SiteHeader } from "@/components/SiteHeader";
-import { RepairPanel } from "@/components/RepairPanel";
+import { RepairPanelWithSigner } from "@/components/WalletTry";
 import Link from "next/link";
 import { findError } from "@/lib/catalog";
 import { track } from "@/lib/stats";
@@ -183,7 +183,7 @@ export default async function TxPage({
           )}
 
           {!trace.success && (
-            <RepairPanel
+            <RepairPanelWithSigner
               signature={signature}
               known={trace.error ? { title: trace.error.title, cause: trace.error.cause } : undefined}
             />
