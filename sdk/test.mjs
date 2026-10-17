@@ -10,14 +10,22 @@ connection.sendTransaction = async () => "STUBBED-NOT-SENT";
 const opts = { client: "test", endpoint: `${BASE}/api/v1/repair` };
 let pass = 0, total = 0;
 const check = (name, ok, detail = "") => { total++; if (ok) pass++; console.log(`${ok ? "PASS" : "FAIL"}  ${name} ${detail}`); };
-/** The demo endpoint builds real transactions against live state; one retry covers a transient upstream hiccup. */
+class SkipError extends Error {}
+const skip = (name, reason) => console.log(`SKIP  ${name} -> ${reason}`);
+/**
+ * The demo endpoint builds real transactions against live state. A 429 is waited out for as long as
+ * the service asks; the thin-pool demo depends on live liquidity and says so with a 502, which is a
+ * skip, not a failure; anything else gets two more tries.
+ */
 async function getExample(kind) {
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 4; i++) {
     const res = await fetch(`${BASE}/api/v1/example?kind=${kind}`, { headers: { "x-txwhy-client": "test" } });
     const json = await res.json().catch(() => null);
     if (json?.transaction) return json;
-    console.log(`      example(${kind}) answered ${res.status}, retrying`);
-    await new Promise((r) => setTimeout(r, 1500));
+    if (res.status === 502 && /no trending token|live liquidity/i.test(json?.error ?? "")) throw new SkipError(json.error);
+    const wait = res.status === 429 ? Math.min(60, Number(res.headers.get("retry-after") ?? 10)) : 1.5;
+    console.log(`      example(${kind}) answered ${res.status}, retrying in ${wait} s`);
+    await new Promise((r) => setTimeout(r, wait * 1000));
   }
   throw new Error(`example(${kind}) unavailable`);
 }
@@ -77,7 +85,8 @@ try {
     const r = await repair({ transaction: impact.transaction }, opts);
     check("refuses a re-route above 3% price impact", r.status === "not_repairable" && /price impact/i.test(r.summary) && !r.repairedTransaction, `-> ${r.status}: ${r.summary.slice(0, 90)}`);
   } catch (e) {
-    check("refuses a re-route above 3% price impact", false, `-> ${e.message}`);
+    if (e instanceof SkipError) skip("refuses a re-route above 3% price impact", e.message);
+    else check("refuses a re-route above 3% price impact", false, `-> ${e.message}`);
   }
 }
 {
