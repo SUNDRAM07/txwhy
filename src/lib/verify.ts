@@ -1,4 +1,5 @@
 import type { PublicKey, TransactionInstruction } from "@solana/web3.js";
+import { bytesEqual, u32le, u64le } from "./bytes";
 import { DIRECT_LAYOUTS, isAllowedDirectLimitChange, isAllowedQuoteMove, readDirectSwapShape, readSwapShape, isAllowedWrapRaise, readSystemTransfer } from "./swap-shape";
 
 /**
@@ -44,7 +45,7 @@ function sameInstruction(a: TransactionInstruction, b: TransactionInstruction): 
   if (id(a.programId) !== id(b.programId)) return false;
   if (a.keys.length !== b.keys.length) return false;
   for (let i = 0; i < a.keys.length; i++) if (id(a.keys[i].pubkey) !== id(b.keys[i].pubkey)) return false;
-  return Buffer.from(a.data).equals(Buffer.from(b.data));
+  return bytesEqual(a.data, b.data);
 }
 
 function signerSet(payer: PublicKey, instructions: TransactionInstruction[]): Set<string> {
@@ -66,16 +67,16 @@ const isAllowedAtaCreate = (ix: TransactionInstruction, payer: string, user: str
 const ataOwner = (ix: TransactionInstruction) => (ix.keys[2] ? id(ix.keys[2].pubkey) : "an unknown wallet");
 
 function describeBudget(ix: TransactionInstruction): string {
-  const data = Buffer.from(ix.data);
+  const data = ix.data;
   switch (data[0]) {
     case 2:
-      return `compute unit limit ${data.readUInt32LE(1).toLocaleString("en-US")}`;
+      return `compute unit limit ${u32le(data, 1).toLocaleString("en-US")}`;
     case 3:
-      return `priority fee ${data.readBigUInt64LE(1).toString()} micro-lamports per compute unit`;
+      return `priority fee ${u64le(data, 1).toString()} micro-lamports per compute unit`;
     case 4:
-      return `loaded account data limit ${data.readUInt32LE(1).toLocaleString("en-US")} bytes`;
+      return `loaded account data limit ${u32le(data, 1).toLocaleString("en-US")} bytes`;
     case 1:
-      return `heap frame ${data.readUInt32LE(1).toLocaleString("en-US")} bytes`;
+      return `heap frame ${u32le(data, 1).toLocaleString("en-US")} bytes`;
     default:
       return "compute budget setting";
   }

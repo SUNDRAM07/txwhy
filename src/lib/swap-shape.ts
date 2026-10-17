@@ -1,4 +1,5 @@
 import type { TransactionInstruction } from "@solana/web3.js";
+import { hex, u16le, u32le, u64le } from "./bytes";
 
 /**
  * Reads what a Jupiter v6 swap instruction asks for, from the instruction alone.
@@ -38,13 +39,13 @@ export const LAYOUTS: Record<string, Layout> = {
   "3560e5cad8bbfa18": { name: "shared_accounts_exact_out_route_v2", mode: "ExactOut", user: 1, sourceMint: 6, destinationMint: 7, amounts: 9, source: 2, destinations: [5] },
 };
 
-export function readAmounts(data: Buffer, at: number | "tail") {
+export function readAmounts(data: Uint8Array, at: number | "tail") {
   const start = at === "tail" ? data.length - 19 : at;
   if (start < 8 || start + 18 > data.length) return null;
   return {
-    first: data.readBigUInt64LE(start),
-    second: data.readBigUInt64LE(start + 8),
-    slippageBps: data.readUInt16LE(start + 16),
+    first: u64le(data, start),
+    second: u64le(data, start + 8),
+    slippageBps: u16le(data, start + 16),
   };
 }
 
@@ -54,9 +55,9 @@ export function readAmounts(data: Buffer, at: number | "tail") {
  */
 export function readSwapShape(ix: TransactionInstruction) {
   if (ix.programId.toBase58() !== JUPITER_V6) return null;
-  const layout = LAYOUTS[Buffer.from(ix.data.subarray(0, 8)).toString("hex")];
+  const layout = LAYOUTS[hex(ix.data.subarray(0, 8))];
   if (!layout) return null;
-  const amounts = readAmounts(Buffer.from(ix.data), layout.amounts);
+  const amounts = readAmounts(ix.data, layout.amounts);
   const user = ix.keys[layout.user]?.pubkey.toBase58();
   const outputMint = ix.keys[layout.destinationMint]?.pubkey.toBase58();
   if (!amounts || !user || !outputMint) return null;
@@ -175,10 +176,10 @@ export const DIRECT_LIMIT_CAP_BPS = 2_500;
 export function readDirectSwapShape(ix: TransactionInstruction) {
   const layouts = DIRECT_LAYOUTS[ix.programId.toBase58()];
   if (!layouts) return null;
-  const data = Buffer.from(ix.data);
+  const data = ix.data;
   const tagLength = Object.values(layouts)[0]?.tagLength ?? 8;
   if (data.length < tagLength + 16) return null;
-  const discriminator = data.subarray(0, tagLength).toString("hex");
+  const discriminator = hex(data.subarray(0, tagLength));
   let layout = layouts[discriminator];
   if (!layout) return null;
   if (layout.modeByte) {
@@ -193,11 +194,11 @@ export function readDirectSwapShape(ix: TransactionInstruction) {
     discriminator,
     /** Byte offset of the limit argument, for rewriting it in place. */
     limitOffset,
-    amount: data.readBigUInt64LE(amountOffset),
-    limitValue: data.readBigUInt64LE(limitOffset),
+    amount: u64le(data, amountOffset),
+    limitValue: u64le(data, limitOffset),
     accounts: ix.keys.map((k) => `${k.pubkey.toBase58()}:${k.isSigner ? "s" : ""}${k.isWritable ? "w" : ""}`),
     /** Everything after the two u64 args (flags such as track_volume) must stay byte for byte. */
-    tail: data.subarray(tagLength + 16).toString("hex"),
+    tail: hex(data.subarray(tagLength + 16)),
   };
 }
 
@@ -206,9 +207,9 @@ const SYSTEM_PROGRAM = "11111111111111111111111111111111";
 /** A System Program transfer (tag 2): who pays, who receives, how many lamports. */
 export function readSystemTransfer(ix: TransactionInstruction): { from: string; to: string; lamports: bigint } | null {
   if (ix.programId.toBase58() !== SYSTEM_PROGRAM || ix.keys.length < 2) return null;
-  const data = Buffer.from(ix.data);
-  if (data.length !== 12 || data.readUInt32LE(0) !== 2) return null;
-  return { from: ix.keys[0].pubkey.toBase58(), to: ix.keys[1].pubkey.toBase58(), lamports: data.readBigUInt64LE(4) };
+  const data = ix.data;
+  if (data.length !== 12 || u32le(data, 0) !== 2) return null;
+  return { from: ix.keys[0].pubkey.toBase58(), to: ix.keys[1].pubkey.toBase58(), lamports: u64le(data, 4) };
 }
 
 /**
