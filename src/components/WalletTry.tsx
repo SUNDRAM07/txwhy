@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Connection, PublicKey, TransactionMessage, VersionedTransaction, type AddressLookupTableAccount } from "@solana/web3.js";
+import { Buffer } from "buffer";
+import { Connection, PublicKey, TransactionInstruction, TransactionMessage, VersionedTransaction, type AddressLookupTableAccount } from "@solana/web3.js";
 import { RepairView, useRepair, type KnownCause } from "@/components/RepairPanel";
 import { verifyInstructions, type Verification } from "@/lib/verify";
 
@@ -199,7 +200,9 @@ async function decompile(conn: Connection, base64: string) {
     if (r.value) tables.push(r.value);
   }
   const message = TransactionMessage.decompile(tx.message, { addressLookupTableAccounts: tables });
-  return { tx, payer: message.payerKey, instructions: message.instructions };
+  // In the browser the decompiled data is a plain Uint8Array; the verifier reads it with Buffer methods.
+  const instructions = message.instructions.map((ix) => new TransactionInstruction({ programId: ix.programId, keys: ix.keys, data: Buffer.from(ix.data) }));
+  return { tx, payer: message.payerKey, instructions };
 }
 
 /** The verifier, run here: same rule as the SDK and the server, with the lookup tables fetched from a public node. */
