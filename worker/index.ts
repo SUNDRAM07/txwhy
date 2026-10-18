@@ -16,6 +16,7 @@ import { GENERIC_REFUSAL, blankNumbers, cleanLegacyRow } from "./reason";
 import { ANCHOR_ERRORS, TOKEN_ERRORS, decodeTransactionError, enrichCause } from "../src/lib/errors";
 import { fetchIdlErrors } from "../src/lib/idl";
 import { RepairInputError, repair } from "../src/lib/repair";
+import { RpcError } from "../src/lib/rpc";
 import { isNamedProgram, programName } from "../src/lib/programs";
 
 const PORT = Number(process.env.PORT ?? 8787);
@@ -299,6 +300,27 @@ const GENERIC_ROW_TEXT: Record<string, string> = {
 };
 
 /** One-time merge of "Title: generic sentence" rows into the row the same failure lands on today. */
+/** One-time refiling of the RPC's "Internal error", recorded as an engine error before upstream failures had their own verdict. */
+async function migrateUpstreamRow(store: Store) {
+  const FLAG = "i:migrated:upstream-1";
+  if (await store.getStr(FLAG)) return;
+  let moved = 0;
+  for (const row of await store.ztop("i:repair:detail:engine_error", 50)) {
+    if (row.member !== "Internal error") continue;
+    await store.zincr("i:repair:detail:upstream_error", "RPC: Internal error", row.score);
+    await store.zrem("i:repair:detail:engine_error", row.member);
+    await store.hincr("i:repair:verdicts", "engine_error", -row.score);
+    await store.hincr("i:repair:verdicts", "upstream_error", row.score);
+    for (const [program, n] of Object.entries(await store.hgetall("i:repair:by_program:engine_error"))) {
+      await store.hincr("i:repair:by_program:engine_error", program, -n);
+      await store.hincr("i:repair:by_program:upstream_error", program, n);
+    }
+    moved += row.score;
+  }
+  await store.setStr(FLAG, new Date().toISOString());
+  console.log(`upstream rows refiled: ${moved}`);
+}
+
 async function migrateGenericRows(store: Store) {
   const FLAG = "i:migrated:reason-rows-2";
   if (await store.getStr(FLAG)) return;
@@ -371,9 +393,14 @@ async function attemptRepair(store: Store, program: string, signature: string) {
     if (e instanceof RepairInputError) {
       verdict = "not_repairable";
       detail = e.message.slice(0, 80);
+    } else if (e instanceof RpcError) {
+      // The node, not the engine: "Internal error", a timeout, a 5xx. Counted on its own so the engine's record stays honest in both directions.
+      verdict = "upstream_error";
+      detail = `RPC: ${e.message}`.slice(0, 80);
     } else {
       verdict = "engine_error";
       detail = (e instanceof Error ? e.message : String(e)).slice(0, 80);
+      console.error(`engine error on ${program} ${signature}:`, e);
     }
   }
   const ms = Date.now() - started;
@@ -600,7 +627,7 @@ async function repairSegments(store: Store, attempted: number, verdicts: Record<
   const rebuilt = verdicts.repaired ?? 0;
   const movedTooFar = Math.max(0, (verdicts.moved_too_far ?? 0) - sum(moved, BOT) - sum(moved, GUARD));
   const people = Math.max(0, attempted - bots);
-  const deadEnds = Math.max(0, people - rebuilt - movedTooFar - guards - (verdicts.engine_error ?? 0) - (verdicts.valid ?? 0));
+  const deadEnds = Math.max(0, people - rebuilt - movedTooFar - guards - (verdicts.engine_error ?? 0) - (verdicts.upstream_error ?? 0) - (verdicts.valid ?? 0));
   return { bots, people, rebuilt, movedTooFar, guards, deadEnds, rebuiltShareOfPeople: people ? rebuilt / people : 0 };
 }
 
@@ -649,6 +676,7 @@ async function main() {
   if (!(await store.getStr("i:since"))) await store.setStr("i:since", new Date().toISOString());
   await migrateReasonRows(store);
   await migrateGenericRows(store);
+  await migrateUpstreamRow(store);
 
   createServer(async (req, res) => {
     try {
