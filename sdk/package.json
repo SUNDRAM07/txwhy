@@ -21,7 +21,8 @@
     "agents",
     "jupiter",
     "wallet-adapter",
-    "phantom"
+    "phantom",
+    "anchor"
   ],
   "type": "module",
   "main": "./dist/index.cjs",
@@ -47,6 +48,11 @@
       "types": "./dist/types/sdk/src/wallet.d.ts",
       "import": "./dist/wallet.js",
       "require": "./dist/wallet.cjs"
+    },
+    "./anchor": {
+      "types": "./dist/types/sdk/src/anchor.d.ts",
+      "import": "./dist/anchor.js",
+      "require": "./dist/anchor.cjs"
     }
   },
   "bin": {

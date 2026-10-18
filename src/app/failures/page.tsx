@@ -30,6 +30,7 @@ const WHY_LABELS: Record<string, [string, string]> = {
   fee_recipient_rejected: ["Fee recipient rejected", "Pump.fun refused the fee account the client passed; rebuild with the recipient the SDK picks for this mint"],
   pump_fee_overflow: ["Pump.fun fee math overflow", "a router's percentage sell gave Pump.fun an amount its fee arithmetic cannot take; sell directly, or sell less"],
   zero_amount: ["Trade amount is zero", "the client built a sell or buy for 0 tokens, usually a percentage sell of an empty balance; nothing to repair"],
+  account_frozen: ["Token account frozen", "the mint's freeze authority froze the account; only the issuer can thaw it, and no rebuild changes that"],
   moved_again: ["Pool moved again", "the limit was moved to the current price and the pool moved past it before the final check; the pool is moving faster than a fixed limit can follow"],
   chained_swaps: ["Two swaps chained together", "moving one limit leaves the next short"],
   wallet_guard: ["Wallet guard tripped", "needs a fresh transaction from the app"],

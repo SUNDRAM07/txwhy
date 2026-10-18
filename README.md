@@ -31,6 +31,8 @@ Most failures never reach the chain. Wallets and agents simulate first, and the 
 import { withRepair } from "@txwhy/sdk/wallet";
 
 const { signature, repairs } = await withRepair(wallet, connection).sendTransaction(tx);
+
+For Anchor, wrap the provider once and every `program.methods.x().rpc()` goes through the same loop: `withRepairProvider(AnchorProvider.env())` from `@txwhy/sdk/anchor`; `provider.lastRepairs` says what changed.
 ```
 
 `wallet` is whatever `useWallet()` gives you (Phantom, Solflare, Backpack) or `window.solana`. The transaction is simulated; if it would fail, TxWhy rebuilds it, the repair is verified locally against the original, and only then is the wallet asked to sign, once, for the transaction that lands. Bots and agents use `sendWithRepair` with their own keypair; the same loop exists for @solana/kit and for Python.

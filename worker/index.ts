@@ -335,6 +335,7 @@ export function whyNot(result: { status: string; summary: string; cause: { title
   if (/fee-recipient check refused/.test(text)) return "fee_recipient_rejected";
   if (/overflowed inside its fee arithmetic/.test(text)) return "pump_fee_overflow";
   if (/because its amount is zero/.test(text)) return "zero_amount";
+  if (/frozen by the mint's freeze authority|^AccountFrozen/.test(text)) return "account_frozen";
   if (/still fails simulation, on the same slippage check/.test(text)) return "moved_again";
   if (/moved more than \d+% against this trade/.test(text)) return "beyond_cap";
   if (/No swap found that TxWhy can re-quote|not a top-level instruction|inside another program by CPI/.test(text)) return "routed_by_private_program";

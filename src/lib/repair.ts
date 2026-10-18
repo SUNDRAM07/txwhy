@@ -343,6 +343,13 @@ const isLoadedDataLimit = (ix: TransactionInstruction) =>
 const hitLoadedDataLimit = (err: unknown) => JSON.stringify(err ?? "").includes("MaxLoadedAccountsDataSizeExceeded");
 
 const SLIPPAGE_PATTERN = /slippage|SlippageToleranceExceeded|ExceededSlippage|TooLittleOutput|TooMuchSol|TooLittleSol|BelowMin|price impact/i;
+/**
+ * On-chain causes no re-quote can change: a frozen token account, a nonce already used, a fee
+ * recipient the program refuses, a pool that graduated, a trade for zero tokens, a client built
+ * against another version of the program. A landed failure with one of these is final, whatever
+ * today's probe happens to hit first (often slippage, because the price has moved since).
+ */
+const TERMINAL_ONCHAIN = /^(AccountFrozen|NonceAlreadyExists|Fee recipient rejected|Pump\.fun fee arithmetic overflow|Trade amount is zero|PoolIsCompleted|BondingCurveComplete|InstructionMissing|InstructionDidNotDeserialize|AccountNotEnoughKeys|AccountNotInitialized)$/;
 
 function classifyUnrepairable(
   cause: DecodedError,
@@ -1003,7 +1010,9 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
     // Slippage: the amounts are inside the instruction, so rebuild the swap from a fresh quote.
     // A landed swap that failed on slippage needs a fresh quote whatever its stale route does today.
     const failedOnSlippage = onchain?.error != null && SLIPPAGE_PATTERN.test(`${onchain.error.title} ${onchain.error.code ?? ""}`);
-    const wantsRequote = verdict.status === "needs_requote" || failedOnSlippage;
+    const terminalOnChain = landed && onchain?.error != null && TERMINAL_ONCHAIN.test(onchain.error.title);
+    if (terminalOnChain && verdict.status === "needs_requote") verdict.status = "not_repairable";
+    const wantsRequote = !terminalOnChain && (verdict.status === "needs_requote" || failedOnSlippage);
     let notSlippage = false;
     if (wantsRequote) {
       const runRequote = () =>
@@ -1355,7 +1364,9 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
       notes.push(`Re-run today, this transaction fails earlier than it did on chain ("${probeCause.title}") because the accounts and prices it referenced have since changed. That is normal for a transaction that already landed; the on-chain cause above is the one that counts.`);
     }
     const failedOnSlippage = onchain?.error != null && SLIPPAGE_PATTERN.test(`${onchain.error.title} ${onchain.error.code ?? ""}`);
-    const wantsRequote = verdict.status === "needs_requote" || failedOnSlippage;
+    const terminalOnChain = landed && onchain?.error != null && TERMINAL_ONCHAIN.test(onchain.error.title);
+    if (terminalOnChain && verdict.status === "needs_requote") verdict.status = "not_repairable";
+    const wantsRequote = !terminalOnChain && (verdict.status === "needs_requote" || failedOnSlippage);
     let notSlippage = false;
     if (wantsRequote) {
       const requote = await requoteSwap(decoded.instructions, {

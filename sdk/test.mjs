@@ -3,6 +3,7 @@
 import { Connection, VersionedTransaction } from "@solana/web3.js";
 import { repair, sendWithRepair, verifyRepair, explainError, TxWhyError } from "./dist/index.js";
 import { verifyInstructions } from "./dist/verify.js";
+import { withRepairProvider } from "./dist/anchor.js";
 
 const BASE = process.env.TXWHY_BASE ?? "https://txwhy.vercel.app";
 const connection = new Connection(process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com", "confirmed");
@@ -113,5 +114,20 @@ try {
     check("withRepair refuses a wallet without signTransaction", e instanceof TxWhyError, `-> ${e.message.slice(0, 80)}`);
   }
 }
+{
+  // Anchor adapter: a provider-shaped object; .rpc() in Anchor ends in sendAndConfirm, so this is the whole surface.
+  const example = await getExample("compute");
+  const tx = VersionedTransaction.deserialize(Buffer.from(example.transaction, "base64"));
+  const confirmed = [];
+  connection.confirmTransaction = async (strategy) => { confirmed.push(strategy.signature); return { value: { err: null } }; };
+  const fakeProvider = { connection, wallet: { publicKey: tx.message.staticAccountKeys[0], signTransaction: async (t) => t }, opts: { commitment: "confirmed" } };
+  const provider = withRepairProvider(fakeProvider, opts);
+  const sig = await provider.sendAndConfirm(tx);
+  check("withRepairProvider(anchor).sendAndConfirm repairs, signs, sends, confirms", sig === "STUBBED-NOT-SENT" && provider.lastRepairs.length === 1 && confirmed[0] === sig && provider.connection === connection, `repairs=${provider.lastRepairs.length}`);
+  const noSigner = withRepairProvider({ connection, wallet: { publicKey: tx.message.staticAccountKeys[0] } }, opts);
+  const refused = await noSigner.sendAndConfirm(tx).then(() => null, (e) => e);
+  check("withRepairProvider refuses a provider whose wallet cannot sign", refused instanceof TxWhyError, `-> ${refused?.message?.slice(0, 70)}`);
+}
+
 console.log(`\n${pass}/${total} passed`);
 process.exit(pass === total ? 0 : 1);

@@ -81,6 +81,22 @@ verifyInstructions({ payer, instructions: before }, { payer, instructions: after
 
 The TxWhy server runs this same function on its own output and refuses to return anything that fails it.
 
+## Anchor: wrap the provider once
+
+Every `program.methods.x().rpc()` then goes through simulate, repair, verify, sign, send, confirm. No dependency on `@coral-xyz/anchor`; `AnchorProvider` satisfies the slice the wrapper needs.
+
+```ts
+import { withRepairProvider } from "@txwhy/sdk/anchor";
+import { AnchorProvider, Program } from "@coral-xyz/anchor";
+
+const provider = withRepairProvider(AnchorProvider.env());
+const program = new Program(idl, provider);
+await program.methods.swap(amount).accounts({ ... }).rpc(); // repaired on the way if it would fail
+provider.lastRepairs;                                        // what changed, with before and after
+```
+
+Extra signers passed to `sendAndConfirm` sign the rebuilt transaction too. A rebuilt transaction that fails the local verifier is never handed to the wallet.
+
 ## Any dApp, any wallet: one line
 
 Wrap the connected wallet. The user sees one signature prompt, for the transaction that will actually land.
