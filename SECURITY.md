@@ -15,7 +15,7 @@ Things especially worth reporting:
 
 ## What is tested
 
-`scripts/test-verify.ts` (49 cases, mostly attacks), `crates/txwhy-verify` (19 unit tests plus parity with real production repairs and a tamper check), `python/tests` (11, same fixtures), `scripts/fuzz-repair.mjs` (122 hostile inputs), `scripts/fuzz-mcp.mjs` (52), `scripts/stress.mjs` and `scripts/soak.mjs` (concurrency and a steady stream against production), `scripts/probe-ratelimit.mjs` (forged client IPs). CI runs the three verifier suites on every push.
+`scripts/test-verify.ts` (49 cases, mostly attacks), `crates/txwhy-verify` (19 unit tests plus parity with real production repairs and a tamper check), `python/tests` (11, same fixtures), `scripts/fuzz-repair.mjs` (122 hostile inputs), `scripts/fuzz-mcp.mjs` (52), `scripts/fuzz-rpc.mjs` (27 hostile inputs to the browser pass-through), `scripts/stress.mjs` and `scripts/soak.mjs` (concurrency and a steady stream against production), `scripts/probe-ratelimit.mjs` (forged client IPs). CI runs the three verifier suites on every push.
 
 ## What the service never has
 

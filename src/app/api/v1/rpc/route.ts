@@ -32,6 +32,7 @@ export async function POST(request: Request) {
     return reply(null, { error: { code: -32700, message: "Body must be a JSON-RPC request." } }, 400);
   }
   if (Array.isArray(body)) return reply(null, { error: { code: -32600, message: "Batches are not offered by this proxy." } }, 400);
+  if (body === null || typeof body !== "object") return reply(null, { error: { code: -32600, message: "Body must be a JSON-RPC request object." } }, 400);
   const { id, method, params } = body;
   if (typeof method !== "string" || !ALLOWED.has(method)) {
     return reply(id, { error: { code: -32601, message: `Method ${String(method)} is not offered by this proxy; it serves the wallet flows on the site only.` } }, 400);
