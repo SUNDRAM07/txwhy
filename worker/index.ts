@@ -350,7 +350,7 @@ export function whyNot(result: { status: string; summary: string; cause: { title
   const text = `${result.cause?.title ?? ""} ${result.summary} ${result.notes.join(" ")}`;
   if (/circular arbitrage/i.test(text)) return "arbitrage";
   if (/Lighthouse guard|safety guard set by the wallet/i.test(text)) return "wallet_guard";
-  if (/chains \d+ direct swaps/.test(text)) return "chained_swaps";
+  if (/chains \d+ direct swaps|carries \d+ Jupiter swap instructions|more than one swap instruction/.test(text)) return "chained_swaps";
   if (/completed its bonding curve/.test(text)) return "pool_graduated";
   if (/Launch pool nearly full|room left before it graduates|InsufficientLiquidity|SwapAmountIsOverAThreshold/.test(text)) return "pool_nearly_full";
   if (/NonceAlreadyExists/.test(result.cause?.title ?? "")) return "duplicate_send";
@@ -360,7 +360,7 @@ export function whyNot(result: { status: string; summary: string; cause: { title
   if (/frozen by the mint's freeze authority|^AccountFrozen/.test(text)) return "account_frozen";
   if (/still fails simulation, on the same slippage check/.test(text)) return "moved_again";
   if (/moved more than \d+% against this trade/.test(text)) return "beyond_cap";
-  if (/No swap found that TxWhy can re-quote|not a top-level instruction|inside another program by CPI/.test(text)) return "routed_by_private_program";
+  if (/No swap found that TxWhy can re-quote|not a top-level instruction|inside another program by CPI|runs inside another program/.test(text)) return "routed_by_private_program";
   if (/spliced in but the transaction still fails|lifted the transaction still fails|both raised \d+%/.test(text)) return "more_than_slippage";
   if (/fits its own limit/.test(text)) return "not_slippage_now";
   if (/Re-run today, this transaction fails earlier/.test(text)) return "state_changed_since";

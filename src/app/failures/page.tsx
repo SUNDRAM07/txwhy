@@ -32,7 +32,7 @@ const WHY_LABELS: Record<string, [string, string]> = {
   zero_amount: ["Trade amount is zero", "the client built a sell or buy for 0 tokens, usually a percentage sell of an empty balance; nothing to repair"],
   account_frozen: ["Token account frozen", "the mint's freeze authority froze the account; only the issuer can thaw it, and no rebuild changes that"],
   moved_again: ["Pool moved again", "the limit was moved to the current price and the pool moved past it before the final check; the pool is moving faster than a fixed limit can follow"],
-  chained_swaps: ["Two swaps chained together", "moving one limit leaves the next short"],
+  chained_swaps: ["More than one swap", "two or more swaps in one transaction; TxWhy changes at most one per repair, so the sequence must be rebuilt from fresh quotes"],
   wallet_guard: ["Wallet guard tripped", "needs a fresh transaction from the app"],
   no_funds: ["Not enough funds", "no rebuild adds money"],
   not_slippage_now: ["Fits its own limit now", "the price came back; something else fails"],

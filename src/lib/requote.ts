@@ -122,16 +122,21 @@ function human(raw: bigint, decimals: number | undefined, mint: string): string 
 /** Read the swap the user was trying to make out of a failed transaction's instructions. */
 export async function readSwapIntent(
   instructions: TransactionInstruction[],
-): Promise<{ intent?: SwapIntent; reason?: string }> {
+): Promise<{ intent?: SwapIntent; reason?: string; /** The reason is a rule, not a state: no fresh quote will change it. */ final?: boolean }> {
   const jupiter = instructions.filter((ix) => ix.programId.toBase58() === JUPITER_V6);
   if (jupiter.length === 0) {
-    return { reason: "The swap runs inside another program, so the route cannot be replaced from outside it." };
+    return { reason: "The swap runs inside another program, so the route cannot be replaced from outside it.", final: true };
   }
-  if (jupiter.length > 1) return { reason: "The transaction contains more than one swap instruction." };
+  if (jupiter.length > 1) {
+    return {
+      reason: `This transaction carries ${jupiter.length} Jupiter swap instructions. TxWhy replaces at most one swap per repair, the same rule the verifier enforces, so it leaves this one as built; rebuild it from fresh quotes in your client.`,
+      final: true,
+    };
+  }
 
   const ix = jupiter[0];
   const layout = LAYOUTS[Buffer.from(ix.data.subarray(0, 8)).toString("hex")];
-  if (!layout) return { reason: "This Jupiter instruction type does not carry a fixed amount to re-quote." };
+  if (!layout) return { reason: "This Jupiter instruction type does not carry a fixed amount to re-quote.", final: true };
   const amounts = readAmounts(Buffer.from(ix.data), layout.amounts);
   if (!amounts) return { reason: "Could not read the swap amounts from the instruction." };
 
@@ -226,9 +231,9 @@ export async function describeStandingQuote(instructions: TransactionInstruction
 }
 
 export async function requoteJupiter(instructions: TransactionInstruction[]): Promise<RequoteOutcome> {
-  const { intent, reason } = await readSwapIntent(instructions);
-  if (!intent) return { ok: false, reason: reason ?? "No swap found." };
-  if (reason) return { ok: false, reason, intent };
+  const { intent, reason, final } = await readSwapIntent(instructions);
+  if (!intent) return { ok: false, reason: reason ?? "No swap found.", final };
+  if (reason) return { ok: false, reason, intent, final };
   if (intent.inputMint === intent.outputMint) {
     return {
       ok: false,
@@ -341,7 +346,7 @@ export async function requoteSwap(
   }
   const directSwaps = instructions.filter((ix) => readDirectSwapShape(ix)).length;
   if (directSwaps > 1) {
-    return { ok: false, reason: `This transaction chains ${directSwaps} direct swaps, so the output of one feeds the next. Moving one limit would leave the next swap short, and TxWhy changes at most one swap limit per repair. Rebuild the whole sequence from fresh quotes.` };
+    return { ok: false, final: true, reason: `This transaction chains ${directSwaps} direct swaps, so the output of one feeds the next. Moving one limit would leave the next swap short, and TxWhy changes at most one swap limit per repair. Rebuild the whole sequence from fresh quotes.` };
   }
   const pumpUnknown = instructions.some((ix) => !readDirectSwapShape(ix) && ix.programId.toBase58() in DIRECT_LAYOUTS);
   return { ok: false, reason: pumpUnknown ? "The direct swap here uses an instruction TxWhy does not recognise." : "No swap found that TxWhy can re-quote at the top level (Jupiter v6, Pump.fun, PumpSwap, Raydium AMM v4, Raydium LaunchLab, Meteora DBC and Meteora DAMM v2). A swap executed inside another program by CPI cannot have its limit moved from outside." };
