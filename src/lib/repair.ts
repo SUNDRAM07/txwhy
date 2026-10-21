@@ -349,6 +349,8 @@ const SLIPPAGE_PATTERN = /slippage|SlippageToleranceExceeded|ExceededSlippage|To
  * against another version of the program. A landed failure with one of these is final, whatever
  * today's probe happens to hit first (often slippage, because the price has moved since).
  */
+/** Program errors that mean "this order was already sent"; the engine never rebuilds those (see repair()). */
+const DUPLICATE_SEND_TITLE = /NonceAlreadyExists|AlreadyProcessed|AlreadyExecuted/;
 const TERMINAL_ONCHAIN = /^(AccountFrozen|NonceAlreadyExists|Fee recipient rejected|Pump\.fun fee arithmetic overflow|Trade amount is zero|PoolIsCompleted|BondingCurveComplete|InstructionMissing|InstructionDidNotDeserialize|AccountNotEnoughKeys|AccountNotInitialized)$/;
 
 function classifyUnrepairable(
@@ -780,6 +782,19 @@ export async function repair(input: RepairInput): Promise<RepairResult> {
     // A tripped wallet guard is never "needs a fresh quote": the app has to build a new transaction with new guards.
     if (result.status !== "repaired" && result.status !== "valid" && result.cause?.title.startsWith("Lighthouse guard")) {
       return { ...result, status: "not_repairable", summary: "A safety guard set by the wallet or app that built this transaction aborted it. Nothing was swapped. Only that app can build a fresh transaction with new guards.", repairedTransaction: null };
+    }
+    // A landed duplicate send is never a repair, even when the rebuilt copy passes simulation today: the program's nonce
+    // marked the first copy as the order, and a second copy that now passes would execute that order again.
+    if (input.signature && result.status === "repaired" && result.cause && DUPLICATE_SEND_TITLE.test(result.cause.title)) {
+      return {
+        ...result,
+        status: "not_repairable",
+        summary: `On chain this failed with "${result.cause.title}": the program had already seen this order's nonce, so the first copy is the one that counts. Rebuilt, it passes simulation today only because that nonce has since been cleared, and sending it would execute the same order a second time.`,
+        cause: { ...result.cause, fix: "Nothing to resend. If the first copy did not do what you wanted, build a new order with a new nonce." },
+        changes: [],
+        repairedTransaction: null,
+        notes: ["Refused by rule: a duplicate send is not rebuilt, whatever today's simulation says."],
+      };
     }
     return result;
   } catch (e) {
