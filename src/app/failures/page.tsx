@@ -37,7 +37,9 @@ const WHY_LABELS: Record<string, [string, string]> = {
   no_funds: ["Not enough funds", "no rebuild adds money"],
   not_slippage_now: ["Fits its own limit now", "the price came back; something else fails"],
   needs_requote_other: ["Needs a fresh quote", "no supported swap to re-quote"],
-  other: ["Other", "overflow, used nonce, bad instruction data and similar"],
+  client_data_mismatch: ["Instruction data the program cannot read", "a client built against another version of the program, or a private program's own encoding; only the app can rebuild it (counted since Oct 23)"],
+  client_built_wrong: ["Built wrong by the client", "a price limit on the wrong side, tick arrays for a price the pool has left, a swap program the route does not accept; only a fresh build fixes it (counted since Oct 23)"],
+  other: ["Other", "overflow and the long tail; a class gets its own row once it is named"],
 };
 
 function Bars({ rows, suffix }: { rows: { label: string; value: number; note?: string; sub?: string }[]; suffix?: string }) {

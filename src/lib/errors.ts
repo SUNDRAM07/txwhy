@@ -556,6 +556,12 @@ export function enrichCause(name: string, msg: string | undefined): string {
   if (n === "invalidsqrtpricelimitdirection") {
     return "The client passed a sqrt_price_limit on the wrong side of the current price for this swap's direction. Orca rejects the swap before touching the pool. This is a bug in how the transaction was built, not a market move.";
   }
+  if (n === "tickarraysequenceinvalidindex" || n === "invalidtickarraysequence" || n === "tickarrayindexoutofbounds") {
+    return "The tick arrays passed with this Orca swap do not cover the price the pool is at now: the route was built for a price range the pool has since left. A swap cannot be re-pointed at other accounts after the fact.";
+  }
+  if (n === "incorrectswapprogramid") {
+    return "The route names a swap program the aggregator does not accept in that position: a route built against another version of its program list, or a market delisted since the quote. The same route will not be accepted again.";
+  }
   if (n === "insufficientliquidity" || n === "swapamountisoverathreshold" || n === "notenoughliquidity") {
     return "The pool does not have enough liquidity left to fill a trade of this size. On a launch pool (a bonding curve such as Meteora DBC) it means the buy is larger than what is left before the pool graduates, and the program refuses the whole swap rather than fill part of it.";
   }
@@ -585,6 +591,8 @@ export function enrichCause(name: string, msg: string | undefined): string {
 export function suggestFixForName(name: string): string | undefined {
   const n = name.toLowerCase();
   if (n === "invalidsqrtpricelimitdirection") return "Rebuild the swap with the program's SDK, which computes sqrt_price_limit for the direction (or pass 0 for no limit). Retrying the same transaction cannot succeed.";
+  if (n === "tickarraysequenceinvalidindex" || n === "invalidtickarraysequence" || n === "tickarrayindexoutofbounds") return "Get a fresh quote so the SDK picks the tick arrays for the current price. Retrying this transaction cannot succeed.";
+  if (n === "incorrectswapprogramid") return "Get a fresh quote from the aggregator; retrying this route cannot succeed.";
   if (n.includes("slippage") || n.includes("toolittle") || n.includes("toomuch") || n.includes("belowmin") || n.includes("amountoutbelow")) return "Get a fresh quote and resend with the same tolerance; the price has moved on. Widen the tolerance only if it keeps failing on a fast-moving token, and know that a wide tolerance is what sandwich bots feed on.";
   if (n.includes("expired") || n.includes("stale")) return "Refresh the quote/price data and rebuild the transaction — the inputs went stale.";
   if (n === "insufficientliquidity" || n === "swapamountisoverathreshold" || n === "notenoughliquidity") return "Trade a smaller amount. On Meteora DBC, buy at most what is left before graduation, or use swap2 in partial-fill mode, which buys what is left and returns the rest. Paste the failed transaction into TxWhy to see the exact room left.";

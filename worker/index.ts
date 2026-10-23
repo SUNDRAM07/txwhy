@@ -365,7 +365,9 @@ export function whyNot(result: { status: string; summary: string; cause: { title
   if (/fits its own limit/.test(text)) return "not_slippage_now";
   if (/Re-run today, this transaction fails earlier/.test(text)) return "state_changed_since";
   if (/from a private program/i.test(result.cause?.title ?? "")) return "private_program";
-  if (/insufficient|holds .* lamports and needs|Shortfall/i.test(text)) return "no_funds";
+  if (/^Invalid instruction data|InstructionMissing|InstructionDidNotDeserialize|InstructionFallbackNotFound|could not parse the instruction data|no instruction with this/.test(text)) return "client_data_mismatch";
+  if (/InvalidSqrtPriceLimitDirection|TickArraySequenceInvalidIndex|InvalidTickArraySequence|TickArrayIndexOutofBounds|IncorrectSwapProgramId/.test(text)) return "client_built_wrong";
+  if (/insufficient|holds .* lamports and needs|Shortfall|does not hold enough|NotEnoughTokensToSell|Not enough (tokens|SOL)/i.test(text)) return "no_funds";
   if (result.status === "needs_requote") return "needs_requote_other";
   return "other";
 }

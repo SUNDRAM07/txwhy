@@ -10,7 +10,7 @@ import {
 } from "@solana/web3.js";
 import { decodeTransactionError } from "./errors";
 import { fetchIdlErrors } from "./idl";
-import { lighthouseDetail } from "./lighthouse";
+import { base58ToBytes, lighthouseDetail } from "./lighthouse";
 import { describeStandingQuote, requoteSwap } from "./requote";
 import { pumpFeeRecipients } from "./requote-pump";
 import type { ProbeResult } from "./requote-pump";
@@ -89,7 +89,8 @@ interface SimValue {
 interface ParsedInner {
   /** Index of the outer instruction these ran inside. */
   index?: number;
-  instructions?: { program?: string; parsed?: { type?: string; info?: { source?: string; destination?: string; mint?: string; amount?: string; tokenAmount?: { amount?: string } } } }[];
+  /** Parsed for the programs the RPC knows; programId, accounts and base58 data for the rest. */
+  instructions?: { program?: string; programId?: string; accounts?: string[]; data?: string; parsed?: { type?: string; info?: { source?: string; destination?: string; mint?: string; amount?: string; tokenAmount?: { amount?: string } } } }[];
 }
 
 /**
@@ -351,7 +352,7 @@ const SLIPPAGE_PATTERN = /slippage|SlippageToleranceExceeded|ExceededSlippage|To
  */
 /** Program errors that mean "this order was already sent"; the engine never rebuilds those (see repair()). */
 const DUPLICATE_SEND_TITLE = /NonceAlreadyExists|AlreadyProcessed|AlreadyExecuted/;
-const TERMINAL_ONCHAIN = /^(AccountFrozen|NonceAlreadyExists|Fee recipient rejected|Pump\.fun fee arithmetic overflow|Trade amount is zero|PoolIsCompleted|BondingCurveComplete|InstructionMissing|InstructionDidNotDeserialize|AccountNotEnoughKeys|AccountNotInitialized)$/;
+const TERMINAL_ONCHAIN = /^(AccountFrozen|NonceAlreadyExists|NotEnoughTokensToSell|Not enough tokens to sell|Fee recipient rejected|Pump\.fun fee arithmetic overflow|Trade amount is zero|PoolIsCompleted|BondingCurveComplete|InstructionMissing|InstructionDidNotDeserialize|AccountNotEnoughKeys|AccountNotInitialized)$/;
 
 function classifyUnrepairable(
   cause: DecodedError,
@@ -633,6 +634,91 @@ function zeroAmountVerdict(instructions: TransactionInstruction[], cause: Decode
   };
 }
 
+const SELL_SHORTFALL_TITLE = /^(NotEnoughTokensToSell|Not enough tokens to sell)$/;
+
+/**
+ * A sell for more tokens than the wallet holds. Pump.fun's sell and sell_v2 refuse it before any transfer, so the
+ * inner-transfer shortfall path never sees it; read the amount from the instruction and the balance from the chain.
+ */
+/** The Pump.fun sell a router invoked, rebuilt from the probe's inner instructions so its amount and accounts can be read. */
+function innerPumpSell(inner: ParsedInner[] | null | undefined, failing: number | null): TransactionInstruction | null {
+  const group = inner?.find((g) => g.index === failing);
+  for (const call of group?.instructions ?? []) {
+    if (call.programId !== PUMP_FUN || !call.data || !call.accounts) continue;
+    const candidate = new TransactionInstruction({
+      programId: new PublicKey(PUMP_FUN),
+      keys: call.accounts.map((a) => ({ pubkey: new PublicKey(a), isSigner: false, isWritable: false })),
+      data: Buffer.from(base58ToBytes(call.data)),
+    });
+    const shape = readDirectSwapShape(candidate);
+    if (shape && shape.fixed === "tokens_in") return candidate;
+  }
+  return null;
+}
+
+/** Without the instruction in hand, Pump.fun's own "Left: balance / Right: amount" log lines still carry the figures, in raw units. */
+async function sellShortfallFromLogs(cause: DecodedError, logs: string[], failing: number | null, outer?: TransactionInstruction): Promise<{ cause: DecodedError; note: string } | null> {
+  const left = [...logs].reverse().find((l) => /^Program log: Left: \d+$/.test(l))?.match(/\d+$/)?.[0];
+  const right = [...logs].reverse().find((l) => /^Program log: Right: \d+$/.test(l))?.match(/\d+$/)?.[0];
+  if (left == null || right == null) return null;
+  const have = BigInt(left), want = BigInt(right);
+  if (have >= want) return null;
+  // Decimals: the router passes the wallet's token account through; the one holding exactly the logged balance names the mint's decimals.
+  const decimals = outer ? await tokenDecimalsForBalance(outer.keys.map((k) => k.pubkey.toBase58()), have) : null;
+  const fmt = (v: bigint) => (decimals == null ? `${v.toString()} raw token units` : `${formatUnits(v, decimals)} tokens`);
+  return {
+    cause: {
+      title: "Not enough tokens to sell",
+      code: cause.code,
+      cause: `Pump.fun refused this sell before touching the pool: the instruction sells ${fmt(want)} and the wallet's token account holds ${fmt(have)}, a shortfall of ${fmt(want - have)}. Usually a percentage sell built on a stale balance, or tokens that moved after the quote.`,
+      fix: "Rebuild the sell from the current balance. Nothing on chain needs fixing, and resending the same instruction cannot succeed.",
+    },
+    note: `Sell amount ${fmt(want)}, balance ${fmt(have)}, shortfall ${fmt(want - have)}${decimals == null ? " (the mint's decimals could not be read)" : ""} (instruction #${(failing ?? 0) + 1}).`,
+  };
+}
+
+/** The decimals of the token accounts among `keys` whose balance is exactly `amount`, when they all agree; null otherwise. */
+async function tokenDecimalsForBalance(keys: string[], amount: bigint): Promise<number | null> {
+  const unique = [...new Set(keys)].slice(0, 100);
+  const res = await rpc<{ value: ({ data?: { parsed?: { type?: string; info?: { tokenAmount?: { amount?: string; decimals?: number } } } } } | null)[] }>("getMultipleAccounts", [unique, { encoding: "jsonParsed", commitment: "confirmed" }]).catch(() => null);
+  const found = new Set<number>();
+  for (const a of res?.value ?? []) {
+    const info = a?.data?.parsed?.type === "account" ? a.data.parsed.info?.tokenAmount : undefined;
+    if (info?.amount === amount.toString() && typeof info.decimals === "number") found.add(info.decimals);
+  }
+  return found.size === 1 ? [...found][0] : null;
+}
+
+async function pumpSellShortfallVerdict(instructions: TransactionInstruction[], cause: DecodedError, logs: string[], err?: unknown, inner?: ParsedInner[] | null): Promise<{ cause: DecodedError; note: string } | null> {
+  if (cause.title !== "NotEnoughTokensToSell") return null;
+  const failing = failingIndex(err);
+  let ix = failing != null ? instructions[failing] : undefined;
+  let shape = ix ? readDirectSwapShape(ix) : null;
+  if (!shape || shape.fixed !== "tokens_in") {
+    // A router called Pump.fun: the sell is an inner instruction of the failing one.
+    ix = innerPumpSell(inner, failing) ?? undefined;
+    shape = ix ? readDirectSwapShape(ix) : null;
+  }
+  if (!ix || !shape || shape.fixed !== "tokens_in") return sellShortfallFromLogs(cause, logs, failing, failing != null ? instructions[failing] : undefined);
+  const account = ix.keys[shape.userIn ?? 5]?.pubkey.toBase58();
+  if (!account) return sellShortfallFromLogs(cause, logs, failing, failing != null ? instructions[failing] : undefined);
+  const balance = await rpc<{ value: { amount: string; decimals: number } | null }>("getTokenAccountBalance", [account, { commitment: "confirmed" }]).catch(() => null);
+  if (!balance?.value) return sellShortfallFromLogs(cause, logs, failing, failing != null ? instructions[failing] : undefined);
+  const have = BigInt(balance.value.amount);
+  const want = shape.amount;
+  if (have >= want) return null; // topped up since it landed; the on-chain cause stands on its own
+  const fmt = (v: bigint) => formatUnits(v, balance.value!.decimals);
+  return {
+    cause: {
+      title: "Not enough tokens to sell",
+      code: cause.code,
+      cause: `${shape.program}'s ${shape.name} refused this sell before touching the pool: the instruction sells ${fmt(want)} tokens and token account ${account} holds ${fmt(have)}, a shortfall of ${fmt(want - have)}. Usually a percentage sell built on a stale balance, or tokens that moved after the quote.`,
+      fix: "Rebuild the sell from the current balance. Nothing on chain needs fixing, and resending the same instruction cannot succeed.",
+    },
+    note: `Sell amount ${fmt(want)}, balance ${fmt(have)}, shortfall ${fmt(want - have)} (instruction #${(failing ?? 0) + 1}).`,
+  };
+}
+
 /** The rebuilt transaction failed its final simulation: say with what, and what that means when it is the same slippage check again. */
 function stillFailsSummary(finalError: DecodedError | null, requoted: boolean): string {
   if (!finalError) return "The rebuilt transaction still fails simulation.";
@@ -654,6 +740,10 @@ async function preciseVerdict(instructions: TransactionInstruction[], cause: Dec
   if (cause.title === "NotAuthorized") {
     const precise = await pumpFeeRecipientVerdict(instructions, cause, logs).catch(() => null);
     return precise ? { ...precise, replaces: /^NotAuthorized$/ } : null;
+  }
+  if (cause.title === "NotEnoughTokensToSell") {
+    const precise = await pumpSellShortfallVerdict(instructions, cause, logs, err, inner).catch(() => null);
+    return precise ? { ...precise, replaces: SELL_SHORTFALL_TITLE } : null;
   }
   if (cause.title === "InsufficientFunds") {
     const precise = await tokenShortfall(instructions, logs, err, inner, original);

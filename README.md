@@ -56,6 +56,8 @@ And what it refuses to fake:
 | Not enough SOL, or not enough tokens for a swap or any token transfer | The exact shortfall: which token account, what it holds, what the instruction needs, found through the instruction the node blamed, inside a router too |
 | An account left below the rent-exempt minimum | Which account, what it holds, its size, and the minimum for that size from the RPC |
 | A Pump.fun buy or sell refused at the fee-recipient check (NotAuthorized from fee_recipient.rs) | Names the fee account the client passed, checks it against the protocol's current recipients, and says to rebuild with the recipient the SDK picks for that mint |
+| A Pump.fun sell for more tokens than the wallet holds (NotEnoughTokensToSell), sent directly or through a router | The amount sold, the balance and the shortfall, read from the sell instruction or from Pump.fun's own log lines, with the mint's decimals resolved from the accounts the router passed |
+| A swap the client built wrong (a sqrt-price limit on the wrong side, tick arrays for a price the pool has left, a swap program the route does not accept) | What was built wrong and that only a fresh build from the app fixes it; the index files these apart from market moves |
 | A duplicate send (NonceAlreadyExists and the like: the program had already seen this order's nonce) | That the first copy is the order and there is nothing to resend. Refused by rule even when the rebuilt copy passes simulation today, because a second copy would execute the same order twice |
 | A sell or buy built for zero tokens (RequireGtViolated in LaunchLab's sell_exact_in, Pump.fun's zero-amount errors) | That the amount in the instruction is 0, usually a percentage sell of an empty balance, and that nothing on chain needs fixing |
 | A Pump.fun sell that overflows the program's fee arithmetic (Overflow, 0x1788) | Which Pump.fun instruction overflowed and which router called it; every sampled case came through a router's percentage sell, so the fix is a direct sell or a smaller amount |
@@ -66,6 +68,13 @@ And what it refuses to fake:
 | Circular arbitrage that missed its gap | That it is built to fail this way and there is nothing to repair |
 
 A rebuilt transaction is only ever returned if it passes simulation. TxWhy will not hand back something that would fail again.
+
+## Known limits
+
+- **Token-2022 transfer fees are not in the shortfall figures.** A refusal names the raw amount an instruction moves against what the account holds; on a mint with a transfer fee the real need is slightly higher. The verdict is still right, the figure can be a little low.
+- **Replays of landed failures are after the fact.** The index replays a failure minutes after it landed, so accounts and prices have moved; "state changed since" is its own bucket, and the rebuilt share of people's failures is a floor. Pre-send repair does not have this problem.
+- **One swap per repair, and only the one change.** Transactions carrying two swaps, a swap routed inside a private program, or a limit that must move more than 25% are refused with the reason, by design.
+- **On a surfnet, rent lags mainnet until surfpool ships its fix** (solana-foundation/surfpool #870): a surfnet refuses some mainnet-valid transactions on rent, and the engine reports what the surfnet says.
 
 ## Self-host
 
