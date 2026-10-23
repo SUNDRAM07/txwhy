@@ -1,0 +1,22 @@
+# TxWhy next to a Surfpool surfnet: the engine repairs transactions against your local mainnet fork, not against mainnet.
+#   SURFNET_REMOTE_RPC=https://your-mainnet-rpc docker compose -f docker-compose.surfnet.yml up --build
+# Then: surfnet RPC on :8899 (websocket :8900), Surfpool Studio on :18488, TxWhy on :3000 pointed at the surfnet.
+# Every repair is simulated on the surfnet, so cheatcodes (surfnet_setAccount, surfnet_timeTravel, scenarios) shape what the engine sees.
+# Landed mainnet signatures still resolve: the surfnet forwards getTransaction, and the engine falls back to the remote RPC when it does not.
+services:
+  surfnet:
+    image: surfpool/surfpool:latest
+    command: ["start", "--no-tui", "--host", "0.0.0.0", "--rpc-url", "${SURFNET_REMOTE_RPC:-https://api.mainnet-beta.solana.com}"]
+    ports:
+      - "8899:8899"
+      - "8900:8900"
+      - "18488:18488"
+  api:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      SOLANA_RPC_URL: http://surfnet:8899
+      SOLANA_RPC_FALLBACK_URL: ${SURFNET_REMOTE_RPC:-https://api.mainnet-beta.solana.com}
+    depends_on:
+      - surfnet

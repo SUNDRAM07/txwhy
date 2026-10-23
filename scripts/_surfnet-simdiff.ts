@@ -1,5 +1,6 @@
 // Simulate the same landed transaction bytes on mainnet and on the surfnet with the engine's simulate flags, and diff the outcome.
 // Run: npx tsx scripts/_surfnet-simdiff.ts
+export {}; // a module, so its top-level names do not collide with the other scripts under tsc
 const MAIN = process.env.MAINNET_RPC_URL ?? "https://api.mainnet-beta.solana.com";
 const SURF = process.env.SURFNET_RPC_URL ?? "http://127.0.0.1:8899";
 const SIGS: [string, string][] = [

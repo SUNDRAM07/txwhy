@@ -603,6 +603,8 @@ async function readRepairStats(store: Store) {
     unrepairable: (await store.ztop("i:repair:detail:not_repairable", 12)).map((r) => ({ title: r.member, count: r.score })),
     movedTooFar: (await store.ztop("i:repair:detail:moved_too_far", 6)).map((r) => ({ title: r.member, count: r.score })),
     engineErrors: (await store.ztop("i:repair:detail:engine_error", 6)).map((r) => ({ title: r.member, count: r.score })),
+    /** What the node answered when a replay could not run: the RPC's own errors and timeouts, never the engine's. */
+    upstreamErrors: (await store.ztop("i:repair:detail:upstream_error", 6)).map((r) => ({ title: r.member, count: r.score })),
     last: last ? JSON.parse(last) : null,
     segments: await repairSegments(store, attempted, verdicts),
     /** Precise reasons, counted since this breakdown was added (Oct 4, 2026). */

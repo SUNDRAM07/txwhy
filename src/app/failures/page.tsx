@@ -216,6 +216,11 @@ export default async function FailuresPage() {
                   Engine errors seen: {index.repair.engineErrors.map((e) => `${e.title} (${e.count})`).join("; ")}
                 </p>
               )}
+              {(index.repair.upstreamErrors?.length ?? 0) > 0 && (
+                <p className="mt-2 text-xs text-neutral-500">
+                  Node errors during replays, counted apart from the engine: {index.repair.upstreamErrors!.map((e) => `${e.title} (${e.count})`).join("; ")}
+                </p>
+              )}
               {index.repair.last && (
                 <p className="mt-3 text-xs text-neutral-500">
                   Last attempt {new Date(index.repair.last.at).toUTCString()}: {index.repair.last.program}, {index.repair.last.verdict.replace(/_/g, " ")}

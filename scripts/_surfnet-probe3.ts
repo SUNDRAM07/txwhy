@@ -1,4 +1,5 @@
 // Classify the two divergences: rent parameters, pre-funded ATA addresses, and every BuyExactSolIn account's lamports against the rent minimum on both sides.
+export {}; // a module, so its top-level names do not collide with the other scripts under tsc
 const MAIN = process.env.MAINNET_RPC_URL ?? "https://api.mainnet-beta.solana.com";
 const SURF = process.env.SURFNET_RPC_URL ?? "http://127.0.0.1:8899";
 const PUMP = "48QY3d2GoR5zhFA6ZCvyxJmcMZQ9KvnTMujUjpC2u4J8gm2yqRnhKynuCiw6Vz9uUVoWxmu85L2eD7hMXdeX1i24";

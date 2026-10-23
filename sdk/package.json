@@ -1,6 +1,6 @@
 {
   "name": "@txwhy/sdk",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "Failed Solana transaction in, working transaction out. Repair inside your send loop, and verify every repair offline.",
   "license": "MIT",
   "author": "Sundram Mahajan",
@@ -22,7 +22,9 @@
     "jupiter",
     "wallet-adapter",
     "phantom",
-    "anchor"
+    "anchor",
+    "surfpool",
+    "surfnet"
   ],
   "type": "module",
   "main": "./dist/index.cjs",
@@ -53,6 +55,11 @@
       "types": "./dist/types/sdk/src/anchor.d.ts",
       "import": "./dist/anchor.js",
       "require": "./dist/anchor.cjs"
+    },
+    "./surfpool": {
+      "types": "./dist/types/sdk/src/surfpool.d.ts",
+      "import": "./dist/surfpool.js",
+      "require": "./dist/surfpool.cjs"
     }
   },
   "bin": {

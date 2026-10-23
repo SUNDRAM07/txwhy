@@ -79,6 +79,14 @@ SOLANA_RPC_URL=https://your-rpc docker compose up --build
 
 Only `SOLANA_RPC_URL` is required. Optional: `SOLANA_RPC_FALLBACK_URL`; `JUPITER_API_KEY` and `JUPITER_API_BASE` for a paid Jupiter tier; `WORKER_URL` and `WORKER_SECRET` to attach the worker (global rate limits, /failures, /stats); `STATS_SALT` for hashed usage counters; `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` for the bot; `X402_PAY_TO` for pay-per-repair. Nothing is phoned home: a self-hosted TxWhy never contacts txwhy.vercel.app.
 
+### With Surfpool: repair on a local mainnet fork
+
+```bash
+SURFNET_REMOTE_RPC=https://your-mainnet-rpc docker compose -f docker-compose.surfnet.yml up --build
+```
+
+Starts a [Surfpool](https://github.com/solana-foundation/surfpool) surfnet (RPC :8899, Studio :18488) and TxWhy (:3000) pointed at it. The engine needs eight RPC methods and a surfnet answers all of them, so every verdict, every rebuilt transaction and every refusal is computed against the fork: a transaction that fails on your surfnet comes back with the cause, the one change that makes it pass, and the verifier's proof, without touching mainnet. Cheatcodes and scenarios shape what the engine sees. From code, `@txwhy/sdk/surfpool` is a kit plugin that composes with `@solana/surfpool/kit`. Measured Oct 21, 2026 on surfpool 1.6.1: pre-send repairs (expired blockhash, low compute budget, Jupiter re-quote) identical to mainnet, 0.2 to 1.8 s; replaying landed mainnet failures on the fork reproduced surfpool issue #870 (rent parameters behind SIMD-0437) within the hour, with two new cases, the start of a nightly parity run.
+
 ## How it works
 
 1. **Diagnose.** Fetch or simulate the transaction, build the full instruction and CPI tree, and find the exact failing call by replaying the runtime's own `invoke` / `success` / `failed` log lines.

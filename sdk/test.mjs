@@ -13,6 +13,18 @@ let pass = 0, total = 0;
 const check = (name, ok, detail = "") => { total++; if (ok) pass++; console.log(`${ok ? "PASS" : "FAIL"}  ${name} ${detail}`); };
 class SkipError extends Error {}
 const skip = (name, reason) => console.log(`SKIP  ${name} -> ${reason}`);
+/** The public rate limit is per IP; a 429 from the repair endpoint is waited out, up to three times, never counted as a failure of the loop. */
+async function patient(run) {
+  for (let i = 0; ; i++) {
+    try {
+      return await run();
+    } catch (e) {
+      if (i >= 3 || !/too many requests/i.test(e?.message ?? "")) throw e;
+      console.log(`      rate limited, retrying in 20 s`);
+      await new Promise((r) => setTimeout(r, 20_000));
+    }
+  }
+}
 /**
  * The demo endpoint builds real transactions against live state. A 429 is waited out for as long as
  * the service asks; the thin-pool demo depends on live liquidity and says so with a 502, which is a
@@ -73,7 +85,7 @@ try {
     }
   }
   const v1 = examples.v1;
-  const result = await kit.repair({ transaction: v1.transaction }, opts);
+  const result = await patient(() => kit.repair({ transaction: v1.transaction }, opts));
   const honest = await kit.verifyRepair(rpc, v1.transaction, result.repairedTransaction);
   check("kit verifyRepair accepts the honest v1 repair", honest.ok, honest.ok ? "" : `-> ${honest.violations[0]}`);
   const swapped = await kit.verifyRepair(rpc, v1.transaction, examples.slippage.transaction);
@@ -127,6 +139,26 @@ try {
   const noSigner = withRepairProvider({ connection, wallet: { publicKey: tx.message.staticAccountKeys[0] } }, opts);
   const refused = await noSigner.sendAndConfirm(tx).then(() => null, (e) => e);
   check("withRepairProvider refuses a provider whose wallet cannot sign", refused instanceof TxWhyError, `-> ${refused?.message?.slice(0, 70)}`);
+}
+
+// The surfpool entry: a kit client plugin. Works on any client with an rpc; a surfnet when the engine runs beside one.
+{
+  const { createClient, createSolanaRpc } = await import("@solana/kit");
+  const { txwhy } = await import("./dist/surfpool.js");
+  const real = createSolanaRpc(process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com");
+  const rpc = new Proxy(real, { get: (t, p) => (p === "sendTransaction" ? () => ({ send: async () => "STUBBED-NOT-SENT" }) : Reflect.get(t, p)) });
+  const client = createClient({ rpc }).use(txwhy({ ...opts, maxRepairs: 2 }));
+  const example = await getExample("compute");
+  try {
+    const out = await patient(() => client.txwhy.sendWithRepair(example.transaction, (t) => t));
+    check("surfpool plugin: client.txwhy.sendWithRepair(compute)", out.signature === "STUBBED-NOT-SENT" && out.repairs.length >= 1, `${out.repairs.length} repair(s)`);
+    const proof = await client.txwhy.verifyRepair(example.transaction, out.repairs[0].repairedTransaction);
+    check("surfpool plugin: client.txwhy.verifyRepair accepts its own repair", proof.ok, proof.ok ? "" : `-> ${proof.violations[0]}`);
+  } catch (e) {
+    check("surfpool plugin: sendWithRepair", false, `-> ${e.message}`);
+  }
+  const noSigner = await client.txwhy.sendWithRepair(example.transaction).then(() => null, (e) => e);
+  check("surfpool plugin: refuses to send without a signer or a key-pair payer", noSigner instanceof Error && /signer/.test(noSigner.message), `-> ${noSigner?.message?.slice(0, 60)}`);
 }
 
 console.log(`\n${pass}/${total} passed`);

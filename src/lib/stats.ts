@@ -181,6 +181,8 @@ export interface FailureIndex {
     unrepairable: { title: string; count: number }[];
     movedTooFar: { title: string; count: number }[];
     engineErrors: { title: string; count: number }[];
+    /** The node's own errors and timeouts during replays, counted apart from engine errors. Absent on older workers. */
+    upstreamErrors?: { title: string; count: number }[];
     last: { at: string; program: string; verdict: string; detail: string | null; ms: number } | null;
     /** Attempts split into automated traders meant to fail and failures a person would care about. Absent on older workers. */
     segments?: { bots: number; people: number; rebuilt: number; movedTooFar: number; guards: number; deadEnds: number; rebuiltShareOfPeople: number };

@@ -129,6 +129,23 @@ const { signature, repairs } = await sendWithRepair(rpc, transaction, (tx) => si
 
 The web3.js entry's `sendWithRepair` refuses v1 with a clear error rather than failing inside web3.js; use the kit entry above.
 
+## Surfpool: repair on your local mainnet fork
+
+A kit client plugin that sits next to `@solana/surfpool/kit`. The engine simulates against the client's own RPC, so with TxWhy running beside a surfnet (`docker-compose.surfnet.yml` in the repo) every verdict and every repair is computed on the fork, cheatcodes and scenarios included. Nothing touches mainnet.
+
+```ts
+import { createClient } from "@solana/kit";
+import { surfpool } from "@solana/surfpool/kit";
+import { txwhy } from "@txwhy/sdk/surfpool";
+
+const client = await createClient().use(surfpool()).use(txwhy({ endpoint: "http://127.0.0.1:3000/api/v1/repair" }));
+const { signature, repairs } = await client.txwhy.sendWithRepair(transaction); // the payer signs; pass a signer to choose
+const verdict = await client.txwhy.repair({ transaction });                      // just the diagnosis and the rebuilt copy
+const proof = await client.txwhy.verifyRepair(transaction, verdict.repairedTransaction); // offline, on your machine
+```
+
+It is a plain kit plugin: any client with an `rpc` works, surfnet or not. `examples/surfnet.mjs` funds a throwaway wallet with a cheatcode, sends a transfer on a dead blockhash, and lands the repaired copy on the surfnet.
+
 ## Just the repair call
 
 ```ts
