@@ -62,6 +62,7 @@ And what it refuses to fake:
 | A sell or buy built for zero tokens (RequireGtViolated in LaunchLab's sell_exact_in, Pump.fun's zero-amount errors) | That the amount in the instruction is 0, usually a percentage sell of an empty balance, and that nothing on chain needs fixing |
 | A Pump.fun sell that overflows the program's fee arithmetic (Overflow, 0x1788) | Which Pump.fun instruction overflowed and which router called it; every sampled case came through a router's percentage sell, so the fix is a direct sell or a smaller amount |
 | An Anchor account constraint (AccountNotInitialized, ConstraintSeeds, ConstraintOwner, ConstraintHasOne, and the rest) | Names the account the program blamed and what to do about it: create it first, derive it from the right seeds, pass the right owner or mint |
+| A Pump.fun buy or sell against a curve that has completed (BondingCurveComplete) | That the token moved to PumpSwap, with the canonical pool's address, derived from the mint and checked on chain |
 | A buy bigger than what is left on a Meteora DBC launch pool | The exact room left before the pool graduates, what the buy puts in, and the Meteora DAMM v2 pool the token moves to, read from the pool's own account. A graduated pool gets the same answer with its new pool address |
 | A program rejected it | The named error, cause and fix from 1,891 bundled errors across 38 programs, plus any IDL the program published on chain |
 | A private program rejected it | Which program raised the code, and that only its authors can decode it |

@@ -351,12 +351,12 @@ export function whyNot(result: { status: string; summary: string; cause: { title
   if (/circular arbitrage/i.test(text)) return "arbitrage";
   if (/Lighthouse guard|safety guard set by the wallet/i.test(text)) return "wallet_guard";
   if (/chains \d+ direct swaps|carries \d+ Jupiter swap instructions|more than one swap instruction/.test(text)) return "chained_swaps";
-  if (/completed its bonding curve/.test(text)) return "pool_graduated";
+  if (/completed its bonding curve|BondingCurveComplete|bonding curve has completed/.test(text)) return "pool_graduated";
   if (/Launch pool nearly full|room left before it graduates|InsufficientLiquidity|SwapAmountIsOverAThreshold/.test(text)) return "pool_nearly_full";
   if (/NonceAlreadyExists/.test(result.cause?.title ?? "")) return "duplicate_send";
   if (/fee-recipient check refused/.test(text)) return "fee_recipient_rejected";
   if (/overflowed inside its fee arithmetic/.test(text)) return "pump_fee_overflow";
-  if (/because its amount is zero/.test(text)) return "zero_amount";
+  if (/because its amount is zero|^ZeroAmount|sell amount is zero|amount is zero/i.test(text)) return "zero_amount";
   if (/frozen by the mint's freeze authority|^AccountFrozen/.test(text)) return "account_frozen";
   if (/still fails simulation, on the same slippage check/.test(text)) return "moved_again";
   if (/moved more than \d+% against this trade/.test(text)) return "beyond_cap";
@@ -366,7 +366,7 @@ export function whyNot(result: { status: string; summary: string; cause: { title
   if (/Re-run today, this transaction fails earlier/.test(text)) return "state_changed_since";
   if (/from a private program/i.test(result.cause?.title ?? "")) return "private_program";
   if (/^Invalid instruction data|InstructionMissing|InstructionDidNotDeserialize|InstructionFallbackNotFound|could not parse the instruction data|no instruction with this/.test(text)) return "client_data_mismatch";
-  if (/InvalidSqrtPriceLimitDirection|TickArraySequenceInvalidIndex|InvalidTickArraySequence|TickArrayIndexOutofBounds|IncorrectSwapProgramId/.test(text)) return "client_built_wrong";
+  if (/InvalidSqrtPriceLimitDirection|TickArraySequenceInvalidIndex|InvalidTickArraySequence|TickArrayIndexOutofBounds|IncorrectSwapProgramId|^Invalid account data|InvalidAccountData/.test(text)) return "client_built_wrong";
   if (/insufficient|holds .* lamports and needs|Shortfall|does not hold enough|NotEnoughTokensToSell|Not enough (tokens|SOL)/i.test(text)) return "no_funds";
   if (result.status === "needs_requote") return "needs_requote_other";
   return "other";

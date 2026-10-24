@@ -10,12 +10,13 @@ import {
 } from "@solana/web3.js";
 import { decodeTransactionError } from "./errors";
 import { fetchIdlErrors } from "./idl";
+import { bondingCurvePda, canonicalPumpPoolPda } from "@pump-fun/pump-swap-sdk";
 import { base58ToBytes, lighthouseDetail } from "./lighthouse";
 import { describeStandingQuote, requoteSwap } from "./requote";
 import { pumpFeeRecipients } from "./requote-pump";
 import type { ProbeResult } from "./requote-pump";
 import { programName } from "./programs";
-import { METEORA_DBC, PUMP_FUN, readDirectSwapShape, readSwapShape } from "./swap-shape";
+import { METEORA_DBC, PUMP_FUN, PUMP_SWAP, readDirectSwapShape, readSwapShape } from "./swap-shape";
 import { RPC_URL, RpcError, rpc } from "./rpc";
 import { getTrace } from "./trace";
 import { V1_MAX_BYTES, decodeV1, inlineAddressCount, rebuildV1 } from "./v1";
@@ -352,7 +353,7 @@ const SLIPPAGE_PATTERN = /slippage|SlippageToleranceExceeded|ExceededSlippage|To
  */
 /** Program errors that mean "this order was already sent"; the engine never rebuilds those (see repair()). */
 const DUPLICATE_SEND_TITLE = /NonceAlreadyExists|AlreadyProcessed|AlreadyExecuted/;
-const TERMINAL_ONCHAIN = /^(AccountFrozen|NonceAlreadyExists|NotEnoughTokensToSell|Not enough tokens to sell|Fee recipient rejected|Pump\.fun fee arithmetic overflow|Trade amount is zero|PoolIsCompleted|BondingCurveComplete|InstructionMissing|InstructionDidNotDeserialize|AccountNotEnoughKeys|AccountNotInitialized)$/;
+const TERMINAL_ONCHAIN = /^(AccountFrozen|NonceAlreadyExists|NotEnoughTokensToSell|Not enough tokens to sell|Fee recipient rejected|Pump\.fun fee arithmetic overflow|Trade amount is zero|PoolIsCompleted|BondingCurveComplete|Launch curve complete|InstructionMissing|InstructionDidNotDeserialize|AccountNotEnoughKeys|AccountNotInitialized)$/;
 
 function classifyUnrepairable(
   cause: DecodedError,
@@ -640,8 +641,8 @@ const SELL_SHORTFALL_TITLE = /^(NotEnoughTokensToSell|Not enough tokens to sell)
  * A sell for more tokens than the wallet holds. Pump.fun's sell and sell_v2 refuse it before any transfer, so the
  * inner-transfer shortfall path never sees it; read the amount from the instruction and the balance from the chain.
  */
-/** The Pump.fun sell a router invoked, rebuilt from the probe's inner instructions so its amount and accounts can be read. */
-function innerPumpSell(inner: ParsedInner[] | null | undefined, failing: number | null): TransactionInstruction | null {
+/** The Pump.fun trade a router invoked, rebuilt from the probe's inner instructions so its amount and accounts can be read. */
+function innerPumpInstruction(inner: ParsedInner[] | null | undefined, failing: number | null, fixed?: "tokens_in" | "tokens_out" | "quote_in"): TransactionInstruction | null {
   const group = inner?.find((g) => g.index === failing);
   for (const call of group?.instructions ?? []) {
     if (call.programId !== PUMP_FUN || !call.data || !call.accounts) continue;
@@ -651,9 +652,47 @@ function innerPumpSell(inner: ParsedInner[] | null | undefined, failing: number 
       data: Buffer.from(base58ToBytes(call.data)),
     });
     const shape = readDirectSwapShape(candidate);
-    if (shape && shape.fixed === "tokens_in") return candidate;
+    if (shape && (!fixed || shape.fixed === fixed)) return candidate;
   }
   return null;
+}
+const innerPumpSell = (inner: ParsedInner[] | null | undefined, failing: number | null) => innerPumpInstruction(inner, failing, "tokens_in");
+/** Any Pump.fun call inside the failing instruction, layout unknown, accounts and data as passed. */
+function innerPumpAny(inner: ParsedInner[] | null | undefined, failing: number | null): TransactionInstruction | null {
+  const group = inner?.find((g) => g.index === failing);
+  const call = group?.instructions?.find((c) => c.programId === PUMP_FUN && c.data && c.accounts);
+  if (!call) return null;
+  return new TransactionInstruction({ programId: new PublicKey(PUMP_FUN), keys: call.accounts!.map((a) => ({ pubkey: new PublicKey(a), isSigner: false, isWritable: false })), data: Buffer.from(base58ToBytes(call.data!)) });
+}
+
+/**
+ * A Pump.fun trade against a curve that has completed: the token trades on PumpSwap now, in the canonical pool
+ * derived from the mint. Name that pool, as the Meteora DBC verdict names its DAMM v2 pool.
+ */
+async function pumpGraduatedVerdict(instructions: TransactionInstruction[], cause: DecodedError, err?: unknown, inner?: ParsedInner[] | null): Promise<{ cause: DecodedError; note: string } | null> {
+  if (cause.title !== "BondingCurveComplete") return null;
+  const failing = failingIndex(err);
+  let ix = failing != null ? instructions[failing] : undefined;
+  if (!ix || ix.programId.toBase58() !== PUMP_FUN) ix = innerPumpInstruction(inner, failing) ?? innerPumpAny(inner, failing) ?? undefined;
+  if (!ix) return null;
+  // The mint is the account whose bonding-curve PDA is also passed, whatever the instruction's layout (buy, sell, trade_v3, ...).
+  const passed = new Set(ix.keys.map((k) => k.pubkey.toBase58()));
+  const mint = ix.keys.map((k) => k.pubkey).find((candidate) => passed.has(bondingCurvePda(candidate).toBase58()));
+  if (!mint) return null;
+  const shape = readDirectSwapShape(ix);
+  const instruction = shape?.name ?? "trade";
+  const pool = canonicalPumpPoolPda(mint).toBase58();
+  const live = await rpc<{ value: { owner: string } | null }>("getAccountInfo", [pool, { encoding: "base64", commitment: "confirmed" }]).catch(() => null);
+  const exists = live?.value?.owner === PUMP_SWAP;
+  return {
+    cause: {
+      title: "Launch curve complete",
+      code: cause.code,
+      cause: `Pump.fun's ${instruction} refused this trade: token ${mint.toBase58()} completed its bonding curve and its liquidity moved to PumpSwap${exists ? ` pool ${pool}` : ""}. No buy or sell against the curve can succeed any more.`,
+      fix: exists ? `Trade the token on PumpSwap, pool ${pool}; the curve is closed for good.` : "Trade the token on PumpSwap; the curve is closed for good.",
+    },
+    note: exists ? `PumpSwap pool ${pool} is live (canonical pool for the mint).` : `The canonical PumpSwap pool for the mint would be ${pool}; it was not readable at the time of the check.`,
+  };
 }
 
 /** Without the instruction in hand, Pump.fun's own "Left: balance / Right: amount" log lines still carry the figures, in raw units. */
@@ -748,6 +787,10 @@ async function preciseVerdict(instructions: TransactionInstruction[], cause: Dec
   if (cause.title === "InsufficientFunds") {
     const precise = await tokenShortfall(instructions, logs, err, inner, original);
     return precise ? { ...precise, replaces: /^InsufficientFunds$/ } : null;
+  }
+  if (cause.title === "BondingCurveComplete") {
+    const precise = await pumpGraduatedVerdict(instructions, cause, err, inner).catch(() => null);
+    return precise ? { ...precise, replaces: /^BondingCurveComplete$/ } : null;
   }
   const precise = await dbcPoolVerdict(instructions, cause, logs).catch(() => null);
   return precise ? { ...precise, replaces: DBC_POOL_PATTERN } : null;
