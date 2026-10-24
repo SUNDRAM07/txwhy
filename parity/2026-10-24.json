@@ -1,0 +1,1275 @@
+{
+ "date": "2026-10-24",
+ "mainnet": {
+  "at": "2026-10-24T10:01:58.373Z",
+  "rpc": "https://api.mainnet-beta.solana.com",
+  "version": {
+   "feature-set": 3383571666,
+   "solana-core": "4.3.2"
+  },
+  "results": [
+   {
+    "program": "Jupiter",
+    "signature": "3p6BnoTF72GbYrExW9cfcqkCHGmGRjBfRUpBFT7zi8eQXR8qjTohh6bnQVJybvCZ3LeCkmv89w76noPMsnMnCRQc",
+    "status": "not_repairable",
+    "title": "Obsidian error 5 (0x5)",
+    "summary": "Obsidian returned a code that is not in its published error list.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[2,{\"Custom\":5}]}",
+     "units": 121724,
+     "lastLog": "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x5"
+    },
+    "ms": 1941
+   },
+   {
+    "program": "Jupiter",
+    "signature": "2BhqgKcpYKbkMCBBECzf2dnLSTckVsHbQduZz3YkffcXew4WvncPhzcwuF22qAKivK1JbJJstLFks5oLXuq3nkfw",
+    "status": "not_repairable",
+    "title": "SlippageToleranceExceeded",
+    "summary": "This is a circular arbitrage: the same token goes in and comes out. It only succeeds while a price gap exists, and the gap had closed by the time it executed. Arbitrage transactions are built to fail ",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[2,{\"Custom\":6001}]}",
+     "units": 110145,
+     "lastLog": "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x1771"
+    },
+    "ms": 1801
+   },
+   {
+    "program": "Jupiter",
+    "signature": "2v5ycPFUREX3NbBot1sgxVJus6Cv7kEorRy7ZJwvNLdY77mFr1sp8oB1KHtH4cpxdZc2235K4inF49TUHuVjkKfJ",
+    "status": "not_repairable",
+    "title": "Obsidian error 5 (0x5)",
+    "summary": "Obsidian returned a code that is not in its published error list.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[2,{\"Custom\":5}]}",
+     "units": 90529,
+     "lastLog": "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x5"
+    },
+    "ms": 1342
+   },
+   {
+    "program": "Raydium AMM",
+    "signature": "4A9ySL1VZhWT9kSfxVUSJzpX9W21TW5z9K39HajCJxkosp9XMgac8KPwufTg6smYpo3jysmaTThiYqAcQfyxJDKh",
+    "status": "not_repairable",
+    "title": "Not enough tokens to transfer",
+    "summary": "The token transfer at instruction #6 spends 0.159258 from token account 7XHzNUMVM3q8SyLFvVXUeg96W4LHzTZoyoPHQgxTSxt7, which holds 0.011636. Usually the amount came from a balance that was already part",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[5,{\"Custom\":1}]}",
+     "units": 143716,
+     "lastLog": "Program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA failed: custom program error: 0x1"
+    },
+    "ms": 7355
+   },
+   {
+    "program": "Raydium AMM",
+    "signature": "3wQxdwTgeE3crJbTuw9og7WpCSBYyDBr7RCvvERj9TzRPoLkYCtvPT3Jd2p7GMkz8zm5pM5E7dkVYfC6HCW91Yrk",
+    "status": "not_repairable",
+    "title": "Error 0 from a private program (NA77…RQm5)",
+    "summary": "Program NA777pkN8YYSsQKk1zvwKgJmThtuWbmhonzJxRARQm5 raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors know",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[4,{\"Custom\":0}]}",
+     "units": 5889,
+     "lastLog": "Program NA777pkN8YYSsQKk1zvwKgJmThtuWbmhonzJxRARQm5 failed: custom program error: 0x0"
+    },
+    "ms": 2212
+   },
+   {
+    "program": "Raydium AMM",
+    "signature": "2bZp3SdXcgAEWNabNfPh9ZzLzYPZwXJPcQ1JVVVvp3vz7TNRT2cERVxDKgLJzsXw5toi4UtD9gHKjwJHxrB84WmF",
+    "status": "not_repairable",
+    "title": "Error 0 from a private program (NA77…RQm5)",
+    "summary": "Program NA777pkN8YYSsQKk1zvwKgJmThtuWbmhonzJxRARQm5 raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors know",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[4,{\"Custom\":0}]}",
+     "units": 5889,
+     "lastLog": "Program NA777pkN8YYSsQKk1zvwKgJmThtuWbmhonzJxRARQm5 failed: custom program error: 0x0"
+    },
+    "ms": 1605
+   },
+   {
+    "program": "Orca Whirlpool",
+    "signature": "3UHP45DFkViX5UUiXr4zX5ZWtA3ktLE8MdsaRFRvs8fwfHDev6ttQaF1VSkZcWt5bBhxNAWYvd2mijXT74hQSrEX",
+    "status": "needs_requote",
+    "title": "SlippageToleranceExceeded",
+    "summary": "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[1,{\"Custom\":6001}]}",
+     "units": 289860,
+     "lastLog": "Program B3111yJCeHBcA1bizdJjUFPALfhAfSRnAbJzGUtnt56A failed: custom program error: 0x1771"
+    },
+    "ms": 1287
+   },
+   {
+    "program": "Orca Whirlpool",
+    "signature": "4RwFEDxMAoS526mAtSmWebpHbicq27yr8Si2k3DmC9SKZ1sM2mpkF7j4i54aJYpVpPBVKMpQD23SbnqoHHa2Z3zn",
+    "status": "not_repairable",
+    "title": "Obsidian error 5 (0x5)",
+    "summary": "Obsidian returned a code that is not in its published error list.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[2,{\"Custom\":5}]}",
+     "units": 100686,
+     "lastLog": "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x5"
+    },
+    "ms": 1281
+   },
+   {
+    "program": "Orca Whirlpool",
+    "signature": "28DLjGUvTGquq2bthjrXMh1AVHxP5fk6achhMKM8aMAXuHnfn4GAECHQKJd3Ue2HvD1qxdJYwhnFxc9oMSiUMWrc",
+    "status": "not_repairable",
+    "title": "Error 15 from a private program (DSki…Pijf)",
+    "summary": "Program DSkiugWe78XQcfRgaCDnZkTMyRnaSd9LQQhY7XnhPijf raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors kno",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[1,{\"Custom\":15}]}",
+     "units": 77757,
+     "lastLog": "Program DSkiugWe78XQcfRgaCDnZkTMyRnaSd9LQQhY7XnhPijf failed: custom program error: 0xf"
+    },
+    "ms": 7076
+   },
+   {
+    "program": "Meteora DLMM",
+    "signature": "3vf8KtEfnxvwQNjsW4DA17W3h88sMrrzd7R8BET9wx7aVtcabmvAFABe7zgdvGde2vAXi3fUuvmZCjftVz6UN1xw",
+    "status": "not_repairable",
+    "title": "Error 7 from a private program (Diab…xc5z)",
+    "summary": "Program DiabLokxisGR8P4Qqp2QL6PmBhhVsdzPstCE4WoLxc5z raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors kno",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[4,{\"Custom\":7}]}",
+     "units": 70672,
+     "lastLog": "Program DiabLokxisGR8P4Qqp2QL6PmBhhVsdzPstCE4WoLxc5z failed: custom program error: 0x7"
+    },
+    "ms": 2426
+   },
+   {
+    "program": "Meteora DLMM",
+    "signature": "34pk7h4Z5MMLRCNQvapJyhvpDJZ376U3fsFmb78DUgjLSYzrrBq1M9vTZsPkU1hnd12hBR5jE6Yco5A1DEGP8hL7",
+    "status": "not_repairable",
+    "title": "Error 5000 from a private program (Pris…F7qv)",
+    "summary": "Program Prism8hsRo6Ww5jiN5Zeh3YDPLZHqHduCPSAV7JF7qv raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors know",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[4,{\"Custom\":5000}]}",
+     "units": 48189,
+     "lastLog": "Program Prism8hsRo6Ww5jiN5Zeh3YDPLZHqHduCPSAV7JF7qv failed: custom program error: 0x1388"
+    },
+    "ms": 1752
+   },
+   {
+    "program": "Meteora DLMM",
+    "signature": "3PTreU3vh6EH3wHTiEYNyjf3NZzS2hwZjC8QsJnkTYfaCk41v2caYKBjRdcxrN6t4sstwS6sracoQwFaEmCPo6VJ",
+    "status": "not_repairable",
+    "title": "Error 5000 from a private program (Pris…F7qv)",
+    "summary": "Program Prism8hsRo6Ww5jiN5Zeh3YDPLZHqHduCPSAV7JF7qv raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors know",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[4,{\"Custom\":5000}]}",
+     "units": 48189,
+     "lastLog": "Program Prism8hsRo6Ww5jiN5Zeh3YDPLZHqHduCPSAV7JF7qv failed: custom program error: 0x1388"
+    },
+    "ms": 1319
+   },
+   {
+    "program": "Pump.fun",
+    "signature": "4YwLg6MNAxFKN8mzdNTzKJivyv52qAEPeLC85BeqfFur3qULs1dLiYBmeh2kTkFUoGcpWKhn7PUTPJYeYHj1tMsh",
+    "status": "not_repairable",
+    "title": "Error 11 from a private program (261e…XWW1)",
+    "summary": "Program 261eMUSHi6432WL4KbRDiZacnw9HqJLXeWRvN4iJXWW1 raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors kno",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[0,{\"Custom\":11}]}",
+     "units": 421,
+     "lastLog": "Program 261eMUSHi6432WL4KbRDiZacnw9HqJLXeWRvN4iJXWW1 failed: custom program error: 0xb"
+    },
+    "ms": 1495
+   },
+   {
+    "program": "Pump.fun",
+    "signature": "2UNFQcMTwD15rSmfa1oGTPwieKANsnQvno78pFDWyhHothyAXRh48968x79q4a9nUAQTN95YaFp9ft3MhbUGfQsz",
+    "status": "not_repairable",
+    "title": "Error 13 from a private program (Dhpy…84HY)",
+    "summary": "Program DhpyNWkdxFh3DRPsBrwRwrK3TYC5t7Q4arnSvf3t84HY raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors kno",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[1,{\"Custom\":13}]}",
+     "units": 3815,
+     "lastLog": "Program DhpyNWkdxFh3DRPsBrwRwrK3TYC5t7Q4arnSvf3t84HY failed: custom program error: 0xd"
+    },
+    "ms": 1965
+   },
+   {
+    "program": "Pump.fun",
+    "signature": "4d9yLc9wiqcMSYVT8GsaLsKVvEPD12KD3J5X31L2nRxmudomN5u8XrLViJS3BWqzkbBQdGmvGoUPCuHAyxkVXE6A",
+    "status": "not_repairable",
+    "title": "Error 11 from a private program (261e…XWW1)",
+    "summary": "Program 261eMUSHi6432WL4KbRDiZacnw9HqJLXeWRvN4iJXWW1 raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors kno",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[0,{\"Custom\":11}]}",
+     "units": 421,
+     "lastLog": "Program 261eMUSHi6432WL4KbRDiZacnw9HqJLXeWRvN4iJXWW1 failed: custom program error: 0xb"
+    },
+    "ms": 1285
+   },
+   {
+    "program": "PumpSwap",
+    "signature": "4HdXGLoNeyB4ADRAkqftx3BuNtTmboNqBZ4mX9DhWefXNYA8pnH56wLf7AeN4W3aVqehdrbvfdT9X2UUZEDEKibp",
+    "status": "needs_requote",
+    "title": "ExceededSlippage",
+    "summary": "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":525}]}",
+     "units": 9301,
+     "lastLog": "Program H75Wb3aWcK2AkyxWPZqke9giMA2qHfGiPCnpx2wjwTbB failed: custom program error: 0x20d"
+    },
+    "ms": 1910
+   },
+   {
+    "program": "PumpSwap",
+    "signature": "2HYSbR1LH1ngmiyRm2XA6b5rrLLKQHXuz1BMinJkan8MXpbkFC7TQYKukRWSkmLSGF8Kt6eYAiHwzZGXjDk7ZBLM",
+    "status": "needs_requote",
+    "title": "ExceededSlippage",
+    "summary": "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":6004}]}",
+     "units": 41352,
+     "lastLog": "Program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA failed: custom program error: 0x1774"
+    },
+    "ms": 1792
+   },
+   {
+    "program": "PumpSwap",
+    "signature": "4tHydWVqAupVWc88uuKF5zCNc5y3KHRPoQwmcky416Vj3FPMHZuQfM54xs6fPnkp9euKx4pbb58dP6y6bLG2zGbc",
+    "status": "needs_requote",
+    "title": "ExceededSlippage",
+    "summary": "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":102}]}",
+     "units": 3008,
+     "lastLog": "Program BmGwqQXtzu8tLH6TiG5DEVakNs4chNo2boVSov5rr3DG failed: custom program error: 0x66"
+    },
+    "ms": 1751
+   },
+   {
+    "program": "Meteora DBC",
+    "signature": "5v13sDe5FycSy5bstbLYotU9N3whfoc6aDQ63LbQ6QTJDwPhCBZrCaHgNAvwKNpS59E8aKpe9qQfhJW7bMepNRdg",
+    "status": "not_repairable",
+    "title": "PoolIsCompleted",
+    "summary": "The launch pool has completed its bonding curve and graduated. Its liquidity has moved, or is moving, to the AMM pool it migrates to, so no swap against the launch pool can succeed any more. The progr",
+    "changes": [],
+    "sim": {
+     "err": "\"AccountNotFound\"",
+     "units": 0,
+     "lastLog": null
+    },
+    "ms": 1555
+   },
+   {
+    "program": "Meteora DBC",
+    "signature": "wQED6GfieWiGiyBaekUNass7hCcJZzRwy3Fme7XgkBoqHGYqVqVQgJXjUXJPqipzPWkQAwuw5haJxuP86uh5nV4",
+    "status": "not_repairable",
+    "title": "PoolIsCompleted",
+    "summary": "The launch pool has completed its bonding curve and graduated. Its liquidity has moved, or is moving, to the AMM pool it migrates to, so no swap against the launch pool can succeed any more. The progr",
+    "changes": [],
+    "sim": {
+     "err": "\"AccountNotFound\"",
+     "units": 0,
+     "lastLog": null
+    },
+    "ms": 1283
+   },
+   {
+    "program": "Meteora DBC",
+    "signature": "Yiu1eGAtNeHtNaKhSGV7epfp352bw8MBi9PduBPBm3BdofQ5wD4vXkexMB2M4AEkx7GY5Qfd41a4uHKXcpywxAz",
+    "status": "not_repairable",
+    "title": "InsufficientFunds",
+    "summary": "Meteora DBC pool 4X7LotKED4DgUMKRLh4jV5fRmHtQUu1pv7mRXChAPSB9 completed its bonding curve (11.99 SOL raised; 11.99 SOL graduates it) and its liquidity moved to Meteora DAMM v2 pool F3Gt2PmbQjGrm7wHcp4",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":6013}]}",
+     "units": 40976,
+     "lastLog": "Program dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN failed: custom program error: 0x177d"
+    },
+    "ms": 3085
+   },
+   {
+    "program": "Meteora DAMM v2",
+    "signature": "51A63ySSh2Y6mqEt9FpwBZ4ZweCgG4Qyr2UtAjRBa8wzSNNouBxPVaK5va9x6CuTNPHU45vN17J1e1qVSwNd5Jow",
+    "status": "repaired",
+    "title": "ExceededSlippage",
+    "summary": "On chain this failed with \"ExceededSlippage\". Rebuilt against current state, it passes simulation.",
+    "changes": [
+     "blockhash",
+     "compute_unit_limit",
+     "priority_fee"
+    ],
+    "sim": {
+     "err": "null",
+     "units": 40440,
+     "lastLog": null
+    },
+    "ms": 2012
+   },
+   {
+    "program": "Meteora DAMM v2",
+    "signature": "2vyjJZ8sUD1YybMkMPP4ELD4takAYysCsTKDsSSnnJTWJFyVYwsrNzLZ2a7JBBLLi3cALhsmcLLXHpc5wRywGJ57",
+    "status": "not_repairable",
+    "title": "ExceededSlippage",
+    "summary": "This transaction chains 2 direct swaps, so the output of one feeds the next. Moving one limit would leave the next swap short, and TxWhy changes at most one swap limit per repair. Rebuild the whole se",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[5,{\"Custom\":6000}]}",
+     "units": 25057,
+     "lastLog": "Program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG failed: custom program error: 0x1770"
+    },
+    "ms": 1261
+   },
+   {
+    "program": "Meteora DAMM v2",
+    "signature": "3gNLdX6UNNW3cXGp42jQEcSGzRgbdXvcmPffprJqxAbeJy5nLKQaNLESz6SDHTD7BauGEF3tHd4Yu8J8NAReqTbN",
+    "status": "repaired",
+    "title": "Error 24 from a private program (3s1r…W8pC)",
+    "summary": "On chain this failed with \"Error 24 from a private program (3s1r…W8pC)\". Rebuilt against current state, it passes simulation.",
+    "changes": [
+     "blockhash",
+     "priority_fee"
+    ],
+    "sim": {
+     "err": "null",
+     "units": 129869,
+     "lastLog": null
+    },
+    "ms": 1916
+   },
+   {
+    "program": "Raydium LaunchLab",
+    "signature": "5u94LipsMCmA6eXfaF6auoEdJV13fHnRDpwFtQEbu4uzhor6oJMS4bbFJohbiU6gpeXz42ZA4ckqbZs4GZuuj25s",
+    "status": "not_repairable",
+    "title": "InsufficientFunds",
+    "summary": "The token account holds fewer tokens than the instruction needs.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":1}]}",
+     "units": 21121,
+     "lastLog": "Program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb failed: custom program error: 0x1"
+    },
+    "ms": 1683
+   },
+   {
+    "program": "Raydium LaunchLab",
+    "signature": "4EbaLKAUBB1QAMU1RBLHdQi885ZQraEc234yRDQKQraKrSDUq9AVwy7mTbdHw28oVVRKdeTXNMTetb4K95Xpx9Ci",
+    "status": "not_repairable",
+    "title": "Not enough tokens to transfer",
+    "summary": "The token transfer at instruction #4 spends 28.175368 from token account 5GQgprcjMSuXEGzgyNSnsV5ZiBerfEf2DzVZVJ61gV22, which holds 0. Usually the amount came from a balance that was already partly sol",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":1}]}",
+     "units": 7438,
+     "lastLog": "Program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb failed: custom program error: 0x1"
+    },
+    "ms": 1478
+   },
+   {
+    "program": "Raydium LaunchLab",
+    "signature": "59RzVkoH22QyNoTrnBT5FF7iTL1yWxBneAeFAipMbbPeA6cAfmrgAvFgLkfopQueWdrcsPdBSLyGtsH3nN6QzFuA",
+    "status": "not_repairable",
+    "title": "InsufficientFunds",
+    "summary": "The token account holds fewer tokens than the instruction needs.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":1}]}",
+     "units": 21121,
+     "lastLog": "Program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb failed: custom program error: 0x1"
+    },
+    "ms": 1767
+   }
+  ]
+ },
+ "surfnet": {
+  "at": "2026-10-24T10:07:08.181Z",
+  "rpc": "http://127.0.0.1:8899",
+  "version": {
+   "surfnet-version": "1.6.1",
+   "solana-core": "4.2.1",
+   "feature-set": 565236538
+  },
+  "results": [
+   {
+    "program": "Jupiter",
+    "signature": "3p6BnoTF72GbYrExW9cfcqkCHGmGRjBfRUpBFT7zi8eQXR8qjTohh6bnQVJybvCZ3LeCkmv89w76noPMsnMnCRQc",
+    "status": "not_repairable",
+    "title": "Obsidian error 5 (0x5)",
+    "summary": "Obsidian returned a code that is not in its published error list.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[2,{\"Custom\":5464}]}",
+     "units": 35278,
+     "lastLog": "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x1558"
+    },
+    "ms": 2711,
+    "simRef": {
+     "err": "{\"InstructionError\":[2,{\"Custom\":5}]}",
+     "units": 122331,
+     "lastLog": "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x5"
+    }
+   },
+   {
+    "program": "Jupiter",
+    "signature": "2BhqgKcpYKbkMCBBECzf2dnLSTckVsHbQduZz3YkffcXew4WvncPhzcwuF22qAKivK1JbJJstLFks5oLXuq3nkfw",
+    "status": "not_repairable",
+    "title": "SlippageToleranceExceeded",
+    "summary": "This is a circular arbitrage: the same token goes in and comes out. It only succeeds while a price gap exists, and the gap had closed by the time it executed. Arbitrage transactions are built to fail ",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[2,{\"Custom\":6004}]}",
+     "units": 13453,
+     "lastLog": "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x1774"
+    },
+    "ms": 1380,
+    "simRef": {
+     "err": "{\"InstructionError\":[2,{\"Custom\":6001}]}",
+     "units": 111951,
+     "lastLog": "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x1771"
+    }
+   },
+   {
+    "program": "Jupiter",
+    "signature": "2v5ycPFUREX3NbBot1sgxVJus6Cv7kEorRy7ZJwvNLdY77mFr1sp8oB1KHtH4cpxdZc2235K4inF49TUHuVjkKfJ",
+    "status": "not_repairable",
+    "title": "Obsidian error 5 (0x5)",
+    "summary": "Obsidian returned a code that is not in its published error list.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[2,{\"Custom\":5}]}",
+     "units": 99441,
+     "lastLog": "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x5"
+    },
+    "ms": 1206,
+    "simRef": {
+     "err": "{\"InstructionError\":[2,{\"Custom\":5}]}",
+     "units": 100593,
+     "lastLog": "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x5"
+    }
+   },
+   {
+    "program": "Raydium AMM",
+    "signature": "4A9ySL1VZhWT9kSfxVUSJzpX9W21TW5z9K39HajCJxkosp9XMgac8KPwufTg6smYpo3jysmaTThiYqAcQfyxJDKh",
+    "status": "not_repairable",
+    "title": "InsufficientFunds",
+    "summary": "The token account holds fewer tokens than the instruction needs.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[2,{\"Custom\":2005}]}",
+     "units": 62918,
+     "lastLog": "Program 6Vo3245eszAb5wuqEMw8mGdbfRUdKbHhDHP5LcaGuTAB failed: custom program error: 0x7d5"
+    },
+    "ms": 10497,
+    "simRef": {
+     "err": "{\"InstructionError\":[5,{\"Custom\":1}]}",
+     "units": 143716,
+     "lastLog": "Program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA failed: custom program error: 0x1"
+    }
+   },
+   {
+    "program": "Raydium AMM",
+    "signature": "3wQxdwTgeE3crJbTuw9og7WpCSBYyDBr7RCvvERj9TzRPoLkYCtvPT3Jd2p7GMkz8zm5pM5E7dkVYfC6HCW91Yrk",
+    "status": "not_repairable",
+    "title": "Error 0 from a private program (NA77…RQm5)",
+    "summary": "Program NA777pkN8YYSsQKk1zvwKgJmThtuWbmhonzJxRARQm5 raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors know",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[4,{\"Custom\":0}]}",
+     "units": 5901,
+     "lastLog": "Program NA777pkN8YYSsQKk1zvwKgJmThtuWbmhonzJxRARQm5 failed: custom program error: 0x0"
+    },
+    "ms": 1108,
+    "simRef": {
+     "err": "{\"InstructionError\":[4,{\"Custom\":0}]}",
+     "units": 5902,
+     "lastLog": "Program NA777pkN8YYSsQKk1zvwKgJmThtuWbmhonzJxRARQm5 failed: custom program error: 0x0"
+    }
+   },
+   {
+    "program": "Raydium AMM",
+    "signature": "2bZp3SdXcgAEWNabNfPh9ZzLzYPZwXJPcQ1JVVVvp3vz7TNRT2cERVxDKgLJzsXw5toi4UtD9gHKjwJHxrB84WmF",
+    "status": "not_repairable",
+    "title": "Error 0 from a private program (NA77…RQm5)",
+    "summary": "Program NA777pkN8YYSsQKk1zvwKgJmThtuWbmhonzJxRARQm5 raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors know",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[4,{\"Custom\":0}]}",
+     "units": 5901,
+     "lastLog": "Program NA777pkN8YYSsQKk1zvwKgJmThtuWbmhonzJxRARQm5 failed: custom program error: 0x0"
+    },
+    "ms": 884,
+    "simRef": {
+     "err": "{\"InstructionError\":[4,{\"Custom\":0}]}",
+     "units": 5904,
+     "lastLog": "Program NA777pkN8YYSsQKk1zvwKgJmThtuWbmhonzJxRARQm5 failed: custom program error: 0x0"
+    }
+   },
+   {
+    "program": "Orca Whirlpool",
+    "signature": "3UHP45DFkViX5UUiXr4zX5ZWtA3ktLE8MdsaRFRvs8fwfHDev6ttQaF1VSkZcWt5bBhxNAWYvd2mijXT74hQSrEX",
+    "status": "needs_requote",
+    "title": "SlippageToleranceExceeded",
+    "summary": "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[1,{\"Custom\":21}]}",
+     "units": 232350,
+     "lastLog": "Program B3111yJCeHBcA1bizdJjUFPALfhAfSRnAbJzGUtnt56A failed: custom program error: 0x15"
+    },
+    "ms": 10091,
+    "simRef": {
+     "err": "{\"InstructionError\":[1,{\"Custom\":6001}]}",
+     "units": 289598,
+     "lastLog": "Program B3111yJCeHBcA1bizdJjUFPALfhAfSRnAbJzGUtnt56A failed: custom program error: 0x1771"
+    }
+   },
+   {
+    "program": "Orca Whirlpool",
+    "signature": "4RwFEDxMAoS526mAtSmWebpHbicq27yr8Si2k3DmC9SKZ1sM2mpkF7j4i54aJYpVpPBVKMpQD23SbnqoHHa2Z3zn",
+    "status": "not_repairable",
+    "title": "Obsidian error 5 (0x5)",
+    "summary": "Obsidian returned a code that is not in its published error list.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[2,{\"Custom\":5}]}",
+     "units": 99447,
+     "lastLog": "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x5"
+    },
+    "ms": 1171,
+    "simRef": {
+     "err": "{\"InstructionError\":[2,{\"Custom\":5}]}",
+     "units": 100606,
+     "lastLog": "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x5"
+    }
+   },
+   {
+    "program": "Orca Whirlpool",
+    "signature": "28DLjGUvTGquq2bthjrXMh1AVHxP5fk6achhMKM8aMAXuHnfn4GAECHQKJd3Ue2HvD1qxdJYwhnFxc9oMSiUMWrc",
+    "status": "not_repairable",
+    "title": "Error 15 from a private program (DSki…Pijf)",
+    "summary": "Program DSkiugWe78XQcfRgaCDnZkTMyRnaSd9LQQhY7XnhPijf raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors kno",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[1,{\"Custom\":15}]}",
+     "units": 74630,
+     "lastLog": "Program DSkiugWe78XQcfRgaCDnZkTMyRnaSd9LQQhY7XnhPijf failed: custom program error: 0xf"
+    },
+    "ms": 1134,
+    "simRef": {
+     "err": "{\"InstructionError\":[1,{\"Custom\":15}]}",
+     "units": 77041,
+     "lastLog": "Program DSkiugWe78XQcfRgaCDnZkTMyRnaSd9LQQhY7XnhPijf failed: custom program error: 0xf"
+    }
+   },
+   {
+    "program": "Meteora DLMM",
+    "signature": "3vf8KtEfnxvwQNjsW4DA17W3h88sMrrzd7R8BET9wx7aVtcabmvAFABe7zgdvGde2vAXi3fUuvmZCjftVz6UN1xw",
+    "status": "not_repairable",
+    "title": "Error 7 from a private program (Diab…xc5z)",
+    "summary": "Program DiabLokxisGR8P4Qqp2QL6PmBhhVsdzPstCE4WoLxc5z raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors kno",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[4,{\"Custom\":7}]}",
+     "units": 33315,
+     "lastLog": "Program DiabLokxisGR8P4Qqp2QL6PmBhhVsdzPstCE4WoLxc5z failed: custom program error: 0x7"
+    },
+    "ms": 1185,
+    "simRef": {
+     "err": "{\"InstructionError\":[4,{\"Custom\":7}]}",
+     "units": 39188,
+     "lastLog": "Program DiabLokxisGR8P4Qqp2QL6PmBhhVsdzPstCE4WoLxc5z failed: custom program error: 0x7"
+    }
+   },
+   {
+    "program": "Meteora DLMM",
+    "signature": "34pk7h4Z5MMLRCNQvapJyhvpDJZ376U3fsFmb78DUgjLSYzrrBq1M9vTZsPkU1hnd12hBR5jE6Yco5A1DEGP8hL7",
+    "status": "not_repairable",
+    "title": "Error 5000 from a private program (Pris…F7qv)",
+    "summary": "Program Prism8hsRo6Ww5jiN5Zeh3YDPLZHqHduCPSAV7JF7qv raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors know",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[4,{\"Custom\":5000}]}",
+     "units": 47375,
+     "lastLog": "Program Prism8hsRo6Ww5jiN5Zeh3YDPLZHqHduCPSAV7JF7qv failed: custom program error: 0x1388"
+    },
+    "ms": 1357,
+    "simRef": {
+     "err": "{\"InstructionError\":[4,{\"Custom\":5000}]}",
+     "units": 48315,
+     "lastLog": "Program Prism8hsRo6Ww5jiN5Zeh3YDPLZHqHduCPSAV7JF7qv failed: custom program error: 0x1388"
+    }
+   },
+   {
+    "program": "Meteora DLMM",
+    "signature": "3PTreU3vh6EH3wHTiEYNyjf3NZzS2hwZjC8QsJnkTYfaCk41v2caYKBjRdcxrN6t4sstwS6sracoQwFaEmCPo6VJ",
+    "status": "not_repairable",
+    "title": "Error 5000 from a private program (Pris…F7qv)",
+    "summary": "Program Prism8hsRo6Ww5jiN5Zeh3YDPLZHqHduCPSAV7JF7qv raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors know",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[4,{\"Custom\":5000}]}",
+     "units": 47375,
+     "lastLog": "Program Prism8hsRo6Ww5jiN5Zeh3YDPLZHqHduCPSAV7JF7qv failed: custom program error: 0x1388"
+    },
+    "ms": 10271,
+    "simRef": {
+     "err": "{\"InstructionError\":[4,{\"Custom\":5000}]}",
+     "units": 48315,
+     "lastLog": "Program Prism8hsRo6Ww5jiN5Zeh3YDPLZHqHduCPSAV7JF7qv failed: custom program error: 0x1388"
+    }
+   },
+   {
+    "program": "Pump.fun",
+    "signature": "4YwLg6MNAxFKN8mzdNTzKJivyv52qAEPeLC85BeqfFur3qULs1dLiYBmeh2kTkFUoGcpWKhn7PUTPJYeYHj1tMsh",
+    "status": "not_repairable",
+    "title": "Error 11 from a private program (261e…XWW1)",
+    "summary": "Program 261eMUSHi6432WL4KbRDiZacnw9HqJLXeWRvN4iJXWW1 raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors kno",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[0,{\"Custom\":11}]}",
+     "units": 421,
+     "lastLog": "Program 261eMUSHi6432WL4KbRDiZacnw9HqJLXeWRvN4iJXWW1 failed: custom program error: 0xb"
+    },
+    "ms": 1303,
+    "simRef": {
+     "err": "{\"InstructionError\":[0,{\"Custom\":21}]}",
+     "units": 486,
+     "lastLog": "Program 261eMUSHi6432WL4KbRDiZacnw9HqJLXeWRvN4iJXWW1 failed: custom program error: 0x15"
+    }
+   },
+   {
+    "program": "Pump.fun",
+    "signature": "2UNFQcMTwD15rSmfa1oGTPwieKANsnQvno78pFDWyhHothyAXRh48968x79q4a9nUAQTN95YaFp9ft3MhbUGfQsz",
+    "status": "not_repairable",
+    "title": "Error 13 from a private program (Dhpy…84HY)",
+    "summary": "Program DhpyNWkdxFh3DRPsBrwRwrK3TYC5t7Q4arnSvf3t84HY raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors kno",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[1,{\"Custom\":5}]}",
+     "units": 1239,
+     "lastLog": "Program DhpyNWkdxFh3DRPsBrwRwrK3TYC5t7Q4arnSvf3t84HY failed: custom program error: 0x5"
+    },
+    "ms": 1330,
+    "simRef": {
+     "err": "{\"InstructionError\":[1,{\"Custom\":5}]}",
+     "units": 1239,
+     "lastLog": "Program DhpyNWkdxFh3DRPsBrwRwrK3TYC5t7Q4arnSvf3t84HY failed: custom program error: 0x5"
+    }
+   },
+   {
+    "program": "Pump.fun",
+    "signature": "4d9yLc9wiqcMSYVT8GsaLsKVvEPD12KD3J5X31L2nRxmudomN5u8XrLViJS3BWqzkbBQdGmvGoUPCuHAyxkVXE6A",
+    "status": "not_repairable",
+    "title": "Error 11 from a private program (261e…XWW1)",
+    "summary": "Program 261eMUSHi6432WL4KbRDiZacnw9HqJLXeWRvN4iJXWW1 raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors kno",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[0,{\"Custom\":11}]}",
+     "units": 421,
+     "lastLog": "Program 261eMUSHi6432WL4KbRDiZacnw9HqJLXeWRvN4iJXWW1 failed: custom program error: 0xb"
+    },
+    "ms": 6675,
+    "simRef": {
+     "err": "{\"InstructionError\":[0,{\"Custom\":21}]}",
+     "units": 486,
+     "lastLog": "Program 261eMUSHi6432WL4KbRDiZacnw9HqJLXeWRvN4iJXWW1 failed: custom program error: 0x15"
+    }
+   },
+   {
+    "program": "PumpSwap",
+    "signature": "4HdXGLoNeyB4ADRAkqftx3BuNtTmboNqBZ4mX9DhWefXNYA8pnH56wLf7AeN4W3aVqehdrbvfdT9X2UUZEDEKibp",
+    "status": "needs_requote",
+    "title": "ExceededSlippage",
+    "summary": "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":6004}]}",
+     "units": 65804,
+     "lastLog": "Program H75Wb3aWcK2AkyxWPZqke9giMA2qHfGiPCnpx2wjwTbB failed: custom program error: 0x1774"
+    },
+    "ms": 1068,
+    "simRef": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":528}]}",
+     "units": 7774,
+     "lastLog": "Program H75Wb3aWcK2AkyxWPZqke9giMA2qHfGiPCnpx2wjwTbB failed: custom program error: 0x210"
+    }
+   },
+   {
+    "program": "PumpSwap",
+    "signature": "2HYSbR1LH1ngmiyRm2XA6b5rrLLKQHXuz1BMinJkan8MXpbkFC7TQYKukRWSkmLSGF8Kt6eYAiHwzZGXjDk7ZBLM",
+    "status": "needs_requote",
+    "title": "ExceededSlippage",
+    "summary": "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":2005}]}",
+     "units": 27815,
+     "lastLog": "Program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA failed: custom program error: 0x7d5"
+    },
+    "ms": 883,
+    "simRef": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":1}]}",
+     "units": 41835,
+     "lastLog": "Program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA failed: custom program error: 0x1"
+    }
+   },
+   {
+    "program": "PumpSwap",
+    "signature": "4tHydWVqAupVWc88uuKF5zCNc5y3KHRPoQwmcky416Vj3FPMHZuQfM54xs6fPnkp9euKx4pbb58dP6y6bLG2zGbc",
+    "status": "needs_requote",
+    "title": "ExceededSlippage",
+    "summary": "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":102}]}",
+     "units": 3008,
+     "lastLog": "Program BmGwqQXtzu8tLH6TiG5DEVakNs4chNo2boVSov5rr3DG failed: custom program error: 0x66"
+    },
+    "ms": 1296,
+    "simRef": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":102}]}",
+     "units": 3008,
+     "lastLog": "Program BmGwqQXtzu8tLH6TiG5DEVakNs4chNo2boVSov5rr3DG failed: custom program error: 0x66"
+    }
+   },
+   {
+    "program": "Meteora DBC",
+    "signature": "5v13sDe5FycSy5bstbLYotU9N3whfoc6aDQ63LbQ6QTJDwPhCBZrCaHgNAvwKNpS59E8aKpe9qQfhJW7bMepNRdg",
+    "status": "not_repairable",
+    "title": "PoolIsCompleted",
+    "summary": "The launch pool has completed its bonding curve and graduated. Its liquidity has moved, or is moving, to the AMM pool it migrates to, so no swap against the launch pool can succeed any more. The progr",
+    "changes": [],
+    "sim": {
+     "err": "\"AccountNotFound\"",
+     "units": 0,
+     "lastLog": null
+    },
+    "ms": 6697,
+    "simRef": {
+     "err": "\"AccountNotFound\"",
+     "units": 0,
+     "lastLog": null
+    }
+   },
+   {
+    "program": "Meteora DBC",
+    "signature": "wQED6GfieWiGiyBaekUNass7hCcJZzRwy3Fme7XgkBoqHGYqVqVQgJXjUXJPqipzPWkQAwuw5haJxuP86uh5nV4",
+    "status": "not_repairable",
+    "title": "PoolIsCompleted",
+    "summary": "The launch pool has completed its bonding curve and graduated. Its liquidity has moved, or is moving, to the AMM pool it migrates to, so no swap against the launch pool can succeed any more. The progr",
+    "changes": [],
+    "sim": {
+     "err": "\"AccountNotFound\"",
+     "units": 0,
+     "lastLog": null
+    },
+    "ms": 1079,
+    "simRef": {
+     "err": "\"AccountNotFound\"",
+     "units": 0,
+     "lastLog": null
+    }
+   },
+   {
+    "program": "Meteora DBC",
+    "signature": "Yiu1eGAtNeHtNaKhSGV7epfp352bw8MBi9PduBPBm3BdofQ5wD4vXkexMB2M4AEkx7GY5Qfd41a4uHKXcpywxAz",
+    "status": "not_repairable",
+    "title": "InsufficientFunds",
+    "summary": "Meteora DBC pool 4X7LotKED4DgUMKRLh4jV5fRmHtQUu1pv7mRXChAPSB9 completed its bonding curve (11.99 SOL raised; 11.99 SOL graduates it) and its liquidity moved to Meteora DAMM v2 pool F3Gt2PmbQjGrm7wHcp4",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":6013}]}",
+     "units": 40982,
+     "lastLog": "Program dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN failed: custom program error: 0x177d"
+    },
+    "ms": 1791,
+    "simRef": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":6013}]}",
+     "units": 40976,
+     "lastLog": "Program dbcij3LWUppWqq96dh6gJWwBifmcGfLSB5D4DuSMaqN failed: custom program error: 0x177d"
+    }
+   },
+   {
+    "program": "Meteora DAMM v2",
+    "signature": "51A63ySSh2Y6mqEt9FpwBZ4ZweCgG4Qyr2UtAjRBa8wzSNNouBxPVaK5va9x6CuTNPHU45vN17J1e1qVSwNd5Jow",
+    "status": "repaired",
+    "title": "ExceededSlippage",
+    "summary": "On chain this failed with \"ExceededSlippage\". Rebuilt against current state, it passes simulation.",
+    "changes": [
+     "blockhash",
+     "compute_unit_limit",
+     "priority_fee"
+    ],
+    "sim": {
+     "err": "null",
+     "units": 40016,
+     "lastLog": null
+    },
+    "ms": 1333,
+    "simRef": {
+     "err": "null",
+     "units": 40440,
+     "lastLog": null
+    }
+   },
+   {
+    "program": "Meteora DAMM v2",
+    "signature": "2vyjJZ8sUD1YybMkMPP4ELD4takAYysCsTKDsSSnnJTWJFyVYwsrNzLZ2a7JBBLLi3cALhsmcLLXHpc5wRywGJ57",
+    "status": "not_repairable",
+    "title": "ExceededSlippage",
+    "summary": "This transaction chains 2 direct swaps, so the output of one feeds the next. Moving one limit would leave the next swap short, and TxWhy changes at most one swap limit per repair. Rebuild the whole se",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[5,{\"Custom\":6000}]}",
+     "units": 25063,
+     "lastLog": "Program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG failed: custom program error: 0x1770"
+    },
+    "ms": 10241,
+    "simRef": {
+     "err": "{\"InstructionError\":[5,{\"Custom\":6000}]}",
+     "units": 25057,
+     "lastLog": "Program cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG failed: custom program error: 0x1770"
+    }
+   },
+   {
+    "program": "Meteora DAMM v2",
+    "signature": "3gNLdX6UNNW3cXGp42jQEcSGzRgbdXvcmPffprJqxAbeJy5nLKQaNLESz6SDHTD7BauGEF3tHd4Yu8J8NAReqTbN",
+    "status": "repaired",
+    "title": "Error 24 from a private program (3s1r…W8pC)",
+    "summary": "On chain this failed with \"Error 24 from a private program (3s1r…W8pC)\". Rebuilt against current state, it passes simulation.",
+    "changes": [
+     "blockhash",
+     "priority_fee"
+    ],
+    "sim": {
+     "err": "null",
+     "units": 128676,
+     "lastLog": null
+    },
+    "ms": 1578,
+    "simRef": {
+     "err": "null",
+     "units": 130045,
+     "lastLog": null
+    }
+   },
+   {
+    "program": "Raydium LaunchLab",
+    "signature": "5u94LipsMCmA6eXfaF6auoEdJV13fHnRDpwFtQEbu4uzhor6oJMS4bbFJohbiU6gpeXz42ZA4ckqbZs4GZuuj25s",
+    "status": "not_repairable",
+    "title": "InsufficientFunds",
+    "summary": "The token account holds fewer tokens than the instruction needs.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":1}]}",
+     "units": 20180,
+     "lastLog": "Program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb failed: custom program error: 0x1"
+    },
+    "ms": 1302,
+    "simRef": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":1}]}",
+     "units": 21121,
+     "lastLog": "Program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb failed: custom program error: 0x1"
+    }
+   },
+   {
+    "program": "Raydium LaunchLab",
+    "signature": "4EbaLKAUBB1QAMU1RBLHdQi885ZQraEc234yRDQKQraKrSDUq9AVwy7mTbdHw28oVVRKdeTXNMTetb4K95Xpx9Ci",
+    "status": "not_repairable",
+    "title": "Not enough tokens to transfer",
+    "summary": "The token transfer at instruction #4 spends 28.175368 from token account 5GQgprcjMSuXEGzgyNSnsV5ZiBerfEf2DzVZVJ61gV22, which holds 0. Usually the amount came from a balance that was already partly sol",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":1}]}",
+     "units": 7438,
+     "lastLog": "Program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb failed: custom program error: 0x1"
+    },
+    "ms": 1098,
+    "simRef": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":1}]}",
+     "units": 7438,
+     "lastLog": "Program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb failed: custom program error: 0x1"
+    }
+   },
+   {
+    "program": "Raydium LaunchLab",
+    "signature": "59RzVkoH22QyNoTrnBT5FF7iTL1yWxBneAeFAipMbbPeA6cAfmrgAvFgLkfopQueWdrcsPdBSLyGtsH3nN6QzFuA",
+    "status": "not_repairable",
+    "title": "InsufficientFunds",
+    "summary": "The token account holds fewer tokens than the instruction needs.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":1}]}",
+     "units": 20180,
+     "lastLog": "Program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb failed: custom program error: 0x1"
+    },
+    "ms": 10488,
+    "simRef": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":1}]}",
+     "units": 21121,
+     "lastLog": "Program TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb failed: custom program error: 0x1"
+    }
+   }
+  ]
+ },
+ "divergences": [
+  {
+   "program": "Jupiter",
+   "signature": "3p6BnoTF72GbYrExW9cfcqkCHGmGRjBfRUpBFT7zi8eQXR8qjTohh6bnQVJybvCZ3LeCkmv89w76noPMsnMnCRQc",
+   "mainnet": {
+    "program": "Jupiter",
+    "signature": "3p6BnoTF72GbYrExW9cfcqkCHGmGRjBfRUpBFT7zi8eQXR8qjTohh6bnQVJybvCZ3LeCkmv89w76noPMsnMnCRQc",
+    "status": "not_repairable",
+    "title": "Obsidian error 5 (0x5)",
+    "summary": "Obsidian returned a code that is not in its published error list.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[2,{\"Custom\":5}]}",
+     "units": 121724,
+     "lastLog": "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x5"
+    },
+    "ms": 1941
+   },
+   "surfnet": {
+    "program": "Jupiter",
+    "signature": "3p6BnoTF72GbYrExW9cfcqkCHGmGRjBfRUpBFT7zi8eQXR8qjTohh6bnQVJybvCZ3LeCkmv89w76noPMsnMnCRQc",
+    "status": "not_repairable",
+    "title": "Obsidian error 5 (0x5)",
+    "summary": "Obsidian returned a code that is not in its published error list.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[2,{\"Custom\":5464}]}",
+     "units": 35278,
+     "lastLog": "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x1558"
+    },
+    "ms": 2711,
+    "simRef": {
+     "err": "{\"InstructionError\":[2,{\"Custom\":5}]}",
+     "units": 122331,
+     "lastLog": "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x5"
+    }
+   },
+   "kind": "state drift (12 accounts differ between the two reads)",
+   "accounts": {
+    "identical": false,
+    "dataDiffs": 12,
+    "lamportsOnly": 3
+   }
+  },
+  {
+   "program": "Jupiter",
+   "signature": "2BhqgKcpYKbkMCBBECzf2dnLSTckVsHbQduZz3YkffcXew4WvncPhzcwuF22qAKivK1JbJJstLFks5oLXuq3nkfw",
+   "mainnet": {
+    "program": "Jupiter",
+    "signature": "2BhqgKcpYKbkMCBBECzf2dnLSTckVsHbQduZz3YkffcXew4WvncPhzcwuF22qAKivK1JbJJstLFks5oLXuq3nkfw",
+    "status": "not_repairable",
+    "title": "SlippageToleranceExceeded",
+    "summary": "This is a circular arbitrage: the same token goes in and comes out. It only succeeds while a price gap exists, and the gap had closed by the time it executed. Arbitrage transactions are built to fail ",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[2,{\"Custom\":6001}]}",
+     "units": 110145,
+     "lastLog": "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x1771"
+    },
+    "ms": 1801
+   },
+   "surfnet": {
+    "program": "Jupiter",
+    "signature": "2BhqgKcpYKbkMCBBECzf2dnLSTckVsHbQduZz3YkffcXew4WvncPhzcwuF22qAKivK1JbJJstLFks5oLXuq3nkfw",
+    "status": "not_repairable",
+    "title": "SlippageToleranceExceeded",
+    "summary": "This is a circular arbitrage: the same token goes in and comes out. It only succeeds while a price gap exists, and the gap had closed by the time it executed. Arbitrage transactions are built to fail ",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[2,{\"Custom\":6004}]}",
+     "units": 13453,
+     "lastLog": "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x1774"
+    },
+    "ms": 1380,
+    "simRef": {
+     "err": "{\"InstructionError\":[2,{\"Custom\":6001}]}",
+     "units": 111951,
+     "lastLog": "Program JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 failed: custom program error: 0x1771"
+    }
+   },
+   "kind": "state drift (11 accounts differ between the two reads)",
+   "accounts": {
+    "identical": false,
+    "dataDiffs": 11,
+    "lamportsOnly": 3
+   }
+  },
+  {
+   "program": "Raydium AMM",
+   "signature": "4A9ySL1VZhWT9kSfxVUSJzpX9W21TW5z9K39HajCJxkosp9XMgac8KPwufTg6smYpo3jysmaTThiYqAcQfyxJDKh",
+   "mainnet": {
+    "program": "Raydium AMM",
+    "signature": "4A9ySL1VZhWT9kSfxVUSJzpX9W21TW5z9K39HajCJxkosp9XMgac8KPwufTg6smYpo3jysmaTThiYqAcQfyxJDKh",
+    "status": "not_repairable",
+    "title": "Not enough tokens to transfer",
+    "summary": "The token transfer at instruction #6 spends 0.159258 from token account 7XHzNUMVM3q8SyLFvVXUeg96W4LHzTZoyoPHQgxTSxt7, which holds 0.011636. Usually the amount came from a balance that was already part",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[5,{\"Custom\":1}]}",
+     "units": 143716,
+     "lastLog": "Program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA failed: custom program error: 0x1"
+    },
+    "ms": 7355
+   },
+   "surfnet": {
+    "program": "Raydium AMM",
+    "signature": "4A9ySL1VZhWT9kSfxVUSJzpX9W21TW5z9K39HajCJxkosp9XMgac8KPwufTg6smYpo3jysmaTThiYqAcQfyxJDKh",
+    "status": "not_repairable",
+    "title": "InsufficientFunds",
+    "summary": "The token account holds fewer tokens than the instruction needs.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[2,{\"Custom\":2005}]}",
+     "units": 62918,
+     "lastLog": "Program 6Vo3245eszAb5wuqEMw8mGdbfRUdKbHhDHP5LcaGuTAB failed: custom program error: 0x7d5"
+    },
+    "ms": 10497,
+    "simRef": {
+     "err": "{\"InstructionError\":[5,{\"Custom\":1}]}",
+     "units": 143716,
+     "lastLog": "Program TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA failed: custom program error: 0x1"
+    }
+   },
+   "kind": "runtime, rent parameters (#870): the surfnet fails a rent check mainnet passes",
+   "accounts": {
+    "identical": false,
+    "dataDiffs": 8,
+    "lamportsOnly": 8
+   }
+  },
+  {
+   "program": "Orca Whirlpool",
+   "signature": "3UHP45DFkViX5UUiXr4zX5ZWtA3ktLE8MdsaRFRvs8fwfHDev6ttQaF1VSkZcWt5bBhxNAWYvd2mijXT74hQSrEX",
+   "mainnet": {
+    "program": "Orca Whirlpool",
+    "signature": "3UHP45DFkViX5UUiXr4zX5ZWtA3ktLE8MdsaRFRvs8fwfHDev6ttQaF1VSkZcWt5bBhxNAWYvd2mijXT74hQSrEX",
+    "status": "needs_requote",
+    "title": "SlippageToleranceExceeded",
+    "summary": "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[1,{\"Custom\":6001}]}",
+     "units": 289860,
+     "lastLog": "Program B3111yJCeHBcA1bizdJjUFPALfhAfSRnAbJzGUtnt56A failed: custom program error: 0x1771"
+    },
+    "ms": 1287
+   },
+   "surfnet": {
+    "program": "Orca Whirlpool",
+    "signature": "3UHP45DFkViX5UUiXr4zX5ZWtA3ktLE8MdsaRFRvs8fwfHDev6ttQaF1VSkZcWt5bBhxNAWYvd2mijXT74hQSrEX",
+    "status": "needs_requote",
+    "title": "SlippageToleranceExceeded",
+    "summary": "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[1,{\"Custom\":21}]}",
+     "units": 232350,
+     "lastLog": "Program B3111yJCeHBcA1bizdJjUFPALfhAfSRnAbJzGUtnt56A failed: custom program error: 0x15"
+    },
+    "ms": 10091,
+    "simRef": {
+     "err": "{\"InstructionError\":[1,{\"Custom\":6001}]}",
+     "units": 289598,
+     "lastLog": "Program B3111yJCeHBcA1bizdJjUFPALfhAfSRnAbJzGUtnt56A failed: custom program error: 0x1771"
+    }
+   },
+   "kind": "state drift (19 accounts differ between the two reads)",
+   "accounts": {
+    "identical": false,
+    "dataDiffs": 19,
+    "lamportsOnly": 4
+   }
+  },
+  {
+   "program": "Pump.fun",
+   "signature": "4YwLg6MNAxFKN8mzdNTzKJivyv52qAEPeLC85BeqfFur3qULs1dLiYBmeh2kTkFUoGcpWKhn7PUTPJYeYHj1tMsh",
+   "mainnet": {
+    "program": "Pump.fun",
+    "signature": "4YwLg6MNAxFKN8mzdNTzKJivyv52qAEPeLC85BeqfFur3qULs1dLiYBmeh2kTkFUoGcpWKhn7PUTPJYeYHj1tMsh",
+    "status": "not_repairable",
+    "title": "Error 11 from a private program (261e…XWW1)",
+    "summary": "Program 261eMUSHi6432WL4KbRDiZacnw9HqJLXeWRvN4iJXWW1 raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors kno",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[0,{\"Custom\":11}]}",
+     "units": 421,
+     "lastLog": "Program 261eMUSHi6432WL4KbRDiZacnw9HqJLXeWRvN4iJXWW1 failed: custom program error: 0xb"
+    },
+    "ms": 1495
+   },
+   "surfnet": {
+    "program": "Pump.fun",
+    "signature": "4YwLg6MNAxFKN8mzdNTzKJivyv52qAEPeLC85BeqfFur3qULs1dLiYBmeh2kTkFUoGcpWKhn7PUTPJYeYHj1tMsh",
+    "status": "not_repairable",
+    "title": "Error 11 from a private program (261e…XWW1)",
+    "summary": "Program 261eMUSHi6432WL4KbRDiZacnw9HqJLXeWRvN4iJXWW1 raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors kno",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[0,{\"Custom\":11}]}",
+     "units": 421,
+     "lastLog": "Program 261eMUSHi6432WL4KbRDiZacnw9HqJLXeWRvN4iJXWW1 failed: custom program error: 0xb"
+    },
+    "ms": 1303,
+    "simRef": {
+     "err": "{\"InstructionError\":[0,{\"Custom\":21}]}",
+     "units": 486,
+     "lastLog": "Program 261eMUSHi6432WL4KbRDiZacnw9HqJLXeWRvN4iJXWW1 failed: custom program error: 0x15"
+    }
+   },
+   "kind": "state drift (4 accounts differ between the two reads)",
+   "accounts": {
+    "identical": false,
+    "dataDiffs": 4,
+    "lamportsOnly": 7
+   }
+  },
+  {
+   "program": "Pump.fun",
+   "signature": "4d9yLc9wiqcMSYVT8GsaLsKVvEPD12KD3J5X31L2nRxmudomN5u8XrLViJS3BWqzkbBQdGmvGoUPCuHAyxkVXE6A",
+   "mainnet": {
+    "program": "Pump.fun",
+    "signature": "4d9yLc9wiqcMSYVT8GsaLsKVvEPD12KD3J5X31L2nRxmudomN5u8XrLViJS3BWqzkbBQdGmvGoUPCuHAyxkVXE6A",
+    "status": "not_repairable",
+    "title": "Error 11 from a private program (261e…XWW1)",
+    "summary": "Program 261eMUSHi6432WL4KbRDiZacnw9HqJLXeWRvN4iJXWW1 raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors kno",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[0,{\"Custom\":11}]}",
+     "units": 421,
+     "lastLog": "Program 261eMUSHi6432WL4KbRDiZacnw9HqJLXeWRvN4iJXWW1 failed: custom program error: 0xb"
+    },
+    "ms": 1285
+   },
+   "surfnet": {
+    "program": "Pump.fun",
+    "signature": "4d9yLc9wiqcMSYVT8GsaLsKVvEPD12KD3J5X31L2nRxmudomN5u8XrLViJS3BWqzkbBQdGmvGoUPCuHAyxkVXE6A",
+    "status": "not_repairable",
+    "title": "Error 11 from a private program (261e…XWW1)",
+    "summary": "Program 261eMUSHi6432WL4KbRDiZacnw9HqJLXeWRvN4iJXWW1 raised this code. It has not published an IDL or an error list, which is typical of private trading and arbitrage programs, so only its authors kno",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[0,{\"Custom\":11}]}",
+     "units": 421,
+     "lastLog": "Program 261eMUSHi6432WL4KbRDiZacnw9HqJLXeWRvN4iJXWW1 failed: custom program error: 0xb"
+    },
+    "ms": 6675,
+    "simRef": {
+     "err": "{\"InstructionError\":[0,{\"Custom\":21}]}",
+     "units": 486,
+     "lastLog": "Program 261eMUSHi6432WL4KbRDiZacnw9HqJLXeWRvN4iJXWW1 failed: custom program error: 0x15"
+    }
+   },
+   "kind": "state drift (4 accounts differ between the two reads)",
+   "accounts": {
+    "identical": false,
+    "dataDiffs": 4,
+    "lamportsOnly": 7
+   }
+  },
+  {
+   "program": "PumpSwap",
+   "signature": "4HdXGLoNeyB4ADRAkqftx3BuNtTmboNqBZ4mX9DhWefXNYA8pnH56wLf7AeN4W3aVqehdrbvfdT9X2UUZEDEKibp",
+   "mainnet": {
+    "program": "PumpSwap",
+    "signature": "4HdXGLoNeyB4ADRAkqftx3BuNtTmboNqBZ4mX9DhWefXNYA8pnH56wLf7AeN4W3aVqehdrbvfdT9X2UUZEDEKibp",
+    "status": "needs_requote",
+    "title": "ExceededSlippage",
+    "summary": "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":525}]}",
+     "units": 9301,
+     "lastLog": "Program H75Wb3aWcK2AkyxWPZqke9giMA2qHfGiPCnpx2wjwTbB failed: custom program error: 0x20d"
+    },
+    "ms": 1910
+   },
+   "surfnet": {
+    "program": "PumpSwap",
+    "signature": "4HdXGLoNeyB4ADRAkqftx3BuNtTmboNqBZ4mX9DhWefXNYA8pnH56wLf7AeN4W3aVqehdrbvfdT9X2UUZEDEKibp",
+    "status": "needs_requote",
+    "title": "ExceededSlippage",
+    "summary": "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":6004}]}",
+     "units": 65804,
+     "lastLog": "Program H75Wb3aWcK2AkyxWPZqke9giMA2qHfGiPCnpx2wjwTbB failed: custom program error: 0x1774"
+    },
+    "ms": 1068,
+    "simRef": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":528}]}",
+     "units": 7774,
+     "lastLog": "Program H75Wb3aWcK2AkyxWPZqke9giMA2qHfGiPCnpx2wjwTbB failed: custom program error: 0x210"
+    }
+   },
+   "kind": "state drift (9 accounts differ between the two reads)",
+   "accounts": {
+    "identical": false,
+    "dataDiffs": 9,
+    "lamportsOnly": 6
+   }
+  },
+  {
+   "program": "PumpSwap",
+   "signature": "2HYSbR1LH1ngmiyRm2XA6b5rrLLKQHXuz1BMinJkan8MXpbkFC7TQYKukRWSkmLSGF8Kt6eYAiHwzZGXjDk7ZBLM",
+   "mainnet": {
+    "program": "PumpSwap",
+    "signature": "2HYSbR1LH1ngmiyRm2XA6b5rrLLKQHXuz1BMinJkan8MXpbkFC7TQYKukRWSkmLSGF8Kt6eYAiHwzZGXjDk7ZBLM",
+    "status": "needs_requote",
+    "title": "ExceededSlippage",
+    "summary": "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":6004}]}",
+     "units": 41352,
+     "lastLog": "Program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA failed: custom program error: 0x1774"
+    },
+    "ms": 1792
+   },
+   "surfnet": {
+    "program": "PumpSwap",
+    "signature": "2HYSbR1LH1ngmiyRm2XA6b5rrLLKQHXuz1BMinJkan8MXpbkFC7TQYKukRWSkmLSGF8Kt6eYAiHwzZGXjDk7ZBLM",
+    "status": "needs_requote",
+    "title": "ExceededSlippage",
+    "summary": "With a fresh blockhash this transaction still fails on slippage, so it needs a fresh quote.",
+    "changes": [],
+    "sim": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":2005}]}",
+     "units": 27815,
+     "lastLog": "Program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA failed: custom program error: 0x7d5"
+    },
+    "ms": 883,
+    "simRef": {
+     "err": "{\"InstructionError\":[3,{\"Custom\":1}]}",
+     "units": 41835,
+     "lastLog": "Program pAMMBay6oceH9fJKBRHGP5D4bD4sWpmSwMn52FMfXEA failed: custom program error: 0x1"
+    }
+   },
+   "kind": "runtime, rent parameters (#870): the surfnet fails a rent check mainnet passes",
+   "accounts": {
+    "identical": false,
+    "dataDiffs": 6,
+    "lamportsOnly": 6
+   }
+  }
+ ]
+}

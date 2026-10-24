@@ -62,3 +62,7 @@ python/build/
 python/src/*.egg-info/
 __pycache__/
 .pytest_cache/
+
+# surfnet parity working files (the dated report and latest.md are kept)
+parity/sample.json
+parity/run-*.json

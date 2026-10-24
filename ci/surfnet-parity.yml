@@ -1,0 +1,53 @@
+# Nightly surfnet parity: real landed mainnet failures replayed through the engine with mainnet and with a Surfpool
+# surfnet, diffed, and the report committed to parity/. Copy this file to .github/workflows/surfnet-parity.yml
+# (the repo token used from this machine cannot write workflows). Needs one secret: SOLANA_RPC_URL, a paid mainnet
+# RPC; the surfnet uses it as its remote too. Without it the public RPC is used and the sample is small.
+name: surfnet-parity
+on:
+  schedule:
+    - cron: "17 2 * * *" # 02:17 UTC, after the index's busiest hours
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      MAINNET_RPC_URL: ${{ secrets.SOLANA_RPC_URL || 'https://api.mainnet-beta.solana.com' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install surfpool
+        run: |
+          curl -sL https://run.surfpool.run/ | bash
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Start a surfnet
+        run: |
+          surfpool --version
+          (surfpool start --ci --rpc-url "$MAINNET_RPC_URL" > surfpool.log 2>&1 &)
+          for i in $(seq 1 30); do
+            if curl -s -X POST http://127.0.0.1:8899 -H 'content-type: application/json' -d '{"jsonrpc":"2.0","id":1,"method":"getLatestBlockhash","params":[]}' | grep -q blockhash; then echo ready; break; fi
+            sleep 3
+          done
+      - name: Sample, replay on both sides, diff
+        run: |
+          npx tsx scripts/surfnet-parity.ts sample 3 parity/sample.json
+          npx tsx scripts/surfnet-parity.ts run "$MAINNET_RPC_URL" parity/sample.json parity/run-mainnet.json
+          npx tsx scripts/surfnet-parity.ts run http://127.0.0.1:8899 parity/sample.json parity/run-surfnet.json
+          npx tsx scripts/surfnet-parity.ts diff parity/run-mainnet.json parity/run-surfnet.json parity
+          rm -f parity/sample.json parity/run-mainnet.json parity/run-surfnet.json
+      - name: Commit the report
+        run: |
+          git config user.name "txwhy-parity"
+          git config user.email "sundram500m@gmail.com"
+          git add parity/
+          git diff --cached --quiet || git commit -m "parity: $(date -u +%F) surfnet vs mainnet"
+          git push
+      - name: Surfnet log on failure
+        if: failure()
+        run: tail -50 surfpool.log
