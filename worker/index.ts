@@ -389,7 +389,7 @@ async function attemptRepair(store: Store, program: string, signature: string) {
       detail = reasonKey(result.cause?.title, result.summary);
       why = whyNot(result);
     } else if (verdict === "repaired") {
-      why = result.changes.some((c) => c.type === "swap_quote") ? "rebuilt_swap" : "rebuilt_budget_or_blockhash";
+      why = result.changes.some((c) => c.type === "swap_quote") ? "rebuilt_swap" : result.changes.some((c) => c.type === "token_account_setup") ? "rebuilt_account_setup" : "rebuilt_budget_or_blockhash";
     }
   } catch (e) {
     if (e instanceof RepairInputError) {

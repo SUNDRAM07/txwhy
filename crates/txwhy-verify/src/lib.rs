@@ -399,6 +399,27 @@ fn is_allowed_ata_create(ix: &Instruction, payer: &str, user: &str) -> bool {
     is_idempotent_ata_create(ix) && ix.accounts.len() >= 3 && ix.accounts[0].pubkey == payer && ix.accounts[2].pubkey == user
 }
 
+/// Associated Token Account "Create" (no data, or tag 0): fails when the account already exists.
+fn is_plain_ata_create(ix: &Instruction) -> bool {
+    ix.program_id == ATA_PROGRAM && (ix.data.is_empty() || ix.data.first() == Some(&0))
+}
+
+/// The same accounts with the same signer and writable flags, in the same order.
+fn same_keys(a: &Instruction, b: &Instruction) -> bool {
+    a.accounts.len() == b.accounts.len()
+        && a.accounts.iter().zip(b.accounts.iter()).all(|(x, y)| x.pubkey == y.pubkey && x.is_signer == y.is_signer && x.is_writable == y.is_writable)
+}
+
+/// An idempotent creation inserted before a direct swap is allowed only when the fee payer funds it, the
+/// owner is one of the original signers (their own account, never a stranger's) and the swap uses the account.
+fn is_allowed_setup_for(ix: &Instruction, swap: &Instruction, payer: &str, signers: &BTreeSet<String>) -> bool {
+    is_idempotent_ata_create(ix)
+        && ix.accounts.len() >= 3
+        && ix.accounts[0].pubkey == payer
+        && signers.contains(&ix.accounts[2].pubkey)
+        && swap.accounts.iter().any(|k| k.pubkey == ix.accounts[1].pubkey)
+}
+
 fn describe_budget(ix: &Instruction) -> String {
     let d = &ix.data;
     match d.first() {
@@ -439,6 +460,17 @@ pub fn verify_instructions(original_payer: &str, original: &[Instruction], repai
     while i < a.len() && j < b.len() {
         if same_instruction(a[i], b[j]) {
             kept += 1;
+            i += 1;
+            j += 1;
+            continue;
+        }
+        if is_plain_ata_create(a[i]) && is_idempotent_ata_create(b[j]) && b[j].data.len() == 1 && same_keys(a[i], b[j]) {
+            // Allowed: the same token-account creation made idempotent, because the account already exists.
+            changes.push(Change {
+                kind: ChangeKind::TokenAccountSetup,
+                program: "Associated Token Account".into(),
+                detail: "token-account creation made idempotent (the account already exists)".into(),
+            });
             i += 1;
             j += 1;
             continue;
@@ -501,8 +533,36 @@ pub fn verify_instructions(original_payer: &str, original: &[Instruction], repai
             j = k + 1;
             continue;
         }
-        if direct_layout(&a[i].program_id, &a[i].data).is_some() && b[j].program_id == a[i].program_id {
-            // Allowed: the same Pump.fun / PumpSwap / Raydium swap with only its limit moved, within the cap.
+        if direct_layout(&a[i].program_id, &a[i].data).is_some() && (b[j].program_id == a[i].program_id || is_idempotent_ata_create(b[j])) {
+            // Allowed: [idempotent creation of a signer's own token account that this swap uses]* followed by
+            // the same Pump.fun / PumpSwap / Raydium / Meteora swap, unchanged or with only its limit moved within the cap.
+            let mut k = j;
+            while k < b.len() && is_allowed_setup_for(b[k], a[i], repaired_payer, &before) {
+                k += 1;
+            }
+            if k < b.len() && is_idempotent_ata_create(b[k]) {
+                let owner = b[k].accounts.get(2).map(|m| m.pubkey.as_str()).unwrap_or("an unknown wallet");
+                violations.push(format!("A token-account creation for {owner} was inserted before the swap, but it is not a signer's own account that the swap uses."));
+                break;
+            }
+            if k >= b.len() || b[k].program_id != a[i].program_id {
+                violations.push(format!("Instruction {} (program {}) is not the same in the repaired transaction.", i + 1, a[i].program_id));
+                break;
+            }
+            for _ in j..k {
+                changes.push(Change {
+                    kind: ChangeKind::TokenAccountSetup,
+                    program: "Associated Token Account".into(),
+                    detail: "create the swap's token account if missing (idempotent)".into(),
+                });
+            }
+            j = k;
+            if same_instruction(a[i], b[j]) {
+                kept += 1;
+                i += 1;
+                j += 1;
+                continue;
+            }
             let was = read_direct_swap_shape(a[i]);
             let now = read_direct_swap_shape(b[j]);
             let verdict = match (&was, &now) {
@@ -707,6 +767,29 @@ mod tests {
         assert!(v.ok, "{:?}", v.violations);
         assert_eq!(v.changes[0].kind, ChangeKind::SwapReplaced);
         assert!(v.changes[0].detail.contains("0.50%"));
+    }
+
+    /// An Associated Token Account instruction: funding payer, the token account, its owner, the mint.
+    fn ata(account: &str, owner: &str, data: &[u8], funding: &str) -> Instruction {
+        Instruction { program_id: ATA_PROGRAM.into(), accounts: vec![acct(funding, true, true), acct(account, false, true), acct(owner, false, false), acct(MINT, false, false)], data: data.to_vec() }
+    }
+
+    #[test]
+    fn token_account_setup_in_place_and_before_direct_swap() {
+        // pump_buy accounts: [OTHER (writable), PAYER (signer), MINT]; OTHER plays the buyer's receiving token account.
+        assert!(run(&[ata(OTHER, PAYER, &[], PAYER), pump_buy(1_000, 100)], &[ata(OTHER, PAYER, &[1], PAYER), pump_buy(1_000, 100)]).ok);
+        assert!(run(&[ata(OTHER, PAYER, &[0], PAYER), pump_buy(1_000, 100)], &[ata(OTHER, PAYER, &[1], PAYER), pump_buy(1_000, 100)]).ok);
+        assert!(!run(&[ata(OTHER, PAYER, &[], PAYER), pump_buy(1_000, 100)], &[ata(OTHER, DEST, &[1], PAYER), pump_buy(1_000, 100)]).ok);
+        assert!(!run(&[ata(OTHER, PAYER, &[], PAYER), pump_buy(1_000, 100)], &[ata(OTHER, PAYER, &[1, 7], PAYER), pump_buy(1_000, 100)]).ok);
+        let v = run(&[pump_buy(1_000, 100)], &[ata(OTHER, PAYER, &[1], PAYER), pump_buy(1_000, 100)]);
+        assert!(v.ok, "{:?}", v.violations);
+        assert!(matches!(v.changes[0].kind, ChangeKind::TokenAccountSetup));
+        assert!(run(&[pump_buy(1_000, 100)], &[ata(OTHER, PAYER, &[1], PAYER), pump_buy(1_000, 110)]).ok);
+        assert!(!run(&[pump_buy(1_000, 100)], &[ata(OTHER, DEST, &[1], PAYER), pump_buy(1_000, 100)]).ok);
+        assert!(!run(&[pump_buy(1_000, 100)], &[ata(SOURCE, PAYER, &[1], PAYER), pump_buy(1_000, 100)]).ok);
+        assert!(!run(&[pump_buy(1_000, 100)], &[ata(OTHER, PAYER, &[0], PAYER), pump_buy(1_000, 100)]).ok);
+        assert!(!run(&[pump_buy(1_000, 100)], &[ata(OTHER, PAYER, &[1], DEST), pump_buy(1_000, 100)]).ok);
+        assert!(!run(&[pump_buy(1_000, 100)], &[ata(OTHER, PAYER, &[1], PAYER), plain(PROG, &[1])]).ok);
     }
 
     #[test]

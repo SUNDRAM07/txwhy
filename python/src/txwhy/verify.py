@@ -28,8 +28,11 @@ from .shapes import (
     allowed_wrap_raise,
     is_compute_budget,
     is_allowed_ata_create,
+    is_allowed_setup_for,
     is_idempotent_ata_create,
+    is_plain_ata_create,
     read_direct_swap_shape,
+    same_keys,
     read_swap_shape,
     read_system_transfer,
 )
@@ -109,6 +112,12 @@ def verify_instructions(original_payer: str, original: list[Instruction], repair
             i += 1
             j += 1
             continue
+        if is_plain_ata_create(a[i]) and is_idempotent_ata_create(b[j]) and len(b[j].data) == 1 and same_keys(a[i], b[j]):
+            # Allowed: the same token-account creation made idempotent, because the account already exists.
+            changes.append(Change("token_account_setup", "Associated Token Account", "token-account creation made idempotent (the account already exists)"))
+            i += 1
+            j += 1
+            continue
         if pending_wrap is None:
             was_t, now_t = read_system_transfer(a[i]), read_system_transfer(b[j])
             if was_t and now_t and was_t[0] == now_t[0] and was_t[1] == now_t[1] and now_t[2] > was_t[2]:
@@ -155,7 +164,27 @@ def verify_instructions(original_payer: str, original: list[Instruction], repair
             i += 1
             j = k + 1
             continue
-        if a[i].program_id in DIRECT_LAYOUTS and b[j].program_id == a[i].program_id:
+        if a[i].program_id in DIRECT_LAYOUTS and (b[j].program_id == a[i].program_id or is_idempotent_ata_create(b[j])):
+            # Allowed: [idempotent creation of a signer's own token account that this swap uses]* followed by
+            # the same direct swap, unchanged or with only its limit moved within the cap.
+            k = j
+            while k < len(b) and is_allowed_setup_for(b[k], a[i], repaired_payer, before):
+                k += 1
+            if k < len(b) and is_idempotent_ata_create(b[k]):
+                owner = b[k].accounts[2].pubkey if len(b[k].accounts) > 2 else "an unknown wallet"
+                violations.append(f"A token-account creation for {owner} was inserted before the swap, but it is not a signer's own account that the swap uses.")
+                break
+            if k >= len(b) or b[k].program_id != a[i].program_id:
+                violations.append(f"Instruction {i + 1} (program {a[i].program_id}) is not the same in the repaired transaction.")
+                break
+            for _ in range(j, k):
+                changes.append(Change("token_account_setup", "Associated Token Account", "create the swap's token account if missing (idempotent)"))
+            j = k
+            if _same(a[i], b[j]):
+                kept += 1
+                i += 1
+                j += 1
+                continue
             was_d, now_d = read_direct_swap_shape(a[i]), read_direct_swap_shape(b[j])
             reason = allowed_direct_limit_change(was_d, now_d) if was_d and now_d else "the swap"
             if reason is not None or was_d is None or now_d is None:

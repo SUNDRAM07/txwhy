@@ -18,6 +18,7 @@ const n = (v: number) => v.toLocaleString("en-US");
 const WHY_LABELS: Record<string, [string, string]> = {
   rebuilt_swap: ["Rebuilt: swap limit or quote moved", "returned as a working transaction, verified"],
   rebuilt_budget_or_blockhash: ["Rebuilt: budget or blockhash only", "returned as a working transaction, verified"],
+  rebuilt_account_setup: ["Rebuilt: token account created first", "the buy's receiving account did not exist, or its creation was not idempotent; fixed and verified (counted since Oct 25)"],
   private_program: ["Private program failed", "a bot's own unpublished program; nothing to decode or rebuild"],
   arbitrage: ["Circular arbitrage", "built to fail when the price gap closes"],
   routed_by_private_program: ["Swap routed through a private program", "the limit lives inside a router TxWhy cannot rewrite; mostly sniper bots"],

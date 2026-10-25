@@ -48,7 +48,7 @@ const MAX_PRIORITY_LAMPORTS = 1_000_000;
 export type RepairStatus = "repaired" | "valid" | "needs_requote" | "not_repairable";
 
 export interface RepairChange {
-  type: "blockhash" | "compute_unit_limit" | "priority_fee" | "swap_quote" | "loaded_accounts_data_limit";
+  type: "blockhash" | "compute_unit_limit" | "priority_fee" | "swap_quote" | "loaded_accounts_data_limit" | "token_account_setup";
   before: string;
   after: string;
   reason: string;
@@ -420,6 +420,120 @@ const TOKEN_PROGRAMS = new Set(["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "
 function failingIndex(err: unknown): number | null {
   const ie = err && typeof err === "object" ? (err as { InstructionError?: [number, unknown] }).InstructionError : undefined;
   return Array.isArray(ie) && typeof ie[0] === "number" ? ie[0] : null;
+}
+
+/** The custom error code the node reported, if the failure was a program's own code. */
+function customCode(err: unknown): number | null {
+  const ie = err && typeof err === "object" ? (err as { InstructionError?: [number, { Custom?: number } | string] }).InstructionError : undefined;
+  const inner = Array.isArray(ie) ? ie[1] : undefined;
+  return inner && typeof inner === "object" && typeof inner.Custom === "number" ? inner.Custom : null;
+}
+
+const ATA_PROGRAM_ID = new PublicKey("ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL");
+const SYSTEM_PROGRAM_KEY = new PublicKey(SYSTEM_PROGRAM_ID);
+
+/**
+ * Token-account setup repairs. Two shapes the data keeps showing on buys:
+ *   - AccountNotInitialized (3012): the buyer's receiving token account does not exist yet. The missing
+ *     account is found by trying every (signer, mint in the swap, token program) combination against the
+ *     swap's empty accounts; when one derives to it, an idempotent creation is inserted just before the swap.
+ *   - Account already in use (System error 0 inside an Associated Token Account "Create"): the client used the
+ *     non-idempotent creation and the account exists. The same instruction becomes "CreateIdempotent".
+ * Both are exactly what the offline verifier accepts (its rule 5); nothing else about the transaction moves.
+ */
+async function accountSetupFix(
+  err: unknown,
+  logs: string[],
+  probeList: TransactionInstruction[],
+  rest: TransactionInstruction[],
+  payer: PublicKey,
+  signers: PublicKey[],
+): Promise<{ rest: TransactionInstruction[]; change: RepairChange; note: string } | null> {
+  const failing = failingIndex(err);
+  if (failing == null) return null;
+  const ix = probeList[failing];
+  const at = ix ? rest.indexOf(ix) : -1;
+  if (!ix || at < 0) return null;
+  const code = customCode(err);
+  const text = logs.join("\n");
+
+  if (code === 0 && ix.programId.equals(ATA_PROGRAM_ID) && (ix.data.length === 0 || ix.data[0] === 0) && /already in use/i.test(text)) {
+    const fixed = new TransactionInstruction({ programId: ix.programId, keys: ix.keys, data: Buffer.from([1]) });
+    const out = rest.slice();
+    out[at] = fixed;
+    return {
+      rest: out,
+      change: {
+        type: "token_account_setup",
+        before: `instruction #${at + 1}: create token account (fails when it already exists)`,
+        after: `instruction #${at + 1}: create token account if missing (idempotent)`,
+        reason: "The token account this instruction creates already exists, so the non-idempotent creation failed before anything else ran. The idempotent form skips creation when the account is there.",
+      },
+      note: "The token account already existed; its creation was made idempotent and nothing else changed.",
+    };
+  }
+
+  // Buys only: a sell on a missing token account has nothing to sell, so creating the account would not help.
+  const direct = readDirectSwapShape(ix);
+  const isBuy = direct ? direct.fixed === "tokens_out" || direct.fixed === "quote_in" : readSwapShape(ix) != null;
+  if (code === 3012 && /AccountNotInitialized/.test(text) && isBuy) {
+    const candidates = ix.keys.filter((k) => k.isWritable && !k.isSigner).map((k) => k.pubkey);
+    if (candidates.length === 0) return null;
+    const infos = await rpc<{ value: ({ owner: string } | null)[] }>("getMultipleAccounts", [
+      candidates.map((k) => k.toBase58()),
+      { encoding: "base64", dataSlice: { offset: 0, length: 0 }, commitment: "confirmed" },
+    ]).catch(() => null);
+    if (!infos) return null;
+    const missing = candidates.filter((_, i) => infos.value[i] == null);
+    const mints = Array.from(new Map(ix.keys.map((k) => [k.pubkey.toBase58(), k.pubkey])).values());
+    const tokenPrograms = Array.from(TOKEN_PROGRAMS).map((p) => new PublicKey(p));
+    for (const account of missing) {
+      for (const owner of signers) {
+        for (const mint of mints) {
+          for (const tokenProgram of tokenPrograms) {
+            let derived: PublicKey;
+            try {
+              [derived] = PublicKey.findProgramAddressSync([owner.toBuffer(), tokenProgram.toBuffer(), mint.toBuffer()], ATA_PROGRAM_ID);
+            } catch {
+              continue;
+            }
+            if (!derived.equals(account)) continue;
+            const create = new TransactionInstruction({
+              programId: ATA_PROGRAM_ID,
+              keys: [
+                { pubkey: payer, isSigner: true, isWritable: true },
+                { pubkey: account, isSigner: false, isWritable: true },
+                { pubkey: owner, isSigner: false, isWritable: false },
+                { pubkey: mint, isSigner: false, isWritable: false },
+                { pubkey: SYSTEM_PROGRAM_KEY, isSigner: false, isWritable: false },
+                { pubkey: tokenProgram, isSigner: false, isWritable: false },
+              ],
+              data: Buffer.from([1]),
+            });
+            const out = rest.slice();
+            out.splice(at, 0, create);
+            const short = (k: PublicKey) => `${k.toBase58().slice(0, 4)}…${k.toBase58().slice(-4)}`;
+            return {
+              rest: out,
+              change: {
+                type: "token_account_setup",
+                before: `no token account ${short(account)} for ${short(mint)} owned by ${short(owner)}`,
+                after: `created if missing (idempotent) right before instruction #${at + 1}`,
+                reason: "The swap writes to a token account that does not exist yet, so the program refused it. Creating that account first, funded by the fee payer, is the only change.",
+              },
+              note: `The receiving token account ${account.toBase58()} did not exist. An idempotent creation of it (your own account, your mint, rent paid by the fee payer) was inserted before the swap.`,
+            };
+          }
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/** Same node-level failure (same instruction, same error) on two simulations. */
+function sameFailure(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 }
 
 /** A top-level SPL Token transfer (tag 3) or transferChecked (tag 12): the paying account and the amount. */
@@ -1135,6 +1249,31 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
     );
   }
 
+  // 3b. Token-account setup: a swap into an account that does not exist yet, or a creation that fails
+  //     because the account already exists. Fixed in place and probed again; adopted only when the
+  //     failure moves on (or disappears). The v1 path below does not do this yet.
+  let setupFixed = false;
+  if (probeSim.err != null) {
+    const probeList = probeResult ? withBudget([ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept], budget.rest) : decompiled.instructions;
+    const signerKeys = new Map<string, PublicKey>([[decompiled.payerKey.toBase58(), decompiled.payerKey]]);
+    for (const ix of decompiled.instructions) for (const k of ix.keys) if (k.isSigner) signerKeys.set(k.pubkey.toBase58(), k.pubkey);
+    const setup = await accountSetupFix(probeSim.err, probeSim.logs ?? [], probeList, budget.rest, decompiled.payerKey, [...signerKeys.values()]).catch(() => null);
+    if (setup) {
+      const retry = await simulate(
+        build(decompiled.payerKey, latest.blockhash, withBudget([ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept], setup.rest), tables, legacy),
+      ).catch((e) => (e instanceof TooLargeError ? null : Promise.reject(e)));
+      if (retry && !sameFailure(retry.err, probeSim.err)) {
+        budget.rest = setup.rest;
+        probeSim = retry;
+        changes.push(setup.change);
+        notes.push(setup.note);
+        setupFixed = true;
+      } else if (!retry) {
+        notes.push("Creating the missing token account first would push this transaction over the 1,232-byte limit, so it was left as it was.");
+      }
+    }
+  }
+
   if (probeSim.err != null) {
     const probeCause = (await decodeSimError(probeSim.err, probeSim.logs ?? [])) ?? cause;
     const verdict = classifyUnrepairable(
@@ -1158,7 +1297,8 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
     // Slippage: the amounts are inside the instruction, so rebuild the swap from a fresh quote.
     // A landed swap that failed on slippage needs a fresh quote whatever its stale route does today.
     const failedOnSlippage = onchain?.error != null && SLIPPAGE_PATTERN.test(`${onchain.error.title} ${onchain.error.code ?? ""}`);
-    const terminalOnChain = landed && onchain?.error != null && TERMINAL_ONCHAIN.test(onchain.error.title);
+    // A missing-account failure the setup pass just fixed is no longer terminal: what remains is whatever the swap does now.
+    const terminalOnChain = landed && !setupFixed && onchain?.error != null && TERMINAL_ONCHAIN.test(onchain.error.title);
     if (terminalOnChain && verdict.status === "needs_requote") verdict.status = "not_repairable";
     const wantsRequote = !terminalOnChain && (verdict.status === "needs_requote" || failedOnSlippage);
     let notSlippage = false;

@@ -165,6 +165,35 @@ for (const [name, before, after, expectOk] of wrapCases) {
   if (ok) pass++;
   console.log(`${ok ? "PASS" : "FAIL"}  ${name}\n      -> ${v.ok ? `accepted (${v.changes.map((c) => c.kind).join(",")})` : `refused: ${v.violations[0]}`}`);
 }
-const total = cases.length + directCases.length + meteoraCases.length + wrapCases.length;
+/** Token-account setup: creation made idempotent in place, or a signer's own account created right before the direct swap that uses it. */
+const SYSTEM = new PublicKey("11111111111111111111111111111111");
+const TOKEN = new PublicKey("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
+const ataIx = (account: PublicKey, owner: PublicKey, data: number[], funding: PublicKey = payer) =>
+  new TransactionInstruction({
+    programId: ATA,
+    keys: [{ pubkey: funding, isSigner: true, isWritable: true }, { pubkey: account, isSigner: false, isWritable: true }, { pubkey: owner, isSigner: false, isWritable: false }, { pubkey: USDC, isSigner: false, isWritable: false }, { pubkey: SYSTEM, isSigner: false, isWritable: false }, { pubkey: TOKEN, isSigner: false, isWritable: false }],
+    data: Buffer.from(data),
+  });
+// pumpBuy keys: [dest, payer (signer), other, SOL, USDC]; `other` plays the buyer's receiving token account.
+const setupCases: [string, TransactionInstruction[], TransactionInstruction[], boolean][] = [
+  ["creation made idempotent, same accounts", [ataIx(other, payer, []), pumpBuy({})], [ataIx(other, payer, [1]), pumpBuy({})], true],
+  ["creation (tag 0) made idempotent, same accounts", [ataIx(other, payer, [0]), pumpBuy({})], [ataIx(other, payer, [1]), pumpBuy({})], true],
+  ["ATTACK: creation made idempotent but the owner changed", [ataIx(other, payer, []), pumpBuy({})], [ataIx(other, thief, [1]), pumpBuy({})], false],
+  ["ATTACK: creation made idempotent with a trailing byte", [ataIx(other, payer, []), pumpBuy({})], [ataIx(other, payer, [1, 7]), pumpBuy({})], false],
+  ["own token account created before the buy that uses it", [pumpBuy({})], [ataIx(other, payer, [1]), pumpBuy({})], true],
+  ["own token account created before the buy, limit moved within the cap", [pumpBuy({})], [ataIx(other, payer, [1]), pumpBuy({ max: BigInt(110_000) })], true],
+  ["ATTACK: token account for a stranger created before the buy", [pumpBuy({})], [ataIx(other, thief, [1]), pumpBuy({})], false],
+  ["ATTACK: an account the buy never uses is created", [pumpBuy({})], [ataIx(Keypair.generate().publicKey, payer, [1]), pumpBuy({})], false],
+  ["ATTACK: non-idempotent creation inserted", [pumpBuy({})], [ataIx(other, payer, [0]), pumpBuy({})], false],
+  ["ATTACK: creation funded by someone else", [pumpBuy({})], [ataIx(other, payer, [1], thief), pumpBuy({})], false],
+  ["ATTACK: creation inserted, then the buy replaced by a memo", [pumpBuy({})], [ataIx(other, payer, [1]), memo], false],
+];
+for (const [name, before, after, expectOk] of setupCases) {
+  const v = verifyInstructions({ payer, instructions: before }, { payer, instructions: after });
+  const ok = v.ok === expectOk;
+  if (ok) pass++;
+  console.log(`${ok ? "PASS" : "FAIL"}  ${name}\n      -> ${v.ok ? `accepted (${v.kept} kept, ${v.changes.map((c) => c.kind).join(",")})` : `refused: ${v.violations[0]}`}`);
+}
+const total = cases.length + directCases.length + meteoraCases.length + wrapCases.length + setupCases.length;
 console.log(`\n${pass}/${total} passed`);
 process.exit(pass === total ? 0 : 1);

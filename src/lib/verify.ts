@@ -14,6 +14,10 @@ import { DIRECT_LAYOUTS, isAllowedDirectLimitChange, isAllowedQuoteMove, readDir
  *   3. One Pump.fun or PumpSwap swap may have ONLY its limit (max cost / min output) moved, by at
  *      most 25% against the user; amount, accounts and flags identical.
  *   4. The recent blockhash (not an instruction, so not checked here).
+ *   5. Token-account setup only: an Associated Token Account "Create" may become "CreateIdempotent"
+ *      with the same accounts (the account already existed), and an idempotent creation of a
+ *      signer's OWN token account, funded by the fee payer, may be inserted right before the direct
+ *      swap that uses that account (the account did not exist yet).
  *
  * Everything else must be identical and in the same order: same fee payer, same set of
  * signers, and every other instruction byte for byte. This file has no network access and
@@ -65,6 +69,27 @@ const isIdempotentAtaCreate = (ix: TransactionInstruction) => id(ix.programId) =
 const isAllowedAtaCreate = (ix: TransactionInstruction, payer: string, user: string | undefined) =>
   isIdempotentAtaCreate(ix) && ix.keys.length >= 3 && user != null && id(ix.keys[0].pubkey) === payer && id(ix.keys[2].pubkey) === user;
 const ataOwner = (ix: TransactionInstruction) => (ix.keys[2] ? id(ix.keys[2].pubkey) : "an unknown wallet");
+/** Associated Token Account "Create" (no data, or tag 0): fails when the account already exists. */
+const isPlainAtaCreate = (ix: TransactionInstruction) => id(ix.programId) === ATA_PROGRAM && (ix.data.length === 0 || ix.data[0] === 0);
+/** The same accounts with the same signer and writable flags, in the same order. */
+function sameKeys(a: TransactionInstruction, b: TransactionInstruction): boolean {
+  if (a.keys.length !== b.keys.length) return false;
+  for (let i = 0; i < a.keys.length; i++) {
+    if (id(a.keys[i].pubkey) !== id(b.keys[i].pubkey) || a.keys[i].isSigner !== b.keys[i].isSigner || a.keys[i].isWritable !== b.keys[i].isWritable) return false;
+  }
+  return true;
+}
+/**
+ * An idempotent creation inserted before a direct swap is allowed only when the fee payer funds it, the
+ * owner is one of the original signers (their own account, never a stranger's) and the swap actually
+ * uses the created account.
+ */
+const isAllowedSetupFor = (ix: TransactionInstruction, swap: TransactionInstruction, payer: string, signers: Set<string>) =>
+  isIdempotentAtaCreate(ix) &&
+  ix.keys.length >= 3 &&
+  id(ix.keys[0].pubkey) === payer &&
+  signers.has(id(ix.keys[2].pubkey)) &&
+  swap.keys.some((k) => id(k.pubkey) === id(ix.keys[1].pubkey));
 
 function describeBudget(ix: TransactionInstruction): string {
   const data = ix.data;
@@ -111,6 +136,13 @@ export function verifyInstructions(
   while (i < a.length && j < b.length) {
     if (sameInstruction(a[i], b[j])) {
       kept++;
+      i++;
+      j++;
+      continue;
+    }
+    if (isPlainAtaCreate(a[i]) && isIdempotentAtaCreate(b[j]) && b[j].data.length === 1 && sameKeys(a[i], b[j])) {
+      // Allowed: the same token-account creation made idempotent, because the account already exists.
+      changes.push({ kind: "token_account_setup", program: "Associated Token Account", detail: "token-account creation made idempotent (the account already exists)" });
       i++;
       j++;
       continue;
@@ -166,8 +198,30 @@ export function verifyInstructions(
       j = k + 1;
       continue;
     }
-    if (DIRECT_LAYOUTS[id(a[i].programId)] && id(b[j].programId) === id(a[i].programId)) {
-      // Allowed: the same Pump.fun / PumpSwap swap with only its limit moved, within the cap.
+    if (DIRECT_LAYOUTS[id(a[i].programId)] && (id(b[j].programId) === id(a[i].programId) || isIdempotentAtaCreate(b[j]))) {
+      // Allowed: [idempotent creation of a signer's own token account that this swap uses]* followed by
+      // the same Pump.fun / PumpSwap / Raydium / Meteora swap, unchanged or with only its limit moved within the cap.
+      const payerId = id(repaired.payer);
+      let k = j;
+      while (k < b.length && isAllowedSetupFor(b[k], a[i], payerId, before)) k++;
+      if (k < b.length && isIdempotentAtaCreate(b[k])) {
+        violations.push(`A token-account creation for ${ataOwner(b[k])} was inserted before the swap, but it is not a signer's own account that the swap uses.`);
+        break;
+      }
+      if (k >= b.length || id(b[k].programId) !== id(a[i].programId)) {
+        violations.push(`Instruction ${i + 1} (program ${id(a[i].programId)}) is not the same in the repaired transaction.`);
+        break;
+      }
+      for (let s = j; s < k; s++) {
+        changes.push({ kind: "token_account_setup", program: "Associated Token Account", detail: "create the swap's token account if missing (idempotent)" });
+      }
+      j = k;
+      if (sameInstruction(a[i], b[j])) {
+        kept++;
+        i++;
+        j++;
+        continue;
+      }
       const was = readDirectSwapShape(a[i]);
       const now = readDirectSwapShape(b[j]);
       const verdict = isAllowedDirectLimitChange(was, now);

@@ -285,5 +285,29 @@ def is_allowed_ata_create(ix: Instruction, payer: str, user: str | None) -> bool
     )
 
 
+def is_plain_ata_create(ix: Instruction) -> bool:
+    """Associated Token Account "Create" (no data, or tag 0): fails when the account already exists."""
+    return ix.program_id == ATA_PROGRAM and (len(ix.data) == 0 or ix.data[0] == 0)
+
+
+def same_keys(a: Instruction, b: Instruction) -> bool:
+    """The same accounts with the same signer and writable flags, in the same order."""
+    return len(a.accounts) == len(b.accounts) and all(
+        x.pubkey == y.pubkey and x.is_signer == y.is_signer and x.is_writable == y.is_writable for x, y in zip(a.accounts, b.accounts)
+    )
+
+
+def is_allowed_setup_for(ix: Instruction, swap: Instruction, payer: str, signers: set[str]) -> bool:
+    """An idempotent creation inserted before a direct swap is allowed only when the fee payer funds it, the
+    owner is one of the original signers (their own account, never a stranger's) and the swap uses the account."""
+    return (
+        is_idempotent_ata_create(ix)
+        and len(ix.accounts) >= 3
+        and ix.accounts[0].pubkey == payer
+        and ix.accounts[2].pubkey in signers
+        and any(k.pubkey == ix.accounts[1].pubkey for k in swap.accounts)
+    )
+
+
 def pubkey_from_bytes(raw: bytes) -> str:
     return b58encode(raw)

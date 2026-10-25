@@ -135,6 +135,27 @@ def test_shapes_read_correctly():
     assert read_direct_swap_shape(plain(PROG, [1])) is None
 
 
+def ata(account, owner, data, funding=PAYER):
+    return Instruction(ATA_PROGRAM, [acct(funding, True, True), acct(account, False, True), acct(owner), acct(MINT)], bytes(data))
+
+
+def test_token_account_setup_in_place_and_before_direct_swap():
+    # pump_buy accounts: [OTHER (writable), PAYER (signer), MINT]; OTHER plays the buyer's receiving token account.
+    buy, moved = pump_buy(1000, 100), pump_buy(1000, 110)
+    assert run([ata(OTHER, PAYER, b""), buy], [ata(OTHER, PAYER, b"\x01"), buy]).ok
+    assert run([ata(OTHER, PAYER, b"\x00"), buy], [ata(OTHER, PAYER, b"\x01"), buy]).ok
+    assert not run([ata(OTHER, PAYER, b""), buy], [ata(OTHER, THIEF, b"\x01"), buy]).ok
+    assert not run([ata(OTHER, PAYER, b""), buy], [ata(OTHER, PAYER, b"\x01\x07"), buy]).ok
+    v = run([buy], [ata(OTHER, PAYER, b"\x01"), buy])
+    assert v.ok and v.changes[0].kind == "token_account_setup"
+    assert run([buy], [ata(OTHER, PAYER, b"\x01"), moved]).ok
+    assert not run([buy], [ata(OTHER, THIEF, b"\x01"), buy]).ok
+    assert not run([buy], [ata(SOURCE, PAYER, b"\x01"), buy]).ok
+    assert not run([buy], [ata(OTHER, PAYER, b"\x00"), buy]).ok
+    assert not run([buy], [ata(OTHER, PAYER, b"\x01", THIEF), buy]).ok
+    assert not run([buy], [ata(OTHER, PAYER, b"\x01"), plain(PROG, [1])]).ok
+
+
 def test_token_account_setup_only_for_the_swapping_wallet():
     own = Instruction(ATA_PROGRAM, [acct(PAYER, True, True), acct(OTHER, False, True), acct(PAYER)], b"\x01")
     stranger = Instruction(ATA_PROGRAM, [acct(PAYER, True, True), acct(OTHER, False, True), acct(THIEF)], b"\x01")

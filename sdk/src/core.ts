@@ -9,7 +9,7 @@ export const DEFAULT_ENDPOINT = "https://txwhy.vercel.app/api/v1/repair";
 export type RepairStatus = "repaired" | "valid" | "needs_requote" | "not_repairable";
 
 export interface RepairChange {
-  type: "blockhash" | "compute_unit_limit" | "priority_fee" | "swap_quote" | "loaded_accounts_data_limit";
+  type: "blockhash" | "compute_unit_limit" | "priority_fee" | "swap_quote" | "loaded_accounts_data_limit" | "token_account_setup";
   before: string;
   after: string;
   reason: string;

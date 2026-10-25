@@ -21,7 +21,7 @@ With a sync `solana.rpc.api.Client`, `send_with_repair(client, tx, keypair)` doe
 
 Simulates on your RPC. If it passes, sends and never contacts TxWhy. If it would fail: repair, verify locally, sign, send. Your key never leaves the process; TxWhy only sees unsigned bytes.
 
-What it repairs: compute unit limit, expired blockhash, priority fee, loaded-data limit, a Jupiter swap that failed on slippage (fresh quote, same tokens, amount and tolerance; refused above 3% price impact or more than 25% worse than your quote), and a direct Pump.fun, PumpSwap, Raydium AMM v4, Raydium LaunchLab, Meteora DBC or Meteora DAMM v2 swap (only the limit moves, never more than 25% against you). Anything else comes back as a diagnosis with the exact cause and fix; `send_with_repair` raises `TxWhyError` whose `.result["cause"]` carries it.
+What it repairs: compute unit limit, expired blockhash, priority fee, loaded-data limit, a Jupiter swap that failed on slippage (fresh quote, same tokens, amount and tolerance; refused above 3% price impact or more than 25% worse than your quote), a direct Pump.fun, PumpSwap, Raydium AMM v4, Raydium LaunchLab, Meteora DBC or Meteora DAMM v2 swap (only the limit moves, never more than 25% against you), and a buy whose receiving token account does not exist yet or whose account creation was not idempotent (the account is created first, idempotently, at the fee payer's expense). Anything else comes back as a diagnosis with the exact cause and fix; `send_with_repair` raises `TxWhyError` whose `.result["cause"]` carries it.
 
 ## Just the repair call
 
@@ -50,7 +50,7 @@ check = await async_verify_repair(client, original_bytes, repaired_bytes)   # no
 assert check.ok, check.violations
 ```
 
-The rule is the same one the TypeScript SDK and the `txwhy-verify` Rust crate enforce, and all three are tested against the same real-repair fixtures: same fee payer, same signers, every non-Compute-Budget instruction byte for byte in order, at most one Jupiter swap replaced by an equivalent one (same wallet, token accounts, output token, amount, tolerance, quote no more than 25% worse), one direct swap with only its limit moved within 25%, and a wrap into an exact-out swap's own input account raised by no more than the maximum rose.
+The rule is the same one the TypeScript SDK and the `txwhy-verify` Rust crate enforce, and all three are tested against the same real-repair fixtures: same fee payer, same signers, every non-Compute-Budget instruction byte for byte in order, at most one Jupiter swap replaced by an equivalent one (same wallet, token accounts, output token, amount, tolerance, quote no more than 25% worse), one direct swap with only its limit moved within 25%, a wrap into an exact-out swap's own input account raised by no more than the maximum rose, and token-account setup only (a creation made idempotent with the same accounts, or an idempotent creation of a signer's own account that the following direct swap uses, funded by the fee payer).
 
 Legacy and v0 transactions are decompiled here (lookup tables through your RPC). For version 1 transactions call `txwhy.repair(transaction=...)` and verify with your own decoder.
 

@@ -41,6 +41,7 @@ await sendWithRepair(connection, tx, (t) => { t.sign([keypair]); return t; });
 | Loaded account data limit exceeded | Limit lifted |
 | Jupiter swap failed on slippage | Only the swap instruction is replaced with a current quote for the same tokens, amount and tolerance. Your tolerance is never widened, a route above 3% price impact is refused, and a quote more than 25% worse than your original is refused |
 | Direct Pump.fun, PumpSwap, Raydium AMM v4, Meteora DBC, Meteora DAMM v2 or Raydium LaunchLab swap failed on slippage | Only the limit moves to the current price, never more than 25% against you. Amount, accounts and flags stay identical |
+| A buy's receiving token account does not exist yet (`AccountNotInitialized`), or its creation was not idempotent and the account already existed | The account is created first, idempotently, owned by you and paid for by the fee payer; or the existing creation becomes idempotent. Nothing else moves |
 
 Anything else comes back as a diagnosis: the failing instruction, the program that raised the error, the decoded error name and what to do about it. `sendWithRepair` then throws a `TxWhyError` whose `.result.cause` carries that diagnosis.
 
@@ -63,6 +64,8 @@ A service that hands you a transaction to sign could hand you anything. So the r
 - same fee payer, same set of signers
 - every instruction that is not Compute Budget is byte for byte identical, in the same order
 - at most one Jupiter swap may be replaced, and only by a swap for the same wallet, same source and receiving token accounts, same output token, same amount, same slippage tolerance, and a quote no more than 25% worse than the original
+- one direct swap may have only its limit moved, never more than 25% against you
+- token-account setup only: a creation made idempotent with the same accounts, or an idempotent creation of your own token account, funded by the fee payer and used by the direct swap right after it
 
 ```ts
 import { verifyRepair } from "@txwhy/sdk";
