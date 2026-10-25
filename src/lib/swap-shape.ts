@@ -137,6 +137,9 @@ export const DIRECT_LAYOUTS: Record<string, Record<string, DirectLayout>> = {
     c2ab1c46684d5b2f: { program: "Pump.fun", name: "buy_exact_quote_in_v2", fixed: "quote_in", limit: "min_out" },
     "33e685a4017f83ad": { program: "Pump.fun", name: "sell", fixed: "tokens_in", limit: "min_out", userIn: 5 },
     "5df6823ce7e940b2": { program: "Pump.fun", name: "sell_v2", fixed: "tokens_in", limit: "min_out" },
+    // trade_v3.rs, not in the published IDL (Oct 2026): same argument layout as the v2 forms, a trailing track_volume byte on the buy.
+    e1f7501ed5b38488: { program: "Pump.fun", name: "buy_exact_quote_in_v3", fixed: "quote_in", limit: "min_out" },
+    "1c92de7726c469d5": { program: "Pump.fun", name: "sell_v3", fixed: "tokens_in", limit: "min_out" },
   },
   [PUMP_SWAP]: {
     "66063d1201daebea": { program: "PumpSwap", name: "buy", fixed: "tokens_out", limit: "max_in", userIn: 6 },

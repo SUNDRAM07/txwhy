@@ -215,6 +215,9 @@ fn direct_layout(program_id: &str, data: &[u8]) -> Option<DirectLayout> {
         (PUMP_FUN, "c2ab1c46684d5b2f") => ("buy_exact_quote_in_v2", Limit::MinOut, false),
         (PUMP_FUN, "33e685a4017f83ad") => ("sell", Limit::MinOut, false),
         (PUMP_FUN, "5df6823ce7e940b2") => ("sell_v2", Limit::MinOut, false),
+        // trade_v3.rs, not in the published IDL (Oct 2026): same argument layout as the v2 forms.
+        (PUMP_FUN, "e1f7501ed5b38488") => ("buy_exact_quote_in_v3", Limit::MinOut, false),
+        (PUMP_FUN, "1c92de7726c469d5") => ("sell_v3", Limit::MinOut, false),
         (PUMP_SWAP, "66063d1201daebea") => ("buy", Limit::MaxIn, false),
         (PUMP_SWAP, "c62e1552b4d9e870") => ("buy_exact_quote_in", Limit::MinOut, false),
         (PUMP_SWAP, "33e685a4017f83ad") => ("sell", Limit::MinOut, false),

@@ -146,6 +146,9 @@ DIRECT_LAYOUTS: dict[str, dict[str, DirectLayout]] = {
         "c2ab1c46684d5b2f": DirectLayout("Pump.fun", "buy_exact_quote_in_v2", "quote_in", "min_out"),
         "33e685a4017f83ad": DirectLayout("Pump.fun", "sell", "tokens_in", "min_out", user_in=5),
         "5df6823ce7e940b2": DirectLayout("Pump.fun", "sell_v2", "tokens_in", "min_out"),
+        # trade_v3.rs, not in the published IDL (Oct 2026): same argument layout as the v2 forms.
+        "e1f7501ed5b38488": DirectLayout("Pump.fun", "buy_exact_quote_in_v3", "quote_in", "min_out"),
+        "1c92de7726c469d5": DirectLayout("Pump.fun", "sell_v3", "tokens_in", "min_out"),
     },
     PUMP_SWAP: {
         "66063d1201daebea": DirectLayout("PumpSwap", "buy", "tokens_out", "max_in", user_in=6),
