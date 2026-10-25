@@ -90,8 +90,8 @@ async function freshLimit(ix: TransactionInstruction, shape: NonNullable<ReturnT
   }
   if (programId === PUMP_FUN) {
     const sdk = new OnlinePumpSdk(conn());
-    // Both layouts put the mint at 2 (legacy) or the base mint at 1 (v2); the bonding curve is the account named so.
-    const mint = shape.name.endsWith("_v2") || shape.name === "buy_exact_quote_in_v2" ? ix.keys[1].pubkey : ix.keys[2].pubkey;
+    // The legacy layouts put the mint at 2; the v2 and v3 layouts put the base mint at 1 and the quote mint at 2.
+    const mint = shape.name.endsWith("_v2") || shape.name.endsWith("_v3") ? ix.keys[1].pubkey : ix.keys[2].pubkey;
     const [global, feeConfig, bondingCurve, quoteControl, supply] = await Promise.all([
       sdk.fetchGlobal(),
       sdk.fetchFeeConfig().catch(() => null),
