@@ -134,8 +134,11 @@ async function diff(mainFile: string, surfFile: string, outDir: string) {
     if (sameVerdict && sameSim) { same++; continue; }
     const accounts = sameSim ? null : await accountsIdentical(v.signature, surf.rpc);
     const rentShaped = /"Custom":2005\}|^"InsufficientFundsForRent|\[\d+,\{"Custom":1\}\]$/.test(w.sim.err) && !/"Custom":2005\}/.test(ref.err);
-    const kind = sameSim
-      ? "engine path only (same simulation; a quote or a timing difference)"
+    const minutesApart = Math.round(Math.abs(Date.parse(surf.at) - Date.parse(main.at)) / 60000);
+    const kind = w.status === "error"
+      ? `surfnet RPC error during the engine run (${w.error ?? "unknown"}); the simulation itself matched mainnet`
+      : sameSim
+      ? `verdicts differ with identical simulations: state moved between the two engine runs (about ${minutesApart} min apart), or a quote differed`
       : accounts?.identical
         ? "runtime (same account data, different outcome)"
         : rentShaped
