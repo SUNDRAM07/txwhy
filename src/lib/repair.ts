@@ -1251,7 +1251,7 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
 
   // 3b. Token-account setup: a swap into an account that does not exist yet, or a creation that fails
   //     because the account already exists. Fixed in place and probed again; adopted only when the
-  //     failure moves on (or disappears). The v1 path below does not do this yet.
+  //     failure moves on (or disappears). The v1 path does the same below.
   let setupFixed = false;
   if (probeSim.err != null) {
     const probeList = probeResult ? withBudget([ComputeBudgetProgram.setComputeUnitLimit({ units: MAX_CU }), ...budget.kept], budget.rest) : decompiled.instructions;
@@ -1636,6 +1636,32 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
   // Unset means zero bytes in v1: every such transaction fails until the limit is set.
   const liftedData = original.loadedAccountsDataSizeLimit == null || hitLoadedDataLimit(submittedSim.err);
 
+  // 3b. Token-account setup, as in the legacy path: fixed in place, probed again, adopted only when the failure moves.
+  let setupFixed = false;
+  if (probeSim.err != null) {
+    const signerKeys = new Map<string, PublicKey>([[decoded.payerKey.toBase58(), decoded.payerKey]]);
+    for (const ix of decoded.instructions) for (const k of ix.keys) if (k.isSigner) signerKeys.set(k.pubkey.toBase58(), k.pubkey);
+    const setup = await accountSetupFix(probeSim.err, probeSim.logs ?? [], decoded.instructions, decoded.instructions, decoded.payerKey, [...signerKeys.values()]).catch(() => null);
+    if (setup) {
+      let retry: SimValue | null = null;
+      try {
+        const candidate = build({ config: probeConfig, instructions: setup.rest });
+        retry = await simulateV1(candidate.base64, candidate.bytes);
+      } catch (e) {
+        if (!(e instanceof TooLargeError)) throw e;
+      }
+      if (retry && !sameFailure(retry.err, probeSim.err)) {
+        instructions = setup.rest;
+        probeSim = retry;
+        changes.push(setup.change);
+        notes.push(setup.note);
+        setupFixed = true;
+      } else if (!retry) {
+        notes.push("Creating the missing token account first would push this transaction over the 1,232-byte limit, so it was left as it was.");
+      }
+    }
+  }
+
   // 3. Anything other than budget wrong? (Mirrors the legacy verdict logic.)
   let finalVerdict: string | null = null;
   if (probeSim.err != null) {
@@ -1652,12 +1678,12 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
       notes.push(`Re-run today, this transaction fails earlier than it did on chain ("${probeCause.title}") because the accounts and prices it referenced have since changed. That is normal for a transaction that already landed; the on-chain cause above is the one that counts.`);
     }
     const failedOnSlippage = onchain?.error != null && SLIPPAGE_PATTERN.test(`${onchain.error.title} ${onchain.error.code ?? ""}`);
-    const terminalOnChain = landed && onchain?.error != null && TERMINAL_ONCHAIN.test(onchain.error.title);
+    const terminalOnChain = landed && !setupFixed && onchain?.error != null && TERMINAL_ONCHAIN.test(onchain.error.title);
     if (terminalOnChain && verdict.status === "needs_requote") verdict.status = "not_repairable";
     const wantsRequote = !terminalOnChain && (verdict.status === "needs_requote" || failedOnSlippage);
     let notSlippage = false;
     if (wantsRequote) {
-      const requote = await requoteSwap(decoded.instructions, {
+      const requote = await requoteSwap(instructions, {
         logs: submittedSim.logs ?? [],
         probe: (lifted) => {
           const candidate = build({ config: probeConfig, instructions: lifted });
