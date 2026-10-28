@@ -352,7 +352,7 @@ export function whyNot(result: { status: string; summary: string; cause: { title
   if (/Lighthouse guard|safety guard set by the wallet/i.test(text)) return "wallet_guard";
   if (/chains \d+ direct swaps|carries \d+ Jupiter swap instructions|more than one swap instruction/.test(text)) return "chained_swaps";
   if (/completed its bonding curve|BondingCurveComplete|bonding curve has completed/.test(text)) return "pool_graduated";
-  if (/Launch pool nearly full|room left before it graduates|InsufficientLiquidity|SwapAmountIsOverAThreshold/.test(text)) return "pool_nearly_full";
+  if (/Launch pool nearly full|Launch curve nearly sold out|room left before it graduates|left before it completes|NotEnoughTokensToBuy|InsufficientLiquidity|SwapAmountIsOverAThreshold/.test(text)) return "pool_nearly_full";
   if (/NonceAlreadyExists/.test(result.cause?.title ?? "")) return "duplicate_send";
   if (/fee-recipient check refused/.test(text)) return "fee_recipient_rejected";
   if (/overflowed inside its fee arithmetic/.test(text)) return "pump_fee_overflow";
@@ -362,11 +362,12 @@ export function whyNot(result: { status: string; summary: string; cause: { title
   if (/moved more than \d+% against this trade/.test(text)) return "beyond_cap";
   if (/No swap found that TxWhy can re-quote|not a top-level instruction|inside another program by CPI|runs inside another program/.test(text)) return "routed_by_private_program";
   if (/spliced in but the transaction still fails|lifted the transaction still fails|both raised \d+%/.test(text)) return "more_than_slippage";
+  if (/above the 1232-byte limit|does not fit Solana's size limit|encoding overruns/.test(text)) return "too_large";
   if (/fits its own limit/.test(text)) return "not_slippage_now";
   if (/Re-run today, this transaction fails earlier/.test(text)) return "state_changed_since";
   if (/from a private program/i.test(result.cause?.title ?? "")) return "private_program";
   if (/^Invalid instruction data|InstructionMissing|InstructionDidNotDeserialize|InstructionFallbackNotFound|could not parse the instruction data|no instruction with this/.test(text)) return "client_data_mismatch";
-  if (/InvalidSqrtPriceLimitDirection|TickArraySequenceInvalidIndex|InvalidTickArraySequence|TickArrayIndexOutofBounds|IncorrectSwapProgramId|^Invalid account data|InvalidAccountData/.test(text)) return "client_built_wrong";
+  if (/InvalidSqrtPriceLimitDirection|TickArraySequenceInvalidIndex|InvalidTickArraySequence|TickArrayIndexOutofBounds|IncorrectSwapProgramId|^Invalid account data|InvalidAccountData|InvalidTokenAccount/.test(text)) return "client_built_wrong";
   if (/insufficient|holds .* lamports and needs|Shortfall|does not hold enough|NotEnoughTokensToSell|Not enough (tokens|SOL)/i.test(text)) return "no_funds";
   if (result.status === "needs_requote") return "needs_requote_other";
   return "other";

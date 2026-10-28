@@ -562,6 +562,9 @@ export function enrichCause(name: string, msg: string | undefined): string {
   if (n === "incorrectswapprogramid") {
     return "The route names a swap program the aggregator does not accept in that position: a route built against another version of its program list, or a market delisted since the quote. The same route will not be accepted again.";
   }
+  if (n === "invalidtokenaccount") {
+    return "One of the token accounts passed with this swap is not what the program expects for its mint and owner: a token account for the wrong mint or token program, or one that is not the trader's own. The transaction was built with the wrong account, so no price or budget change can make it pass.";
+  }
   if (n === "insufficientliquidity" || n === "swapamountisoverathreshold" || n === "notenoughliquidity") {
     return "The pool does not have enough liquidity left to fill a trade of this size. On a launch pool (a bonding curve such as Meteora DBC) it means the buy is larger than what is left before the pool graduates, and the program refuses the whole swap rather than fill part of it.";
   }
@@ -593,6 +596,7 @@ export function suggestFixForName(name: string): string | undefined {
   if (n === "invalidsqrtpricelimitdirection") return "Rebuild the swap with the program's SDK, which computes sqrt_price_limit for the direction (or pass 0 for no limit). Retrying the same transaction cannot succeed.";
   if (n === "tickarraysequenceinvalidindex" || n === "invalidtickarraysequence" || n === "tickarrayindexoutofbounds") return "Get a fresh quote so the SDK picks the tick arrays for the current price. Retrying this transaction cannot succeed.";
   if (n === "incorrectswapprogramid") return "Get a fresh quote from the aggregator; retrying this route cannot succeed.";
+  if (n === "invalidtokenaccount") return "Rebuild the swap with the SDK so it derives the right token accounts for the mints and token program; retrying this transaction cannot succeed.";
   if (n.includes("slippage") || n.includes("toolittle") || n.includes("toomuch") || n.includes("belowmin") || n.includes("amountoutbelow")) return "Get a fresh quote and resend with the same tolerance; the price has moved on. Widen the tolerance only if it keeps failing on a fast-moving token, and know that a wide tolerance is what sandwich bots feed on.";
   if (n.includes("expired") || n.includes("stale")) return "Refresh the quote/price data and rebuild the transaction — the inputs went stale.";
   if (n === "insufficientliquidity" || n === "swapamountisoverathreshold" || n === "notenoughliquidity") return "Trade a smaller amount. On Meteora DBC, buy at most what is left before graduation, or use swap2 in partial-fill mode, which buys what is left and returns the rest. Paste the failed transaction into TxWhy to see the exact room left.";

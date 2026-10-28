@@ -333,9 +333,8 @@ function build(
       legacy ? message.compileToLegacyMessage() : message.compileToV0Message(tables),
     );
   } catch (e) {
-    throw new RepairInputError(
-      `The rebuilt transaction does not fit Solana's size limit (${e instanceof Error ? e.message : "too large"}).`,
-    );
+    const why = e instanceof Error && /overruns/i.test(e.message) ? "the fresh route needs more bytes than one transaction can hold" : e instanceof Error ? e.message : "too large";
+    throw new RepairInputError(`The rebuilt transaction does not fit Solana's size limit (${why}).`);
   }
 }
 
@@ -872,6 +871,38 @@ async function pumpSellShortfallVerdict(instructions: TransactionInstruction[], 
   };
 }
 
+/**
+ * A Pump.fun buy for more tokens than the curve still holds (NotEnoughTokensToBuy): the curve is about to complete.
+ * Say what is left, as the Meteora DBC verdict names the room left before graduation.
+ */
+async function pumpNearlySoldOutVerdict(instructions: TransactionInstruction[], cause: DecodedError, err?: unknown, inner?: ParsedInner[] | null): Promise<{ cause: DecodedError; note: string } | null> {
+  if (cause.title !== "NotEnoughTokensToBuy") return null;
+  const failing = failingIndex(err);
+  let ix = failing != null ? instructions[failing] : undefined;
+  if (!ix || ix.programId.toBase58() !== PUMP_FUN) ix = innerPumpInstruction(inner, failing) ?? innerPumpAny(inner, failing) ?? undefined;
+  if (!ix) return null;
+  const passed = new Set(ix.keys.map((k) => k.pubkey.toBase58()));
+  const mint = ix.keys.map((k) => k.pubkey).find((candidate) => passed.has(bondingCurvePda(candidate).toBase58()));
+  if (!mint) return null;
+  const curve = await rpc<{ value: { data: [string, string] } | null }>("getAccountInfo", [bondingCurvePda(mint).toBase58(), { encoding: "base64", commitment: "confirmed" }]).catch(() => null);
+  if (!curve?.value) return null;
+  const data = Buffer.from(curve.value.data[0], "base64");
+  if (data.length < 49) return null;
+  const left = data.readBigUInt64LE(24); // real_token_reserves
+  const shape = readDirectSwapShape(ix);
+  const wants = shape?.fixed === "tokens_out" ? shape.amount : null;
+  const tokens = (v: bigint) => `${formatUnits(v, 6)} tokens`;
+  return {
+    cause: {
+      title: "Launch curve nearly sold out",
+      code: cause.code,
+      cause: `Pump.fun's ${shape?.name ?? "buy"} refused this trade: the curve for ${mint.toBase58()} has only ${tokens(left)} left before it completes${wants != null ? `, and the buy asks for ${tokens(wants)}` : ""}. The program refuses the whole buy rather than fill part of it.`,
+      fix: `Buy at most ${tokens(left)}, or wait for the curve to complete and trade the token on PumpSwap.`,
+    },
+    note: `Tokens left on the curve: ${tokens(left)}${wants != null ? `; asked: ${tokens(wants)}` : ""}.`,
+  };
+}
+
 /** The rebuilt transaction failed its final simulation: say with what, and what that means when it is the same slippage check again. */
 function stillFailsSummary(finalError: DecodedError | null, requoted: boolean): string {
   if (!finalError) return "The rebuilt transaction still fails simulation.";
@@ -901,6 +932,10 @@ async function preciseVerdict(instructions: TransactionInstruction[], cause: Dec
   if (cause.title === "InsufficientFunds") {
     const precise = await tokenShortfall(instructions, logs, err, inner, original);
     return precise ? { ...precise, replaces: /^InsufficientFunds$/ } : null;
+  }
+  if (cause.title === "NotEnoughTokensToBuy") {
+    const precise = await pumpNearlySoldOutVerdict(instructions, cause, err, inner).catch(() => null);
+    return precise ? { ...precise, replaces: /^NotEnoughTokensToBuy$/ } : null;
   }
   if (cause.title === "BondingCurveComplete") {
     const precise = await pumpGraduatedVerdict(instructions, cause, err, inner).catch(() => null);
