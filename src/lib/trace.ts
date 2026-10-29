@@ -9,7 +9,7 @@ import { FALLBACK_URL, RPC_URL } from "./rpc";
 interface ParsedInstruction {
   programId: string;
   program?: string;
-  parsed?: { type?: string } | string;
+  parsed?: { type?: string; info?: { source?: string; destination?: string; amount?: string; mint?: string; tokenAmount?: { amount?: string; decimals?: number } } } | string;
   stackHeight?: number | null;
   /** Present for programs the RPC cannot parse: raw account list and base58 data. */
   accounts?: string[];
@@ -24,9 +24,11 @@ interface RpcTransaction {
     fee: number;
     logMessages?: string[];
     innerInstructions?: { index: number; instructions: ParsedInstruction[] }[];
+    preBalances?: number[];
+    preTokenBalances?: { accountIndex: number; mint: string; uiTokenAmount: { amount: string; decimals: number } }[];
   };
   transaction: {
-    message: { instructions: ParsedInstruction[] };
+    message: { instructions: ParsedInstruction[]; accountKeys?: { pubkey: string }[] };
   };
 }
 
@@ -197,6 +199,27 @@ async function fetchTransaction(url: string, signature: string): Promise<RpcTran
   return result;
 }
 
+/** Balances and inner token transfers as the node recorded them when the transaction landed. */
+function landedRecord(result: RpcTransaction): Trace["landed"] {
+  const innerTransfers: NonNullable<Trace["landed"]>["innerTransfers"] = {};
+  for (const group of result.meta.innerInstructions ?? []) {
+    for (const ix of group.instructions) {
+      if (typeof ix.parsed !== "object" || !ix.program?.startsWith("spl-token")) continue;
+      const info = ix.parsed?.info;
+      if ((ix.parsed?.type !== "transfer" && ix.parsed?.type !== "transferChecked") || !info?.source || !info.destination) continue;
+      const amount = info.amount ?? info.tokenAmount?.amount;
+      if (!amount) continue;
+      (innerTransfers[group.index] ??= []).push({ source: info.source, destination: info.destination, amount, decimals: info.tokenAmount?.decimals, mint: info.mint });
+    }
+  }
+  return {
+    accountKeys: (result.transaction.message.accountKeys ?? []).map((k) => k.pubkey),
+    preBalances: result.meta.preBalances ?? [],
+    preTokenBalances: (result.meta.preTokenBalances ?? []).map((b) => ({ accountIndex: b.accountIndex, mint: b.mint, amount: b.uiTokenAmount.amount, decimals: b.uiTokenAmount.decimals })),
+    innerTransfers,
+  };
+}
+
 export async function getTrace(signature: string): Promise<Trace | null> {
   // The fast endpoint keeps only recent history. Older signatures are found on the history endpoint.
   let result = await fetchTransaction(RPC_URL, signature).catch((e) => {
@@ -242,5 +265,6 @@ export async function getTrace(signature: string): Promise<Trace | null> {
     rawError: err,
     logs,
     tree: buildTree(result, failedOuterIndex, failedPrograms, logs),
+    landed: landedRecord(result),
   };
 }

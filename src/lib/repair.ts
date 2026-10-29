@@ -903,6 +903,37 @@ async function pumpNearlySoldOutVerdict(instructions: TransactionInstruction[], 
   };
 }
 
+/**
+ * A landed shortfall, priced from the transaction's own record instead of today's state: the last token transfer that
+ * ran inside the failing instruction and the source account's balance at that slot. Used when the replay fails earlier
+ * today (a pool graduated, a wallet emptied), so the figure the sender hit is still named.
+ */
+function landedShortfall(onchain: Trace | null): { cause: DecodedError; note: string } | null {
+  if (!onchain?.landed || onchain.failedOuterIndex == null) return null;
+  if (!onchain.logs.some((l) => /Program log: Error: insufficient funds/i.test(l))) return null;
+  const transfers = onchain.landed.innerTransfers[onchain.failedOuterIndex] ?? [];
+  const last = transfers[transfers.length - 1];
+  if (!last) return null;
+  const index = onchain.landed.accountKeys.indexOf(last.source);
+  const pre = onchain.landed.preTokenBalances.find((b) => b.accountIndex === index);
+  if (!pre) return null;
+  const want = BigInt(last.amount);
+  const have = BigInt(pre.amount);
+  if (have >= want) return null;
+  const decimals = last.decimals ?? pre.decimals;
+  const fmt = (v: bigint) => formatUnits(v, decimals);
+  const label = `#${onchain.failedOuterIndex + 1}`;
+  return {
+    cause: {
+      title: "Not enough tokens to transfer",
+      code: "Custom(1) — 0x1",
+      cause: `When it landed, the token transfer inside instruction ${label} tried to spend ${fmt(want)} from token account ${last.source}, which held ${fmt(have)}: a shortfall of ${fmt(want - have)}. Usually the amount came from a balance that was already partly sold or transferred.`,
+      fix: have === BigInt(0) ? "The account was empty at the time. Fund it, or build the trade from the balance you actually hold." : `Build the trade for at most ${fmt(have)}, or top the account up by ${fmt(want - have)} first.`,
+    },
+    note: `Figures from the transaction's own record at slot ${onchain.slot.toLocaleString("en-US")}; the replay today fails earlier because the accounts it touches have moved on since.`,
+  };
+}
+
 /** The rebuilt transaction failed its final simulation: say with what, and what that means when it is the same slippage check again. */
 function stillFailsSummary(finalError: DecodedError | null, requoted: boolean): string {
   if (!finalError) return "The rebuilt transaction still fails simulation.";
@@ -1324,7 +1355,14 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
       verdict.notes.push(precise.note);
       if (onchain?.error && precise.replaces.test(onchain.error.title)) onchain.error = precise.cause;
     }
-    if (titleChanged && !precise && onchain?.error && probeCause) {
+    // The sender's shortfall from the record comes first; a replay-time note (a pool graduated since) stays as context.
+    const landedPrecise = titleChanged && onchain?.error && /^InsufficientFunds$/.test(onchain.error.title) ? landedShortfall(onchain) : null;
+    if (landedPrecise && onchain) {
+      onchain.error = landedPrecise.cause;
+      verdict.cause = landedPrecise.cause;
+      verdict.notes.push(landedPrecise.note);
+    }
+    if (titleChanged && !precise && !landedPrecise && onchain?.error && probeCause) {
       notes.push(
         `Re-run today, this transaction fails earlier than it did on chain ("${probeCause.title}") because the accounts and prices it referenced have since changed. That is normal for a transaction that already landed; the on-chain cause above is the one that counts.`,
       );
@@ -1709,7 +1747,14 @@ async function repairV1(base64: string, onchain: Trace | null): Promise<RepairRe
       verdict.notes.push(precise.note);
       if (onchain?.error && precise.replaces.test(onchain.error.title)) onchain.error = precise.cause;
     }
-    if (titleChanged && !precise && onchain?.error && probeCause) {
+    // The sender's shortfall from the record comes first; a replay-time note (a pool graduated since) stays as context.
+    const landedPrecise = titleChanged && onchain?.error && /^InsufficientFunds$/.test(onchain.error.title) ? landedShortfall(onchain) : null;
+    if (landedPrecise && onchain) {
+      onchain.error = landedPrecise.cause;
+      verdict.cause = landedPrecise.cause;
+      verdict.notes.push(landedPrecise.note);
+    }
+    if (titleChanged && !precise && !landedPrecise && onchain?.error && probeCause) {
       notes.push(`Re-run today, this transaction fails earlier than it did on chain ("${probeCause.title}") because the accounts and prices it referenced have since changed. That is normal for a transaction that already landed; the on-chain cause above is the one that counts.`);
     }
     const failedOnSlippage = onchain?.error != null && SLIPPAGE_PATTERN.test(`${onchain.error.title} ${onchain.error.code ?? ""}`);

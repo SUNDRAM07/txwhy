@@ -53,7 +53,7 @@ And what it refuses to fake:
 
 | Failure | What TxWhy says instead |
 |---|---|
-| Not enough SOL, or not enough tokens for a swap or any token transfer | The exact shortfall: which token account, what it holds, what the instruction needs, found through the instruction the node blamed, inside a router too |
+| Not enough SOL, or not enough tokens for a swap or any token transfer | The exact shortfall: which token account, what it holds, what the instruction needs, found through the instruction the node blamed, inside a router too. For a landed failure whose replay fails earlier today (a pool graduated since), the figures come from the transaction's own record at its slot |
 | An account left below the rent-exempt minimum | Which account, what it holds, its size, and the minimum for that size from the RPC |
 | A Pump.fun buy or sell refused at the fee-recipient check (NotAuthorized from fee_recipient.rs) | Names the fee account the client passed, checks it against the protocol's current recipients, and says to rebuild with the recipient the SDK picks for that mint |
 | A Pump.fun sell for more tokens than the wallet holds (NotEnoughTokensToSell), sent directly or through a router | The amount sold, the balance and the shortfall, read from the sell instruction or from Pump.fun's own log lines, with the mint's decimals resolved from the accounts the router passed |

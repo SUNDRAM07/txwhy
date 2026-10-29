@@ -28,4 +28,12 @@ export interface Trace {
   rawError?: unknown;
   logs: string[];
   tree: TraceNode[];
+  /** What the transaction's own record says about balances and transfers at the time it landed, for figures that do not drift. */
+  landed?: {
+    accountKeys: string[];
+    preBalances: number[];
+    preTokenBalances: { accountIndex: number; mint: string; amount: string; decimals: number }[];
+    /** SPL token transfers that ran inside each outer instruction, in order. */
+    innerTransfers: Record<number, { source: string; destination: string; amount: string; decimals?: number; mint?: string }[]>;
+  };
 }
