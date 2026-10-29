@@ -29,4 +29,4 @@ The curve is restored to its live values at the end.
 
 ## Next
 
-Meteora DBC and Raydium LaunchLab have no override template in Surfpool yet, so their "launch pool nearly full" and "graduated" scenarios need a template contribution (`idl.json` plus `overrides.yaml` under `crates/core/src/scenarios/protocols/`, wired in `registry.rs`). The DBC on-chain IDL is saved here as `meteora-dbc/idl.json` for that purpose.
+Meteora DBC and Raydium LaunchLab have no override template in Surfpool yet, so their "launch pool nearly full" and "graduated" scenarios need a template contribution (`idl.json` plus `overrides.yaml` under `crates/core/src/scenarios/protocols/`, wired in `registry.rs`). The DBC on-chain IDL is saved here as `meteora-dbc/idl.json`, and `meteora-dbc/overrides.yaml` is the template file drafted in Surfpool's format (reserves, sqrt price, migration state, with the three failure modes it reproduces in its llm_context); the registry wiring is the only part that must land in their repo.

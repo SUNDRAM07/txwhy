@@ -1,0 +1,53 @@
+protocol: Meteora Dynamic Bonding Curve
+version: v1
+account_type: VirtualPool
+idl_file_path: idl.json
+
+tags:
+  - launchpad
+  - bonding-curve
+  - defi
+
+constants:
+  pool:
+    label: Launch pool
+    description: A Meteora DBC virtual pool address (the pool account the swap passes; txwhy.vercel.app/failures lists live ones)
+
+templates:
+  - id: meteora-dbc-pool-custom
+    name: Override Launch Pool (Custom)
+    description: |
+      Override a Meteora Dynamic Bonding Curve pool: its reserves, price and migration state. The pool
+      graduates when quote_reserve reaches the config's migration_quote_threshold; after that every
+      swap against it fails with PoolIsCompleted and the token trades on the DAMM v2 pool it moved to.
+    idl_account_name: VirtualPool
+    properties:
+      - path: quote_reserve
+        label: Quote Reserve
+        description: Quote (usually SOL, in lamports) raised so far; the pool graduates at the config's migration_quote_threshold
+      - path: base_reserve
+        label: Base Reserve
+        description: Tokens still held by the curve (raw units)
+      - path: sqrt_price
+        label: Sqrt Price
+        description: Current sqrt price (Q64.64); moves with every swap
+      - path: is_migrated
+        label: Is Migrated
+        description: 1 once liquidity has moved to the DAMM pool; swaps fail with PoolIsCompleted from then on
+      - path: migration_progress
+        label: Migration Progress
+        description: 0 trading, 1 post-bonding-curve, 2 locked vesting, 3 created pool (see the program's MigrationProgress enum)
+    llm_context: |
+      Set fetchBeforeUse: true so fields you do not override keep their live values. Values are JSON numbers.
+
+      FAILURE MODES THIS REPRODUCES (each is a verdict TxWhy names):
+      - "launch pool nearly full": set quote_reserve to migration_quote_threshold minus a little (read the
+        threshold from the pool's PoolConfig account); a buy bigger than what is left fails with
+        SwapAmountIsOverAThreshold / InsufficientLiquidity, and the room left is the figure to show.
+      - "launch pool already graduated": set quote_reserve to the threshold and is_migrated to 1; every swap
+        fails with PoolIsCompleted and the DAMM v2 pool derived from the config is where the token trades.
+      - "stale quote": move sqrt_price and the reserves as if a buy landed; a swap built on the old price
+        fails with ExceededSlippage and can be repaired by moving its limit within the sender's tolerance.
+
+      INVARIANTS: quote_reserve rises and base_reserve falls on a buy; sqrt_price rises with quote_reserve.
+      Keep the three consistent, or the program's own checks fail before the one you meant to reproduce.
