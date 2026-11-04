@@ -639,12 +639,21 @@ export async function dbcPoolVerdict(instructions: TransactionInstruction[], cau
   }
   const room = threshold - raised;
   const exactIn = hit.shape.fixed === "tokens_in";
+  // The swap walks the curve by sqrt_price; the quote raised is bookkeeping. A buy within the room by that bookkeeping
+  // can still run out of curve when the price already sits at the curve's end (seen on a surfnet, Nov 4), so the
+  // "more than the curve can take" claim is made only when the figures support it.
+  const overRoom = exactIn && hit.shape.amount > room;
+  const why = overRoom
+    ? `This buy puts in ${fmt(hit.shape.amount)}, more than the curve can take`
+    : exactIn
+      ? `This buy puts in ${fmt(hit.shape.amount)}, which fits that room on paper, but the pool's price already sits at the end of its curve, so the program finds no liquidity left for it`
+      : "This buy asks for more tokens than the curve has left to sell";
   return {
     cause: {
       title: "Launch pool nearly full",
       code: cause.code,
-      cause: `Meteora DBC pool ${poolAddress} has ${fmt(room)} of room left before it graduates (${fmt(raised)} raised; ${fmt(threshold)} graduates it). ${exactIn ? `This buy puts in ${fmt(hit.shape.amount)}, more than the curve can take` : "This buy asks for more tokens than the curve has left to sell"}, and the program refuses the whole swap rather than fill part of it.`,
-      fix: `Buy at most ${fmt(room)} now, or send swap2 in partial-fill mode (swap mode 1), which buys what is left and returns the rest. Once the pool graduates the token trades on ${where}. TxWhy never changes the amount you chose, so there is no repair to return.`,
+      cause: `Meteora DBC pool ${poolAddress} has ${fmt(room)} of room left before it graduates (${fmt(raised)} raised; ${fmt(threshold)} graduates it). ${why}, and the program refuses the whole swap rather than fill part of it.`,
+      fix: `${overRoom ? `Buy at most ${fmt(room)} now, or send` : "Send"} swap2 in partial-fill mode (swap mode 1), which buys what is left and returns the rest. Once the pool graduates the token trades on ${where}. TxWhy never changes the amount you chose, so there is no repair to return.`,
     },
     note: `Meteora DBC pool ${poolAddress}: ${fmt(raised)} raised, ${fmt(threshold)} graduates it, ${fmt(room)} left.${exactIn ? ` This buy: ${fmt(hit.shape.amount)}.` : ""}`,
   };

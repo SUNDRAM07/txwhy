@@ -27,6 +27,24 @@ The curve is restored to its live values at the end.
 - Booleans apply as JSON booleans (`complete: true` works).
 - An override takes effect one slot after registration; the surfnet's default slot is 250 ms.
 
-## Next
+## Meteora DBC (`dbc-failures.ts`)
 
-Meteora DBC and Raydium LaunchLab have no override template in Surfpool yet, so their "launch pool nearly full" and "graduated" scenarios need a template contribution (`idl.json` plus `overrides.yaml` under `crates/core/src/scenarios/protocols/`, wired in `registry.rs`). The DBC on-chain IDL is saved here as `meteora-dbc/idl.json`, and `meteora-dbc/overrides.yaml` is the template file drafted in Surfpool's format (reserves, sqrt price, migration state, with the three failure modes it reproduces in its llm_context); the registry wiring is the only part that must land in their repo.
+```bash
+npx tsx scripts/_dbc-live-pool.ts                 # live pools still trading, with the room left before graduation
+SOLANA_RPC_URL=http://127.0.0.1:8899 npx tsx surfpool-scenarios/dbc-failures.ts <pool address> [payer]
+```
+
+Surfpool has no DBC override template yet, so the harness writes the same fields the proposed template would write, through `surfnet_setAccount` on the pool's bytes at the offsets `dbc-layout.ts` computes from the IDL. The probe is a real 0.05 SOL buy built by Meteora's SDK against the live pool.
+
+| Scenario | Fields written | Engine verdict, Nov 4 2026, surfpool 1.7.0, pool 4j8f6fzQ… |
+|---|---|---|
+| baseline | none | `valid` |
+| graduated | `quote_reserve` = config's `migration_quote_threshold` | `not_repairable`, "Launch pool already graduated", naming the DAMM v2 pool |
+| nearly full | `sqrt_price` just under `migration_sqrt_price`, `quote_reserve` just under the threshold | `not_repairable`, "Launch pool nearly full", 0.005 SOL of room against a 0.05 SOL buy |
+| stale quote | `sqrt_price` up (under the curve's end), `quote_reserve` up (under the threshold) | `repaired` with `swap_quote`, verified |
+
+Two findings from the run, now in the template's docs: moving `quote_reserve` alone to just under the threshold leaves the buy valid, because the swap math walks `sqrt_price` and `quote_reserve` is bookkeeping read only by the graduation check; and a pool 90% of the way to graduation has little price left before `migration_sqrt_price`, so a 15% "price jump" overshoots the curve's end and reads as out of curve, not as a stale quote.
+
+## The template contribution
+
+`meteora-dbc/overrides.yaml` and `meteora-dbc/idl.json` are the proposed Surfpool templates (`meteora-dbc-pool-custom` for the pool, `meteora-dbc-config-custom` for the graduation thresholds), in the format of `crates/core/src/scenarios/protocols/pump/v1/overrides.yaml`; the pull request to solana-foundation/surfpool adds them under `protocols/meteora/dbc/v1/` with the registry wiring, a README and a registry test. Raydium LaunchLab still has none.
