@@ -36,6 +36,7 @@ const WHY_LABELS: Record<string, [string, string]> = {
   chained_swaps: ["More than one swap", "two or more swaps in one transaction; TxWhy changes at most one per repair, so the sequence must be rebuilt from fresh quotes"],
   wallet_guard: ["Wallet guard tripped", "needs a fresh transaction from the app"],
   no_funds: ["Not enough funds", "no rebuild adds money"],
+  missing_account: ["Token account does not exist yet", "the program named an account that was never created; a buy gets it created by the repair, a sell on it has nothing to sell, the rest the app must create first (counted since Nov 4)"],
   too_large: ["Rebuilt transaction would not fit", "the fresh route is longer than the original and the transaction would pass 1,232 bytes; only a shorter route or more lookup tables from the client fix it (counted since Oct 28)"],
   not_slippage_now: ["Fits its own limit now", "the price came back; something else fails"],
   needs_requote_other: ["Needs a fresh quote", "no supported swap to re-quote"],

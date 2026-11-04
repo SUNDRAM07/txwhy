@@ -145,6 +145,10 @@ export const DIRECT_LAYOUTS: Record<string, Record<string, DirectLayout>> = {
     "66063d1201daebea": { program: "PumpSwap", name: "buy", fixed: "tokens_out", limit: "max_in", userIn: 6 },
     c62e1552b4d9e870: { program: "PumpSwap", name: "buy_exact_quote_in", fixed: "quote_in", limit: "min_out", userIn: 6 },
     "33e685a4017f83ad": { program: "PumpSwap", name: "sell", fixed: "tokens_in", limit: "min_out", userIn: 5 },
+    // v2 forms, not in the published IDL (Nov 2026): same arguments, 17 accounts, inferred from landed transactions.
+    b817ee6167c5d33d: { program: "PumpSwap", name: "buy_v2", fixed: "tokens_out", limit: "max_in" },
+    c2ab1c46684d5b2f: { program: "PumpSwap", name: "buy_exact_quote_in_v2", fixed: "quote_in", limit: "min_out" },
+    "5df6823ce7e940b2": { program: "PumpSwap", name: "sell_v2", fixed: "tokens_in", limit: "min_out" },
   },
   // Raydium AMM v4: a one-byte instruction tag, then amount_in/min_out (9) or amount_out/max_in (11).
   // Tags 9/11 carry the legacy OpenBook accounts (17-18); tags 16/17 are the same swaps without them (8 accounts).

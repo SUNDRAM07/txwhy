@@ -934,6 +934,31 @@ function landedShortfall(onchain: Trace | null): { cause: DecodedError; note: st
   };
 }
 
+/**
+ * A sell whose source token account does not exist (AccountNotInitialized on the user's token account of a
+ * direct-swap sell): the wallet holds none of the token, so there is nothing to sell and nothing to create.
+ */
+function nothingToSellVerdict(instructions: TransactionInstruction[], cause: DecodedError, logs: string[], err?: unknown): { cause: DecodedError; note: string } | null {
+  if (cause.title !== "AccountNotInitialized") return null;
+  const failing = failingIndex(err);
+  const ix = failing != null ? instructions[failing] : undefined;
+  const shape = ix ? readDirectSwapShape(ix) : null;
+  if (!ix || !shape || shape.fixed !== "tokens_in") return null;
+  const named = logs.map((l) => l.match(/AnchorError caused by account: ([a-z_]+)/)?.[1]).find(Boolean);
+  if (named && !/user|associated|source|input/.test(named)) return null;
+  const account = shape.userIn != null ? ix.keys[shape.userIn]?.pubkey.toBase58() : undefined;
+  const amount = formatUnits(shape.amount, 6);
+  return {
+    cause: {
+      title: "Nothing to sell",
+      code: cause.code,
+      cause: `${shape.program}'s ${shape.name} tried to sell ${amount} tokens from a token account that does not exist${account ? ` (${account})` : ""}: this wallet holds none of the token, so the program refused before anything moved.`,
+      fix: "Nothing to resend, and nothing to create: build sells from the balance the wallet actually holds.",
+    },
+    note: `The program named the missing account as ${named ?? "the seller's token account"}. Amount in the instruction: ${amount} (6 decimals assumed for the display).`,
+  };
+}
+
 /** The rebuilt transaction failed its final simulation: say with what, and what that means when it is the same slippage check again. */
 function stillFailsSummary(finalError: DecodedError | null, requoted: boolean): string {
   if (!finalError) return "The rebuilt transaction still fails simulation.";
@@ -963,6 +988,10 @@ async function preciseVerdict(instructions: TransactionInstruction[], cause: Dec
   if (cause.title === "InsufficientFunds") {
     const precise = await tokenShortfall(instructions, logs, err, inner, original);
     return precise ? { ...precise, replaces: /^InsufficientFunds$/ } : null;
+  }
+  if (cause.title === "AccountNotInitialized") {
+    const precise = nothingToSellVerdict(instructions, cause, logs, err);
+    if (precise) return { ...precise, replaces: /^AccountNotInitialized$/ };
   }
   if (cause.title === "NotEnoughTokensToBuy") {
     const precise = await pumpNearlySoldOutVerdict(instructions, cause, err, inner).catch(() => null);

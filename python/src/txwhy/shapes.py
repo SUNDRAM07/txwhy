@@ -154,6 +154,10 @@ DIRECT_LAYOUTS: dict[str, dict[str, DirectLayout]] = {
         "66063d1201daebea": DirectLayout("PumpSwap", "buy", "tokens_out", "max_in", user_in=6),
         "c62e1552b4d9e870": DirectLayout("PumpSwap", "buy_exact_quote_in", "quote_in", "min_out", user_in=6),
         "33e685a4017f83ad": DirectLayout("PumpSwap", "sell", "tokens_in", "min_out", user_in=5),
+        # v2 forms, not in the published IDL (Nov 2026): same arguments, inferred from landed transactions.
+        "b817ee6167c5d33d": DirectLayout("PumpSwap", "buy_v2", "tokens_out", "max_in"),
+        "c2ab1c46684d5b2f": DirectLayout("PumpSwap", "buy_exact_quote_in_v2", "quote_in", "min_out"),
+        "5df6823ce7e940b2": DirectLayout("PumpSwap", "sell_v2", "tokens_in", "min_out"),
     },
     RAYDIUM_V4: {
         "09": DirectLayout("Raydium AMM v4", "swap_base_in", "tokens_in", "min_out", tag_length=1),
