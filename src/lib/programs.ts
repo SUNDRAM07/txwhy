@@ -9,6 +9,10 @@ export const KNOWN_PROGRAMS: Record<string, string> = {
   ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL: "Associated Token Account",
   ComputeBudget111111111111111111111111111111: "Compute Budget",
   JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4: "Jupiter Aggregator v6",
+  // Terminal, the trading app formerly called Padre (owned by Pump.fun): its order proxy. Named so its users' failures are not
+  // filed with private bots. Identified Nov 6, 2026 from its own source path (programs/terminal-proxy), its explorer label and
+  // several senders per sample, where every unnamed program above it in the ranking had exactly one (scripts/_private-culprits.mjs).
+  term9YPb9mzAsABaqN71A4xdbxHmpBNZavpBiQKZzN3: "Terminal (Padre) order proxy",
   metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s: "Metaplex Token Metadata",
   whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc: "Orca Whirlpool",
   "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8": "Raydium AMM v4",
