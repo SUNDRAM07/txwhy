@@ -9,6 +9,7 @@ import {
 import { rateLimit, tooManyRequests } from "@/lib/ratelimit";
 import { rpc } from "@/lib/rpc";
 import { buildV1 } from "@/lib/v1";
+import { demoPayers } from "@/lib/demo-payer";
 import { buildStalePumpSwapBuy, buildStaleRaydiumSwap } from "@/lib/pump-demo";
 
 /**
@@ -17,10 +18,9 @@ import { buildStalePumpSwapBuy, buildStaleRaydiumSwap } from "@/lib/pump-demo";
  * Builds a deliberately broken, UNSIGNED demo transaction so anyone can watch a repair
  * without owning a failed transaction. The fee payer is a public exchange wallet used
  * only so simulation has a funded account to run against. Nobody but its owner could
- * ever sign these, so they are safe to hand out.
+ * ever sign these, so they are safe to hand out. Which wallet is decided per request from
+ * live balances (src/lib/demo-payer.ts), so a demo never rests on one account staying healthy.
  */
-
-const DEMO_PAYER = new PublicKey("5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9");
 
 interface ThinQuote {
   mint: string;
@@ -70,9 +70,9 @@ const JUPITER_API = process.env.JUPITER_API_BASE ?? "https://lite-api.jup.ag/swa
 const SOL = "So11111111111111111111111111111111111111112";
 const USDC = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v";
 
-function encode(blockhash: string, instructions: TransactionInstruction[]) {
+function encode(payer: PublicKey, blockhash: string, instructions: TransactionInstruction[]) {
   const message = new TransactionMessage({
-    payerKey: DEMO_PAYER,
+    payerKey: payer,
     recentBlockhash: blockhash,
     instructions,
   }).compileToV0Message();
@@ -87,7 +87,9 @@ export async function GET(request: Request) {
   const kind = url.searchParams.get("kind") ?? "compute";
   // "Try it with your own wallet": the stale-quote swap can be built for a connected wallet, for a small amount.
   const payerParam = url.searchParams.get("payer");
-  let swapPayer = DEMO_PAYER;
+  const demo = await demoPayers();
+  const DEMO_PAYER = demo.payer;
+  let swapPayer = demo.swapPayer;
   if (payerParam) {
     try {
       swapPayer = new PublicKey(payerParam);
@@ -110,7 +112,7 @@ export async function GET(request: Request) {
       return Response.json({
         kind,
         description: "A transfer built with a blockhash that expired long ago.",
-        transaction: encode(EXPIRED_BLOCKHASH, [transfer]),
+        transaction: encode(DEMO_PAYER, EXPIRED_BLOCKHASH, [transfer]),
       });
     }
 
@@ -185,15 +187,16 @@ export async function GET(request: Request) {
       return Response.json({
         kind,
         description,
-        transaction: encode(value.blockhash, [ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), ...instructions]),
+        transaction: encode(DEMO_PAYER, value.blockhash, [ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), ...instructions]),
       });
     }
     if (kind === "raydium") {
-      const { instructions, description } = await buildStaleRaydiumSwap(DEMO_PAYER);
+      // Spends 1 USDC, so it needs the payer whose USDC account is live.
+      const { instructions, description } = await buildStaleRaydiumSwap(demo.swapPayer);
       return Response.json({
         kind,
         description,
-        transaction: encode(value.blockhash, [ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), ...instructions]),
+        transaction: encode(demo.swapPayer, value.blockhash, [ComputeBudgetProgram.setComputeUnitLimit({ units: 400_000 }), ...instructions]),
       });
     }
     if (kind === "v1") {
@@ -208,7 +211,7 @@ export async function GET(request: Request) {
     return Response.json({
       kind: "compute",
       description: "A transfer whose compute-unit limit is set far too low.",
-      transaction: encode(value.blockhash, [
+      transaction: encode(DEMO_PAYER, value.blockhash, [
         ComputeBudgetProgram.setComputeUnitLimit({ units: 100 }),
         transfer,
       ]),
