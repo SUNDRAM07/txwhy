@@ -12,7 +12,7 @@
 import { createHash } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { createClient } from "redis";
-import { GENERIC_REFUSAL, blankNumbers, cleanLegacyRow } from "./reason";
+import { GENERIC_REFUSAL, blankNumbers, cleanLegacyRow, reasonKey, whyNot } from "./reason";
 import { ANCHOR_ERRORS, TOKEN_ERRORS, decodeTransactionError, enrichCause } from "../src/lib/errors";
 import { fetchIdlErrors } from "../src/lib/idl";
 import { RepairInputError, repair } from "../src/lib/repair";
@@ -259,14 +259,6 @@ async function sampleOnce(store: Store) {
   await store.setStr("i:updated", new Date().toISOString());
 }
 
-/** "Title: reason" with numbers and addresses blanked, so the same kind of failure lands on the same row of the ranked list. */
-function reasonKey(title: string | undefined, summary: string): string {
-  const reason = blankNumbers(summary.replace(/[1-9A-HJ-NP-Za-km-z]{32,}/g, "…").replace(/[1-9A-HJ-NP-Za-km-z]{4}…[1-9A-HJ-NP-Za-km-z]{4}/g, "…"));
-  // Every private-program error is the same story for us (no published error list), so they share one row.
-  const t = /from a private program/i.test(title ?? "") ? "Private program (unnamed)" : (title ?? "").replace(/\([^)]*\)/g, "").trim();
-  return `${t ? `${t}: ` : ""}${reason}`.slice(0, 120);
-}
-
 /**
  * One-time cleanup of the refusal rows written while number blanking ate the spaces around a figure
  * ("#Nspends Nfrom"): each legacy row is merged into its clean spelling, so the ranked list on
@@ -339,39 +331,6 @@ async function migrateGenericRows(store: Store) {
   }
   await store.setStr(FLAG, new Date().toISOString());
   console.log(`generic refusal rows merged: ${moved}`);
-}
-
-/**
- * One precise reason a landed failure was not rebuilt, read from the engine's own notes. The ranked
- * title list says WHAT failed; this says WHY the engine left it alone, which is what decides the next
- * thing to build and keeps the published numbers honest about bots and routers.
- */
-export function whyNot(result: { status: string; summary: string; cause: { title: string } | null; notes: string[] }): string {
-  const text = `${result.cause?.title ?? ""} ${result.summary} ${result.notes.join(" ")}`;
-  if (/circular arbitrage/i.test(text)) return "arbitrage";
-  if (/Lighthouse guard|safety guard set by the wallet/i.test(text)) return "wallet_guard";
-  if (/chains \d+ direct swaps|carries \d+ Jupiter swap instructions|more than one swap instruction/.test(text)) return "chained_swaps";
-  if (/completed its bonding curve|BondingCurveComplete|bonding curve has completed/.test(text)) return "pool_graduated";
-  if (/Launch pool nearly full|Launch curve nearly sold out|room left before it graduates|left before it completes|NotEnoughTokensToBuy|InsufficientLiquidity|SwapAmountIsOverAThreshold/.test(text)) return "pool_nearly_full";
-  if (/NonceAlreadyExists/.test(result.cause?.title ?? "")) return "duplicate_send";
-  if (/fee-recipient check refused/.test(text)) return "fee_recipient_rejected";
-  if (/overflowed inside its fee arithmetic/.test(text)) return "pump_fee_overflow";
-  if (/because its amount is zero|^ZeroAmount|sell amount is zero|amount is zero/i.test(text)) return "zero_amount";
-  if (/frozen by the mint's freeze authority|^AccountFrozen/.test(text)) return "account_frozen";
-  if (/still fails simulation, on the same slippage check/.test(text)) return "moved_again";
-  if (/moved more than \d+% against this trade/.test(text)) return "beyond_cap";
-  if (/No swap found that TxWhy can re-quote|not a top-level instruction|inside another program by CPI|runs inside another program/.test(text)) return "routed_by_private_program";
-  if (/spliced in but the transaction still fails|lifted the transaction still fails|both raised \d+%/.test(text)) return "more_than_slippage";
-  if (/above the 1232-byte limit|does not fit Solana's size limit|encoding overruns/.test(text)) return "too_large";
-  if (/fits its own limit/.test(text)) return "not_slippage_now";
-  if (/Re-run today, this transaction fails earlier/.test(text)) return "state_changed_since";
-  if (/from a private program/i.test(result.cause?.title ?? "")) return "private_program";
-  if (/^Invalid instruction data|InstructionMissing|InstructionDidNotDeserialize|InstructionFallbackNotFound|could not parse the instruction data|no instruction with this/.test(text)) return "client_data_mismatch";
-  if (/^AccountNotInitialized|^Nothing to sell|does not exist yet \(no data at that address\)/.test(text)) return "missing_account";
-  if (/InvalidSqrtPriceLimitDirection|TickArraySequenceInvalidIndex|InvalidTickArraySequence|TickArrayIndexOutofBounds|IncorrectSwapProgramId|^Invalid account data|InvalidAccountData|InvalidTokenAccount/.test(text)) return "client_built_wrong";
-  if (/insufficient|holds .* lamports and needs|Shortfall|does not hold enough|NotEnoughTokensToSell|Not enough (tokens|SOL)/i.test(text)) return "no_funds";
-  if (result.status === "needs_requote") return "needs_requote_other";
-  return "other";
 }
 
 /** Runs one landed failure through the repair engine and records only the verdict. Nothing about the transaction is stored. */

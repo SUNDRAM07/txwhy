@@ -66,6 +66,7 @@ And what it refuses to fake:
 | A buy bigger than what is left on a Meteora DBC launch pool | The exact room left before the pool graduates, what the buy puts in, and the Meteora DAMM v2 pool the token moves to, read from the pool's own account. A graduated pool gets the same answer with its new pool address |
 | A program rejected it | The named error, cause and fix from 1,891 bundled errors across 38 programs, plus any IDL the program published on chain |
 | A private program rejected it | Which program raised the code, and that only its authors can decode it |
+| A private program's own named check stopped it (an unnamed program with no IDL that named its error in an Anchor log, such as a sniper's entry rule) | That it is that program's own rule, which program and what its source calls it, that the transaction is meant to fail when the rule is not met, and that nothing can be rebuilt. Filed with private programs, not with people's failures |
 | Circular arbitrage that missed its gap | That it is built to fail this way and there is nothing to repair |
 
 A rebuilt transaction is only ever returned if it passes simulation. TxWhy will not hand back something that would fail again.
@@ -144,6 +145,18 @@ Pass `{"signature": "..."}` instead for a transaction that already landed and fa
 ```
 
 `status` is one of `repaired`, `valid`, `needs_requote`, `not_repairable`. Whenever a transaction is returned, `verification` carries the instruction-level proof of what changed (see below).
+
+### JSON-RPC
+
+The same repair as a JSON-RPC 2.0 method, for stacks that already speak JSON-RPC to a Solana node: an RPC provider's gateway, a bot, a backend. One method, mounted next to your node's own.
+
+```bash
+curl -X POST https://txwhy.vercel.app/api/v1/rpc \
+  -H "content-type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"repairTransaction","params":["<base64 transaction, or the signature of a landed failure>"]}'
+```
+
+`result` is the repair object shown above. `params` may also be `[{"transaction": "..."}]` or `[{"signature": "..."}]`, and `txwhy_repairTransaction` is the same method under a namespaced name for gateways that route by prefix. Errors follow the spec: `-32602` for input that is not a transaction or signature, `-32005` with `retryAfterSeconds` when rate-limited, `-32000` when the node upstream did not answer. Batches are refused. Self-hosted, it is the same route on your own container.
 
 ### Pay per repair (x402)
 
@@ -226,6 +239,9 @@ cd sdk && node test.mjs           # the npm package end to end against productio
 node scripts/fuzz-repair.mjs      # 122 malformed, truncated, oversized and hostile inputs: never a 500, never a hang
 node scripts/fuzz-mcp.mjs         # 52 malformed JSON-RPC calls and hostile tool arguments against the MCP server
 node scripts/test-explain.mjs     # the explain endpoint on real err objects, logs and guard bytes from mainnet
+node scripts/test-jsonrpc.mjs     # 11 cases for the JSON-RPC door: repairTransaction by bytes, by signature and by name, spec error codes, pass-through
+npx tsx scripts/test-private-check.ts # a private program's own named check: the wording, the bucket, and five things that must not change; no network
+node scripts/check-demos.mjs      # every homepage demo end to end on production; run after each deploy and each morning
 node scripts/stress.mjs 24        # 24 simultaneous repairs against production: status mix and latency spread, no 5xx
 node scripts/probe-ratelimit.mjs  # proves forged x-forwarded-for headers cannot dodge the per-IP limit
 cd crates/txwhy-verify && cargo test   # 22 Rust verifier tests, incl. parity with real production repairs

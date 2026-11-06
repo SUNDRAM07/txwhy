@@ -476,6 +476,31 @@ export const SYSTEM_ERRORS: Record<number, DecodedError> = {
   8: { title: "Unexpected nonce value", cause: "The transaction's blockhash does not match the value stored in the nonce account. Another transaction used the nonce first.", fix: "Re-read the nonce account and rebuild the transaction with its current value." },
 };
 
+const NO_EXPLANATION = "The program raised this named error and published no further explanation.";
+
+/** A program's message that only repeats the error's name, or is a word or a number, says nothing new. */
+function isThinMessage(name: string, msg: string | undefined): boolean {
+  return !msg || msg.replace(/[^a-z]/gi, "").toLowerCase() === name.replace(/[^a-z]/gi, "").toLowerCase() || msg.split(" ").length <= 4;
+}
+
+/**
+ * A named check raised by a private program (see decodeCustom). Measured Nov 6, 2026: 128 of the last 735
+ * failed Pump.fun transactions were QuoteReserveThresholdReached from one unnamed program whose source
+ * calls it pump_buy_guard, about 1,400 a minute from a single sender, every one refused before the program
+ * ever called Pump.fun. The old answer for those was the program's message, which is the string "6018".
+ */
+function privateCheck(code: number, programId: string, name: string, msg: string | undefined, file: string | undefined): DecodedError {
+  const short = `${programId.slice(0, 4)}…${programId.slice(-4)}`;
+  const crate = file?.match(/^programs\/([\w-]+)\//)?.[1];
+  const said = isThinMessage(name, msg) ? "" : ` Its own message: "${msg}".`;
+  return {
+    title: name,
+    code: `Custom(${code}) — 0x${code.toString(16)}`,
+    cause: `A private program's own check, ${name}, stopped this transaction (program ${short}${crate ? `; its source calls it ${crate}` : ""}).${said} The program has published no IDL and no docs, so only its authors know the exact condition. A named check in a private trading program is a rule set on purpose, such as an entry price, a pool size or a deadline, and the transaction is meant to fail when the rule is not met.`,
+    fix: "Nothing to rebuild: the same bytes fail the same check until the on-chain condition changes. If you were using a trading app or bot, this is its rule, usually a setting you chose there (a maximum entry price or market cap, for example). Change the setting or retry from the app, and send them this transaction if it keeps happening.",
+  };
+}
+
 function decodeCustom(
   code: number,
   failedProgramId: string | null,
@@ -504,6 +529,14 @@ function decodeCustom(
     const kb = ANCHOR_ERRORS[code];
     const hint = logMsg?.account ? ACCOUNT_HINTS[name]?.(logMsg.account) : undefined;
     const where = logMsg?.file ? ` The program raised it in ${logMsg.file.replace(/^programs\//, "")}.` : "";
+    // A program outside the catalog, with no IDL on chain, that named its own error in an Anchor log line:
+    // a private program's own check. The name is all anyone outside can know, so say that, and say what such
+    // a check is, instead of repeating a message that is often a bare number. Only for names the engine has
+    // no better account of (slippage, duplicates, shortfalls and the like keep their own explanations), and
+    // only for the program's own codes: below 6000 is the Anchor framework speaking, which the tables cover.
+    if (logMsg && !logMsg.account && !idlHit && !bundled && failedProgramId && !isNamedProgram(failedProgramId) && code >= 6000 && enrichCause(name, undefined) === NO_EXPLANATION) {
+      return privateCheck(code, failedProgramId, name, logMsg.msg, logMsg.file);
+    }
     return {
       title: name,
       code: `Custom(${code}) — 0x${code.toString(16)}`,
@@ -547,7 +580,7 @@ function decodeCustom(
 /** Programs often publish a message that just repeats the error name. Say what it actually means. */
 export function enrichCause(name: string, msg: string | undefined): string {
   const n = name.toLowerCase();
-  const thin = !msg || msg.replace(/[^a-z]/gi, "").toLowerCase() === name.replace(/[^a-z]/gi, "").toLowerCase() || msg.split(" ").length <= 4;
+  const thin = isThinMessage(name, msg);
   const slippage = n.includes("slippage") || n.includes("toolittle") || n.includes("toomuch") || n.includes("belowmin") || n.includes("amountoutbelow") || n.includes("exceededslippage");
   // Slippage messages from programs are one terse line ("instruction exceeds desired slippage limit"); say what actually happened.
   if (slippage) {
@@ -587,7 +620,7 @@ export function enrichCause(name: string, msg: string | undefined): string {
   if (n.includes("expired") || n.includes("stale")) {
     return "The data this instruction relied on (a quote, price or order) was already out of date when it executed.";
   }
-  return msg ?? "The program raised this named error and published no further explanation.";
+  return msg ?? NO_EXPLANATION;
 }
 
 /** Heuristic fixes for common IDL error names when the KB has no entry. */
