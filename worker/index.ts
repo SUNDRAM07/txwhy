@@ -313,6 +313,35 @@ async function migrateUpstreamRow(store: Store) {
   console.log(`upstream rows refiled: ${moved}`);
 }
 
+/**
+ * One-time refiling of the pump_buy_guard refusals recorded before a private program's own named check
+ * had its own wording: they sat under the check's name with the program's message ("6018") as the reason,
+ * and so were counted with people's failures. Only this one program is moved, because it is the only one
+ * whose old rows can be told apart from a public program's with certainty (the crate name is in the row).
+ */
+async function migratePrivateCheckRows(store: Store) {
+  const FLAG = "i:migrated:private-check-1";
+  if (await store.getStr(FLAG)) return;
+  const GUARD = "52Yyvsugd3B7waLEFB83hdTmcwtU66tBuEzTQ7kcfoAi";
+  const cause = decodeTransactionError({ InstructionError: [0, { Custom: 6017 }] }, GUARD, [
+    "Program log: AnchorError thrown in programs/pump_buy_guard/src/lib.rs:62. Error Code: QuoteReserveThresholdReached. Error Number: 6017. Error Message: 6018.",
+  ]);
+  let moved = 0;
+  if (cause) {
+    const clean = reasonKey(cause.title, cause.cause);
+    for (const key of ["i:repair:detail:not_repairable", "i:repair:detail:moved_too_far"]) {
+      for (const row of await store.ztop(key, 5000)) {
+        if (row.member === clean || !/^QuoteReserveThresholdReached: /.test(row.member) || !row.member.includes("pump_buy_guard")) continue;
+        await store.zincr(key, clean, row.score);
+        await store.zrem(key, row.member);
+        moved += row.score;
+      }
+    }
+  }
+  await store.setStr(FLAG, new Date().toISOString());
+  console.log(`private-check rows refiled: ${moved}`);
+}
+
 async function migrateGenericRows(store: Store) {
   const FLAG = "i:migrated:reason-rows-2";
   if (await store.getStr(FLAG)) return;
@@ -642,6 +671,7 @@ async function main() {
   await migrateReasonRows(store);
   await migrateGenericRows(store);
   await migrateUpstreamRow(store);
+  await migratePrivateCheckRows(store);
 
   createServer(async (req, res) => {
     try {
