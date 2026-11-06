@@ -6,6 +6,8 @@ const conn = new Connection(process.env.SOLANA_RPC_URL ?? "https://api.mainnet-b
 // A long-lived, well-funded public account used only as a simulated fee payer.
 const RICH = new PublicKey("5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9");
 const DEST = new PublicKey("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM");
+// Swaps into USDC use this wallet: the USDC account of RICH was frozen by the mint on Oct 30, 2026, and a frozen account fails every swap into it.
+const SWAPPER = DEST;
 const b64 = (payer, blockhash, ixs) => Buffer.from(new VersionedTransaction(new TransactionMessage({ payerKey: payer, recentBlockhash: blockhash, instructions: ixs }).compileToV0Message()).serialize()).toString("base64");
 const call = async (body) => (await fetch(API, { method: "POST", headers: { "content-type": "application/json", "x-txwhy-client": "test" }, body: JSON.stringify(body) })).json();
 const show = (name, r, expect) => { const ok = r.status === expect; console.log(`\n${ok ? "PASS" : "FAIL"}  ${name}\n  status=${r.status} (expected ${expect})  sim.passed=${r.simulation?.passed} units=${r.simulation?.unitsConsumed}\n  summary: ${r.summary ?? r.error}\n  cause: ${r.cause?.title ?? "-"}\n  changes: ${(r.changes ?? []).map(c => `${c.type}: ${c.before} -> ${c.after}`).join(" | ") || "-"}\n  notes: ${(r.notes ?? []).slice(0, 1).join("")}`); return ok; };
@@ -27,7 +29,7 @@ await t("insufficient funds", { transaction: b64(RICH, blockhash, [SystemProgram
   const J = "https://lite-api.jup.ag/swap/v1";
   const quote = await (await fetch(`${J}/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v&amount=50000000&slippageBps=50`)).json();
   const stale = { ...quote, outAmount: String(Math.floor(Number(quote.outAmount) * 1.05)), otherAmountThreshold: String(Math.floor(Number(quote.otherAmountThreshold) * 1.05)) };
-  const built = await (await fetch(`${J}/swap`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quoteResponse: stale, userPublicKey: RICH.toBase58(), wrapAndUnwrapSol: true, dynamicComputeUnitLimit: false }) })).json();
+  const built = await (await fetch(`${J}/swap`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ quoteResponse: stale, userPublicKey: SWAPPER.toBase58(), wrapAndUnwrapSol: true, dynamicComputeUnitLimit: false }) })).json();
   if (built.swapTransaction) await t("stale Jupiter quote (slippage)", { transaction: built.swapTransaction }, "repaired");
   else { total++; console.log("FAIL  could not build the stale swap:", JSON.stringify(built).slice(0, 200)); }
 }

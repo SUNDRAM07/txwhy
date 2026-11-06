@@ -4,7 +4,7 @@ import { repair } from "../src/lib/repair";
 import { buildV1, decodeV1, toWeb3 } from "../src/lib/v1";
 import { buildStalePumpSwapBuy, buildStaleRaydiumSwap } from "../src/lib/pump-demo";
 
-const payer = new PublicKey("5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9"); // public exchange wallet: nobody can sign these
+const payer = new PublicKey("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"); // public exchange wallet: nobody can sign these. Not 5tzF…uAi9: its USDC account was frozen on Oct 30, 2026, which fails every USDC swap
 const MEMO = new PublicKey("MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr");
 const RPC = process.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com";
 const rpc = (method: string, params: unknown[]) =>

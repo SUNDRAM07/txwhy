@@ -46,7 +46,7 @@ async function main() {
     total++;
     const t = Date.now();
     try {
-      const payer = new PublicKey("5tzFkiKscXHK5ZXCGbXZxdw7gTjjD1mBwuoFbhUvuAi9");
+      const payer = new PublicKey("9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM"); // spends USDC: the usual wallet's USDC account was frozen on Oct 30, 2026
       const raydium = await Raydium.load({ connection: c, owner: payer, disableLoadToken: true, disableFeatureCheck: true });
       const poolId = "58oQChx4yWmvKdwLLZzBi4ChoCc2fqCUWBkwMihLYQo2"; // SOL/USDC v4
       const { poolInfo, poolKeys, poolRpcData } = await raydium.liquidity.getPoolInfoFromRpc({ poolId });
