@@ -67,6 +67,7 @@ And what it refuses to fake:
 | A program rejected it | The named error, cause and fix from 1,891 bundled errors across 38 programs, plus any IDL the program published on chain |
 | A private program rejected it | Which program raised the code, and that only its authors can decode it |
 | A private program's own named check stopped it (an unnamed program with no IDL that named its error in an Anchor log, such as a sniper's entry rule) | That it is that program's own rule, which program and what its source calls it, that the transaction is meant to fail when the rule is not met, and that nothing can be rebuilt. Filed with private programs, not with people's failures |
+| A bare `require_gte!` balance check with no error code of its own refused a sell or buy (Raydium LaunchLab's sell_exact_in, reading the program's own Left/Right figures against the amount inside the trade instruction, top-level or through a router) | Not enough tokens to sell (or to pay): the program and instruction, the amount asked, what the token account held when it ran, the shortfall, and the router that worked out the amount; filed with funds shortfalls |
 | Circular arbitrage that missed its gap | That it is built to fail this way and there is nothing to repair |
 
 A rebuilt transaction is only ever returned if it passes simulation. TxWhy will not hand back something that would fail again.
@@ -241,6 +242,7 @@ node scripts/fuzz-mcp.mjs         # 52 malformed JSON-RPC calls and hostile tool
 node scripts/test-explain.mjs     # the explain endpoint on real err objects, logs and guard bytes from mainnet
 node scripts/test-jsonrpc.mjs     # 11 cases for the JSON-RPC door: repairTransaction by bytes, by signature and by name, spec error codes, pass-through
 npx tsx scripts/test-private-check.ts # a private program's own named check: the wording, the bucket, and five things that must not change; no network
+npx tsx scripts/test-require-shortfall.ts # a bare require_gte! balance check on a landed LaunchLab sell gets the shortfall verdict with figures; the version-1 row in the worker
 node scripts/check-demos.mjs      # every homepage demo end to end on production; run after each deploy and each morning
 node scripts/stress.mjs 24        # 24 simultaneous repairs against production: status mix and latency spread, no 5xx
 node scripts/probe-ratelimit.mjs  # proves forged x-forwarded-for headers cannot dodge the per-IP limit

@@ -16,7 +16,7 @@ import { describeStandingQuote, requoteSwap } from "./requote";
 import { pumpFeeRecipients } from "./requote-pump";
 import type { ProbeResult } from "./requote-pump";
 import { programName } from "./programs";
-import { METEORA_DBC, PUMP_FUN, PUMP_SWAP, readDirectSwapShape, readSwapShape } from "./swap-shape";
+import { DIRECT_LAYOUTS, METEORA_DBC, PUMP_FUN, PUMP_SWAP, readDirectSwapShape, readSwapShape } from "./swap-shape";
 import { RPC_URL, RpcError, rpc } from "./rpc";
 import { getTrace } from "./trace";
 import { V1_MAX_BYTES, decodeV1, inlineAddressCount, rebuildV1 } from "./v1";
@@ -760,6 +760,52 @@ function zeroAmountVerdict(instructions: TransactionInstruction[], cause: Decode
 const SELL_SHORTFALL_TITLE = /^(NotEnoughTokensToSell|Not enough tokens to sell)$/;
 
 /**
+ * A bare Anchor `require_gte!` / `require_gt!` with no error code of its own, raised by a launchpad or AMM trade with
+ * "Left: balance / Right: amount" in its logs (Raydium LaunchLab's sell_exact_in.rs:16 is the one the replay meets:
+ * the wallet's token account, often at 0, against the amount the client asked to sell). The pair is only trusted when
+ * the Right figure is the amount inside the trade instruction itself, top-level or called by a router; then the
+ * instruction's own user token account names the mint and its decimals, and the verdict is the sell-shortfall one.
+ */
+async function requireShortfallVerdict(instructions: TransactionInstruction[], cause: DecodedError, logs: string[], err?: unknown, inner?: ParsedInner[] | null): Promise<{ cause: DecodedError; note: string } | null> {
+  if (!/^RequireGte?Violated$/.test(cause.title)) return null;
+  const left = [...logs].reverse().find((l) => /^Program log: Left: \d+$/.test(l))?.match(/\d+$/)?.[0];
+  const right = [...logs].reverse().find((l) => /^Program log: Right: \d+$/.test(l))?.match(/\d+$/)?.[0];
+  if (left == null || right == null) return null;
+  const have = BigInt(left), want = BigInt(right);
+  if (have >= want) return null;
+  const failing = failingIndex(err);
+  const top = failing != null ? instructions[failing] : undefined;
+  const candidates: TransactionInstruction[] = top ? [top] : [];
+  for (const call of inner?.find((g) => g.index === failing)?.instructions ?? []) {
+    if (!call.programId || !call.data || !call.accounts || !DIRECT_LAYOUTS[call.programId]) continue;
+    candidates.push(new TransactionInstruction({ programId: new PublicKey(call.programId), keys: call.accounts.map((a) => ({ pubkey: new PublicKey(a), isSigner: false, isWritable: false })), data: Buffer.from(base58ToBytes(call.data)) }));
+  }
+  let shape: ReturnType<typeof readDirectSwapShape> = null;
+  let ix: TransactionInstruction | undefined;
+  for (const c of candidates) {
+    const s = readDirectSwapShape(c);
+    if (s && s.amount === want && (s.fixed === "tokens_in" || s.fixed === "quote_in") && s.userIn != null) { shape = s; ix = c; break; }
+  }
+  if (!shape || !ix) return null;
+  const account = ix.keys[shape.userIn!]?.pubkey.toBase58();
+  if (!account) return null;
+  const balance = await rpc<{ value: { amount: string; decimals: number } | null }>("getTokenAccountBalance", [account, { commitment: "confirmed" }]).catch(() => null);
+  const decimals = balance?.value?.decimals;
+  const fmt = (v: bigint) => (decimals == null ? `${v.toString()} raw token units` : `${formatUnits(v, decimals)} tokens`);
+  const sell = shape.fixed === "tokens_in";
+  const routed = top && top.programId.toBase58() !== ix.programId.toBase58() ? programName(top.programId.toBase58()) : null;
+  return {
+    cause: {
+      title: sell ? "Not enough tokens to sell" : "Not enough tokens to pay",
+      code: cause.code,
+      cause: `${shape.program}'s ${shape.name} refused this ${sell ? "sell" : "buy"} before touching the pool: the instruction ${sell ? "sells" : "pays"} ${fmt(want)} and token account ${account} held ${fmt(have)} when it ran, a shortfall of ${fmt(want - have)}.${routed ? ` The trade came through ${routed}, which worked out the amount.` : ""} The program's check is a plain balance comparison with no error code of its own, which is why the error reads RequireGteViolated. Usually a percentage ${sell ? "sell" : "buy"} built on a stale balance, or tokens already sold or moved by an earlier transaction.`,
+      fix: `Rebuild the ${sell ? "sell" : "buy"} from the current balance. Nothing on chain needs fixing, and resending the same instruction cannot succeed.`,
+    },
+    note: `${sell ? "Sell" : "Pay"} amount ${fmt(want)}, balance ${fmt(have)} (the program's own Left/Right figures), shortfall ${fmt(want - have)} (instruction #${(failing ?? 0) + 1}).`,
+  };
+}
+
+/**
  * A sell for more tokens than the wallet holds. Pump.fun's sell and sell_v2 refuse it before any transfer, so the
  * inner-transfer shortfall path never sees it; read the amount from the instruction and the balance from the chain.
  */
@@ -983,7 +1029,7 @@ async function preciseVerdict(instructions: TransactionInstruction[], cause: Dec
     return precise ? { ...precise, replaces: /^Overflow$/ } : null;
   }
   if (ZERO_AMOUNT_TITLE.test(cause.title)) {
-    const precise = zeroAmountVerdict(instructions, cause, logs, err);
+    const precise = zeroAmountVerdict(instructions, cause, logs, err) ?? (await requireShortfallVerdict(instructions, cause, logs, err, inner).catch(() => null));
     return precise ? { ...precise, replaces: ZERO_AMOUNT_TITLE } : null;
   }
   if (cause.title === "NotAuthorized") {

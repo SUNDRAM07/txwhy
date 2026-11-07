@@ -74,6 +74,8 @@ export function whyNot(result: { status: string; summary: string; cause: { title
   if (/^AccountNotInitialized|^Nothing to sell|does not exist yet \(no data at that address\)/.test(text)) return "missing_account";
   if (/InvalidSqrtPriceLimitDirection|TickArraySequenceInvalidIndex|InvalidTickArraySequence|TickArrayIndexOutofBounds|IncorrectSwapProgramId|^Invalid account data|InvalidAccountData|InvalidTokenAccount/.test(text)) return "client_built_wrong";
   if (/insufficient|holds .* lamports and needs|Shortfall|does not hold enough|NotEnoughTokensToSell|Not enough (tokens|SOL)/i.test(text)) return "no_funds";
+  // The engine diagnosed a version 1 transaction exactly but has no rebuild path for its swap yet: its own row, not "other".
+  if (/^Diagnosed, but not rebuilt: this is a version 1 transaction/.test(result.summary)) return "v1_not_rebuilt";
   if (result.status === "needs_requote") return "needs_requote_other";
   return "other";
 }
