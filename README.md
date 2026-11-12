@@ -243,6 +243,7 @@ node scripts/test-explain.mjs     # the explain endpoint on real err objects, lo
 node scripts/test-jsonrpc.mjs     # 11 cases for the JSON-RPC door: repairTransaction by bytes, by signature and by name, spec error codes, pass-through
 npx tsx scripts/test-private-check.ts # a private program's own named check: the wording, the bucket, and five things that must not change; no network
 npx tsx scripts/test-require-shortfall.ts # a bare require_gte! balance check on a landed LaunchLab sell gets the shortfall verdict with figures; the version-1 row in the worker
+npx tsx scripts/test-source-mint.ts # a swap whose source token account is created inside the same transaction (wrapped SOL) still gets its mint read and re-quoted; one landed v1 case needs the RPC
 node scripts/check-demos.mjs      # every homepage demo end to end on production; run after each deploy and each morning
 node scripts/stress.mjs 24        # 24 simultaneous repairs against production: status mix and latency spread, no 5xx
 node scripts/probe-ratelimit.mjs  # proves forged x-forwarded-for headers cannot dodge the per-IP limit

@@ -74,6 +74,26 @@ function refuseBadQuote(intent: SwapIntent, quote: Quote): string | null {
   return null;
 }
 
+const ATA_PROGRAM = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL";
+const TOKEN_PROGRAMS = new Set(["TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"]);
+
+/**
+ * The mint of a token account that this very transaction creates, read from the creating instruction rather than
+ * the chain: an associated-token create (plain or idempotent; keys funder, account, owner, mint, ...) or an SPL
+ * InitializeAccount / InitializeAccount2 / InitializeAccount3 (keys account, mint, ...). A swap that wraps SOL the
+ * way Jupiter's own API does creates its source account in the same transaction and closes it at the end, so
+ * before sending the account does not exist yet, and after a failed send it never did; the chain cannot answer.
+ */
+export function mintFromTransaction(instructions: TransactionInstruction[], tokenAccount: string): string | null {
+  for (const ix of instructions) {
+    const program = ix.programId.toBase58();
+    const key = (i: number) => ix.keys[i]?.pubkey.toBase58();
+    if (program === ATA_PROGRAM && ix.keys.length >= 4 && (ix.data.length === 0 || ix.data[0] === 0 || ix.data[0] === 1) && key(1) === tokenAccount) return key(3) ?? null;
+    if (TOKEN_PROGRAMS.has(program) && ix.keys.length >= 2 && ix.data.length >= 1 && (ix.data[0] === 1 || ix.data[0] === 16 || ix.data[0] === 18) && key(0) === tokenAccount) return key(1) ?? null;
+  }
+  return null;
+}
+
 async function mintOfTokenAccount(address: string): Promise<string | null> {
   const { value } = await rpc<{
     value: { data: { parsed?: { info?: { mint?: string } } } } | null;
@@ -143,11 +163,13 @@ export async function readSwapIntent(
   const key = (i: number) => ix.keys[i]?.pubkey.toBase58();
   const user = key(layout.user);
   const outputMint = key(layout.destinationMint);
+  const sourceAccount = typeof layout.sourceMint === "number" ? null : (key(layout.sourceMint.tokenAccount) ?? "");
   const inputMint =
     typeof layout.sourceMint === "number"
       ? key(layout.sourceMint)
-      : await mintOfTokenAccount(key(layout.sourceMint.tokenAccount) ?? "");
-  if (!user || !inputMint || !outputMint) return { reason: "Could not resolve the swap's tokens." };
+      : (mintFromTransaction(instructions, sourceAccount ?? "") ?? (await mintOfTokenAccount(sourceAccount ?? "")));
+  if (!user || !outputMint) return { reason: "Could not resolve the swap's tokens." };
+  if (!inputMint) return { reason: `Could not resolve the swap's source token: account ${sourceAccount} does not exist on chain and this transaction does not create it, so its mint cannot be read.` };
 
   const intent: SwapIntent = {
     instruction: layout.name,
