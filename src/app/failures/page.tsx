@@ -42,7 +42,7 @@ const WHY_LABELS: Record<string, [string, string]> = {
   needs_requote_other: ["Needs a fresh quote", "no supported swap to re-quote"],
   client_data_mismatch: ["Instruction data the program cannot read", "a client built against another version of the program, or a private program's own encoding; only the app can rebuild it (counted since Oct 23)"],
   client_built_wrong: ["Built wrong by the client", "a price limit on the wrong side, tick arrays for a price the pool has left, a swap program the route does not accept; only a fresh build fixes it (counted since Oct 23)"],
-  v1_not_rebuilt: ["Version 1 transaction, not rebuilt", "diagnosed exactly; TxWhy's rebuild path for the SIMD-0385 format covers budget and blockhash so far, not swaps (counted since Nov 7)"],
+  v1_not_rebuilt: ["Version 1 transaction, not rebuilt", "diagnosed exactly, but TxWhy's rebuild path for the SIMD-0385 format stopped before a result; a gap on our side, named in the engine's notes (counted since Nov 7)"],
   other: ["Other", "overflow and the long tail; a class gets its own row once it is named"],
 };
 

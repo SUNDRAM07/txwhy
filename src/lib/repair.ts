@@ -1240,12 +1240,14 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
       : await fetchRawTransaction(input.signature as string);
   } catch (e) {
     if (!(e instanceof UnsupportedVersionError)) throw e;
+    let v1Stopped: string | null = null;
     if (e.base64) {
       try {
         return await repairV1(e.base64, onchain);
       } catch (inner) {
         if (inner instanceof RepairInputError || inner instanceof RpcError) throw inner;
-        /* fall through to diagnosis-only below */
+        // Fall through to diagnosis-only below, and say where the rebuild path stopped: that is TxWhy's gap, and the worker's rows should show it.
+        v1Stopped = (inner instanceof Error ? inner.message : String(inner)).slice(0, 160);
       }
     }
     // Nodes simulate version 1 bytes as they are, so a v1 transaction still gets an exact diagnosis.
@@ -1273,7 +1275,9 @@ async function repairUnguarded(input: RepairInput): Promise<RepairResult> {
         error: cause,
         logsTail: (onchain?.logs ?? v1Sim?.logs ?? []).slice(-8),
       },
-      notes: passes ? [] : ["Apply the fix above when you rebuild the transaction in your own client."],
+      notes: passes
+        ? []
+        : ["Apply the fix above when you rebuild the transaction in your own client.", ...(v1Stopped ? [`The version 1 rebuild path stopped before a result (${v1Stopped}). That is a gap in TxWhy, not in the transaction.`] : [])],
     };
   }
   const landed = onchain != null;
